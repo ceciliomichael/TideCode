@@ -1,6 +1,6 @@
 import type { ModelMessage } from 'ai'
+import { buildDurableMemoryMessage, type ConversationMemory } from '../compaction/durableMemory'
 import {
-  buildWorkspaceDurableMemoryHiddenContext,
   buildWorkspaceMemoryHiddenContext,
   extractHiddenUserContexts,
   WORKSPACE_DURABLE_MEMORY_HIDDEN_CONTEXT_KIND,
@@ -8,12 +8,11 @@ import {
 } from '../../../../src/lib/hiddenUserContext'
 import {
   refreshWorkspaceMemoryIndex,
-  readWorkspaceDurableMemory,
 } from '../../../memory/service'
 
 const MEMORY_CONTEXT_KINDS = new Set([
-  WORKSPACE_DURABLE_MEMORY_HIDDEN_CONTEXT_KIND,
   WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND,
+  WORKSPACE_DURABLE_MEMORY_HIDDEN_CONTEXT_KIND,
 ])
 
 function getMessageText(message: ModelMessage) {
@@ -41,13 +40,6 @@ function stripWorkspaceMemoryContexts(value: string) {
 
 function stripWorkspaceMemoryContextsFromMessages(messages: readonly ModelMessage[]): ModelMessage[] {
   return messages.flatMap((message): ModelMessage[] => {
-    if (
-      message.role === 'assistant'
-      && typeof message.content === 'string'
-      && message.content.startsWith('## Durable conversation memory\n')
-    ) {
-      return []
-    }
     if (message.role !== 'user') return [message]
     if (typeof message.content === 'string') {
       return [{ ...message, content: stripWorkspaceMemoryContexts(message.content) }]
@@ -71,15 +63,9 @@ export async function applyWorkspaceMemoryContext(
   const projected = stripWorkspaceMemoryContextsFromMessages(messages)
   if (!workspaceRootPath) return projected
 
-  const [durable, memory] = await Promise.all([
-    readWorkspaceDurableMemory(workspaceRootPath),
-    optionalMemoryEnabled ? refreshWorkspaceMemoryIndex(workspaceRootPath) : Promise.resolve(null),
-  ])
+  const memory = optionalMemoryEnabled ? await refreshWorkspaceMemoryIndex(workspaceRootPath) : null
 
   const contexts = [
-    ...(durable
-      ? [buildWorkspaceDurableMemoryHiddenContext(durable.revision, durable.content)]
-      : []),
     buildWorkspaceMemoryHiddenContext({
       content: memory?.content ?? null,
       enabled: optionalMemoryEnabled,
@@ -106,6 +92,20 @@ export async function applyWorkspaceMemoryContext(
       content: [...message.content, { type: 'text', text: hiddenContent }],
     }
   })
+}
+
+export function applyConversationMemoryContext(
+  messages: readonly ModelMessage[],
+  memory: ConversationMemory | null,
+): ModelMessage[] {
+  const withoutPriorMemory = messages.filter((message) => !(
+    message.role === 'assistant'
+    && typeof message.content === 'string'
+    && message.content.startsWith('## Durable conversation memory\n')
+  ))
+  return memory
+    ? [buildDurableMemoryMessage(memory), ...withoutPriorMemory]
+    : withoutPriorMemory
 }
 
 export function hasWorkspaceMemoryContext(messages: readonly ModelMessage[]) {

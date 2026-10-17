@@ -1,3 +1,5 @@
 # tools.available.get
 
-Retrieve the complete contract for exactly one authorized API. Call `tools.available.get({ name: "tools.read" })` for a known native tool. For MCP tools, first discover the exact name using `tools.available.search({ query: "...", namespace: "mcp" })`, then call get using that exact returned name. Get returns the complete description/instructions, callable signature, and input schema. You must get a tool before calling it; the retrieved contract remains valid during the current chat runtime only. Get does not grant permissions beyond the host registry.
+# tools.available.get
+
+Retrieve one authorized tool contract as Markdown with its callable types, required parameters, and tool-specific instructions. Use the exact name, for example `tools.available.get({ name: "tools.read" })`. MCP tools must first be discovered with `tools.available.search`. Retrieved contracts are remembered within the chat; retrieval does not grant additional permissions.

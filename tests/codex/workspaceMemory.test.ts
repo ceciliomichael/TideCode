@@ -1,3 +1,4 @@
+import '../configureAppRoot'
 import assert from 'node:assert/strict'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -11,13 +12,32 @@ const createNativeAgentTools = async (...args: Parameters<typeof createAgentTool
 import {
   editMemoryEntry,
   forgetMemoryEntry,
-  readWorkspaceDurableMemory,
   readWorkspaceMemoryIndex,
   refreshWorkspaceMemoryIndex,
-  updateWorkspaceDurableMemory,
   writeMemoryEntry,
 } from '../../electron/memory/service'
-import { applyWorkspaceMemoryContext } from '../../electron/chat/shared/memory/runtimeContext'
+import { applyConversationMemoryContext, applyWorkspaceMemoryContext } from '../../electron/chat/shared/memory/runtimeContext'
+
+test('per-chat durable context never carries memory from a different chat', () => {
+  const chatOne = {
+    schema: 'tidecode.conversation_memory/v1' as const,
+    markdown: '## Decisions\n- Only chat one knows the secret decision.',
+    sourceDigest: 'chat-one',
+  }
+  const chatTwo = {
+    schema: 'tidecode.conversation_memory/v1' as const,
+    markdown: '## Decisions\n- Chat two makes a different decision.',
+    sourceDigest: 'chat-two',
+  }
+  const initial = [{ role: 'user' as const, content: 'Continue.' }]
+  const first = applyConversationMemoryContext(initial, chatOne)
+  const second = applyConversationMemoryContext(first, chatTwo)
+  assert.match(String(first[0]?.content), /Only chat one knows/u)
+  assert.doesNotMatch(JSON.stringify(second), /Only chat one knows/u)
+  assert.match(String(second[0]?.content), /Chat two makes/u)
+  assert.equal(second.filter((message) => String(message.content).startsWith('## Durable conversation memory')).length, 1)
+  assert.deepEqual(applyConversationMemoryContext(second, null), initial)
+})
 
 interface ExecutableTool {
   execute: (input: Record<string, unknown>) => Promise<AgentToolExecutionResult>
@@ -201,18 +221,13 @@ test('normal read owns workspace memory reads and agents expose no memory tool',
   }
 })
 
-test('workspace durable memory is stored once per workspace and injected into new chat context', async () => {
+test('preexisting workspace DURABLE.md is never injected into new chats', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-durable-memory-'))
 
   try {
-    await updateWorkspaceDurableMemory(workspaceRootPath, async () => [
-      '## Decisions',
-      '- Keep Code Mode tool-only.',
-    ].join('\n'))
-
-    const durable = await readWorkspaceDurableMemory(workspaceRootPath)
-    assert.ok(durable)
-    assert.match(durable.content, /Keep Code Mode tool-only/u)
+    const memoryDirectory = path.join(workspaceRootPath, '.tidecode', 'memory')
+    await fs.mkdir(memoryDirectory, { recursive: true })
+    await fs.writeFile(path.join(memoryDirectory, 'DURABLE.md'), '## Decisions\n- Keep Code Mode tool-only.\n')
 
     const projected = await applyWorkspaceMemoryContext(
       [{ role: 'user', content: 'Start a new chat.' }],
@@ -220,8 +235,8 @@ test('workspace durable memory is stored once per workspace and injected into ne
       false,
     )
     const text = String(projected[0]?.content ?? '')
-    assert.match(text, /workspace_durable_memory/u)
-    assert.match(text, /Keep Code Mode tool-only/u)
+    assert.doesNotMatch(text, /workspace_durable_memory/u)
+    assert.doesNotMatch(text, /Keep Code Mode tool-only/u)
     assert.match(text, /Workspace memory is disabled/u)
     assert.doesNotMatch(text, /optional workspace memory/iu)
   } finally {

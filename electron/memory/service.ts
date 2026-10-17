@@ -1,7 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { notifyWorkspaceExplorerChange } from '../workspace/explorerNotifications'
-import { writeJsonFileAtomic } from '../settings/fileStore'
 import {
   assertWorkspaceDirectory,
   getSafeWorkspaceTargetPath,
@@ -10,14 +9,12 @@ import {
 
 export const MEMORY_DIRECTORY = '.tidecode/memory'
 export const MEMORY_INDEX_PATH = `${MEMORY_DIRECTORY}/MEMORY.md`
-export const DURABLE_MEMORY_PATH = `${MEMORY_DIRECTORY}/DURABLE.md`
 export const MEMORY_DETAILS_DIRECTORY = `${MEMORY_DIRECTORY}/details`
 /** @deprecated Use MEMORY_DETAILS_DIRECTORY. */
 export const MEMORY_FOLDERS_DIRECTORY = MEMORY_DETAILS_DIRECTORY
 const LEGACY_MEMORY_FOLDERS_DIRECTORY = `${MEMORY_DIRECTORY}/folders`
 
 const MAX_MEMORY_CONTENT_BYTES = 512 * 1024
-const MAX_DURABLE_MEMORY_BYTES = 128 * 1024
 const MAX_MEMORY_ENTRIES = 1_000
 const MEMORY_PATH_SEGMENT_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/u
 const memoryLocks = new Map<string, Promise<void>>()
@@ -425,39 +422,8 @@ async function readWorkspaceMemoryFile(
   }
 }
 
-export function readWorkspaceDurableMemory(workspaceRootPath: string) {
-  return readWorkspaceMemoryFile(workspaceRootPath, DURABLE_MEMORY_PATH)
-}
-
 export function readWorkspaceMemoryIndex(workspaceRootPath: string) {
   return readWorkspaceMemoryFile(workspaceRootPath, MEMORY_INDEX_PATH)
-}
-
-export async function updateWorkspaceDurableMemory(
-  workspaceRootPathInput: string,
-  update: (previous: WorkspaceMemorySnapshot | null) => Promise<string>,
-): Promise<WorkspaceMemorySnapshot> {
-  const workspaceRootPath = normalizeWorkspacePath(workspaceRootPathInput)
-  await assertWorkspaceDirectory(workspaceRootPath)
-  return withMemoryLock(workspaceRootPath, async () => {
-    const previous = await readWorkspaceMemoryFile(workspaceRootPath, DURABLE_MEMORY_PATH)
-    const content = normalizeMarkdown(await update(previous))
-    if (Buffer.byteLength(content, 'utf8') > MAX_DURABLE_MEMORY_BYTES) {
-      throw new Error(`DURABLE.md must be smaller than ${MAX_DURABLE_MEMORY_BYTES / 1024} KB.`)
-    }
-    const target = getSafeWorkspaceTargetPath(workspaceRootPath, DURABLE_MEMORY_PATH)
-    await assertManagedPathContainsNoSymlink(workspaceRootPath, target.absolutePath)
-    await fs.mkdir(path.dirname(target.absolutePath), { recursive: true })
-    if (previous?.content !== content) {
-      await writeJsonFileAtomic(target.absolutePath, content)
-      notifyWorkspaceExplorerChange(workspaceRootPath)
-    }
-    return (await readWorkspaceMemoryFile(workspaceRootPath, DURABLE_MEMORY_PATH)) ?? {
-      content,
-      path: DURABLE_MEMORY_PATH,
-      revision: `${Date.now()}:${Buffer.byteLength(content, 'utf8')}`,
-    }
-  })
 }
 
 async function writeIndexIfChanged(workspaceRootPath: string, beforeMutation?: (absolutePath: string) => Promise<void>) {

@@ -301,7 +301,7 @@ export class ToolRuntime {
   private recordDiscovery(name: string, input: unknown, result: unknown, summary: string): void {
     this.options.toolCalls.push({
       arguments: copyBoundaryValue(input ?? {}, 'Discovery receipt arguments'),
-      body: JSON.stringify(result, null, 2),
+      body: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
       durationMs: 0,
       name,
       status: 'success',
@@ -332,7 +332,7 @@ export class ToolRuntime {
     return result
   }
 
-  private get(input: unknown, node: AstNode): Record<string, unknown> {
+  private get(input: unknown, node: AstNode): string {
     const raw = copyBoundaryValue(input, 'Available get input', node)
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)
       || Object.keys(raw).some((key) => key !== 'name')
@@ -346,7 +346,7 @@ export class ToolRuntime {
       throw new CodeModeRuntimeError('PermissionDenied', `Discover MCP API ${name} using tools.available.search before get.`, node)
     }
     this.options.obtainedTools.add(tool.path.join('.'))
-    return { ...getAvailableApi(tool.entry, tool.expression, schemaSignature(tool)) }
+    return getAvailableApi(tool.entry, tool.expression)
   }
 
   private async mutationKeys(tool: ProjectedTool, input: unknown): Promise<string[]> {

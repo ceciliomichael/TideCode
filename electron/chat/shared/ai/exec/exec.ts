@@ -54,7 +54,7 @@ export function buildExecDescription(registry: AgentToolRegistry) {
     'Authorized native API names (details are NOT preloaded):',
     ...docs,
     'tools.available.search({ query?: string, namespace?: string, limit?: number, offset?: number }): Promise<{ items: { name: string }[], remaining: number, next: { offset: number } | null }>',
-    'tools.available.get({ name: string }): Promise<{ name: string, description: string, signature: string, inputSchema: object }>',
+    'tools.available.get({ name: string }): Promise<string> // Markdown contract with typed arguments',
     discovery,
     getContract,
     'Before executing ANY native API, retrieve its exact contract using tools.available.get. For MCP, search by capability first, then get the exact returned name. Retrieved contracts are remembered for the lifetime of this chat runtime.',

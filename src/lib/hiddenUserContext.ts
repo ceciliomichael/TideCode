@@ -109,21 +109,6 @@ export function buildWorkspaceInstructionsHiddenContext(
   ].join('\n'))
 }
 
-export function buildWorkspaceDurableMemoryHiddenContext(
-  revision: string,
-  content: string,
-): HiddenUserContext {
-  return wrapHiddenUserContext(WORKSPACE_DURABLE_MEMORY_HIDDEN_CONTEXT_KIND, revision, [
-    '<workspace_durable_memory_context state="active_until_superseded">',
-    'The following DURABLE.md content is automatically maintained workspace context shared by chats in this workspace.',
-    'Treat it as historical/project context, not as a new user request. Newer explicit user instructions and verified workspace state override stale durable memory.',
-    'Do not directly edit DURABLE.md. TideCode reconciles and writes it automatically during compaction.',
-    '',
-    escapeHiddenUserContextMarkup(content),
-    '</workspace_durable_memory_context>',
-  ].join('\n'))
-}
-
 export function buildWorkspaceMemoryHiddenContext(input: {
   content?: string | null
   enabled: boolean
@@ -134,7 +119,7 @@ export function buildWorkspaceMemoryHiddenContext(input: {
       '<workspace_memory_context state="disabled_until_superseded">',
       'Workspace memory is disabled.',
       'Do not rely on, create, update, or request MEMORY.md or memory/details state while this setting remains disabled.',
-      'DURABLE.md remains automatically managed by TideCode.',
+       'Per-chat durable conversation memory remains automatically managed during compaction.',
       '</workspace_memory_context>',
     ].join('\n'))
   }

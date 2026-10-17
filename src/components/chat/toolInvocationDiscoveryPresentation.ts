@@ -25,7 +25,7 @@ export function getDiscoveryToolTarget(invocation: ToolInvocationTrace): string 
     const name = readFirstText(args?.name)
     if (!name) return 'tool'
     const shortName = name.startsWith('tools.') ? name.slice(6) : name
-    return /tool/iu.test(shortName) ? shortName : `${shortName} tool`
+    return `${shortName} contract`
   }
   if (invocation.toolName === 'available.search') return null
   if (invocation.toolName === 'skill.search') {

@@ -12,7 +12,7 @@ import { projectCanonicalReplay } from '../../history/replayProjector'
 import { shouldReplayAssistantReasoning } from '../assistantReasoningPolicy'
 import { buildChatPrompt, stripImageAttachmentsFromModelMessages } from '../messages'
 import { applyWorkspaceInstructionsContext } from '../prompts/workspaceInstructions'
-import { applyWorkspaceMemoryContext } from '../memory/runtimeContext'
+import { applyConversationMemoryContext, applyWorkspaceMemoryContext } from '../memory/runtimeContext'
 import { getStoredSettings } from '../../../settings/store'
 import { resolveModelImageInputSupport } from '../modelImageSupport'
 import { sanitizeModelMessages } from '../modelMessageIntegrity'
@@ -61,7 +61,8 @@ export async function compactConversationForProvider(input: CompactConversationI
     providerId: input.providerId,
   })
   const storedSettings = await getStoredSettings().catch(() => null)
-  const safeModelMessages = sanitizeModelMessages(await applyWorkspaceMemoryContext(
+  const previousMemory = await readLatestConversationMemory(input.conversationId)
+  const workspaceMessages = await applyWorkspaceMemoryContext(
     applyWorkspaceInstructionsContext(
       includeImageAttachments
         ? replay.messages
@@ -70,10 +71,13 @@ export async function compactConversationForProvider(input: CompactConversationI
     ),
     input.agentContextRootPath,
     storedSettings?.workspaceMemoryEnabled ?? true,
-  ))
+  )
+  const safeModelMessages = sanitizeModelMessages(
+    applyConversationMemoryContext(workspaceMessages, previousMemory),
+  )
   const previousPacket = await readLatestCompactionPacket(input.conversationId)
-  const previousMemory = await readLatestConversationMemory(input.conversationId)
   const result = await compactModelMessages({
+    conversationId: input.conversationId,
     createStream: input.createStream,
     force: true,
     messages: safeModelMessages,

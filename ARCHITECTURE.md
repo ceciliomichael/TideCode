@@ -1,10 +1,10 @@
 # Architecture
 
-## Durable memory: current implementation and requested direction
+## Durable memory and compaction
 
-Current implementation (audited 2026-10-18): compaction reconciles project-wide `.tidecode/memory/DURABLE.md` before generating the continuation handoff. Requests replace stored durable context with the current workspace file, regardless of the optional workspace-memory setting. Each committed compaction also stores a `ConversationMemory` Markdown snapshot in that conversation's canonical history; `readLatestConversationMemory` reads the latest valid snapshot on its active branch. Canonical history lives under the user's home `.tidecode/history/canonical-history/<conversationId>.json`, outside the project.
+Current implementation (updated 2026-10-18): compaction reconciles each conversation's existing `ConversationMemory` Markdown with evicted messages, then separately generates its short continuation handoff. Both outputs are persisted together on the conversation's canonical `compaction_committed` event. `readLatestConversationMemory` loads the latest valid snapshot on the active branch and runtime replay injects only that chat's memory, removing stale duplicate memory messages. Canonical history lives under the user's home `.tidecode/history/canonical-history/<conversationId>.json`, outside the project.
 
-Requested direction, not yet implemented: durable memory belongs to each chat and should use Markdown in that chat's canonical history as its single source of truth. Stop loading/writing the project-wide DURABLE.md. Optional workspace `MEMORY.md` and linked detail entries are a separate feature. The current workspace write precedes handoff validation/commit; the replacement should persist memory together with the successful compaction checkpoint.
+Automatic compaction no longer reads or writes project `.tidecode/memory/DURABLE.md`; preexisting files at that path are ignored. The optional shared workspace `MEMORY.md` and linked detail entries remain an independent, settings-controlled feature. In-flight compaction deduplication is scoped by conversation ID when one is available.
 
 ## AI execution boundary and instruction ownership
 

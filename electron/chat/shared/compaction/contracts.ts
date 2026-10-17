@@ -137,6 +137,7 @@ export type CompactionStreamFactory = (
 }>
 
 export interface CompactModelMessagesInput {
+  conversationId?: string | null
   createStream?: CompactionStreamFactory
   force?: boolean
   messages: ModelMessage[]

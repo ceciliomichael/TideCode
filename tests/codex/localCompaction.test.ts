@@ -17,7 +17,6 @@ import {
 import type { CompactionStreamFactory } from '../../electron/chat/shared/compaction/contracts'
 import { buildCompactionRequestPrompt, buildCompactionSystemPrompt } from '../../electron/chat/shared/compaction/prompt'
 import { buildChatCompressionSystemPrompt } from '../../electron/chat/shared/prompts/compression'
-import { readWorkspaceDurableMemory } from '../../electron/memory/service'
 import {
   buildChatModeHiddenContext,
   buildExecutionModeHiddenContext,
@@ -269,7 +268,7 @@ test('durable memory is reconciled before the short handoff and stays separate i
   assert.equal(result.projectedMessages[1]?.content, result.packet.continuationMarkdown)
 })
 
-test('workspace compaction persists reconciled durable memory to DURABLE.md', async () => {
+test('workspace compaction retains chat memory without writing DURABLE.md', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-compaction-durable-'))
   const messages = createConversationMessages()
   const createStream: CompactionStreamFactory = async ({ system }) => ({
@@ -277,7 +276,7 @@ test('workspace compaction persists reconciled durable memory to DURABLE.md', as
       yield {
         type: 'text-delta',
         text: system.includes('durable-memory reconciliation worker')
-          ? '## Decisions\n- Workspace durable state is shared across chats.'
+          ? '## Decisions\n- This chat keeps its own memory.'
           : '## Current state\n- Continue the workspace implementation.',
       }
     })(),
@@ -290,10 +289,9 @@ test('workspace compaction persists reconciled durable memory to DURABLE.md', as
     })
 
     assert.ok(result)
-    const durable = await readWorkspaceDurableMemory(workspaceRootPath)
-    assert.ok(durable)
-    assert.equal(durable.path, '.tidecode/memory/DURABLE.md')
-    assert.match(durable.content, /Workspace durable state is shared across chats/u)
+    await assert.rejects(fs.stat(path.join(workspaceRootPath, '.tidecode', 'memory', 'DURABLE.md')), { code: 'ENOENT' })
+    assert.match(result.durableMemory.markdown, /This chat keeps its own memory/u)
+    assert.match(String(result.projectedMessages[0]?.content), /This chat keeps its own memory/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -603,7 +601,24 @@ test('same compaction digest shares one in-flight two-phase compaction pipeline'
   assert.equal(first.packet.sourceDigest, second.packet.sourceDigest)
 })
 
-test('identical compactions in different workspaces do not share the same in-flight durable write', async () => {
+test('different chats never share one in-flight compaction result', async () => {
+  const messages = createConversationMessages()
+  let calls = 0
+  const createStream = createTextStreamFactory('## Current state\n- Conversation-specific compaction.', () => {
+    calls += 1
+  })
+  const [first, second] = await Promise.all([
+    compactModelMessages({ ...createCompactionInput(messages, createStream), conversationId: 'chat-one' }),
+    compactModelMessages({ ...createCompactionInput(messages, createStream), conversationId: 'chat-two' }),
+  ])
+
+  assert.ok(first)
+  assert.ok(second)
+  assert.equal(calls, 4)
+  assert.notEqual(first.packet.packetId, second.packet.packetId)
+})
+
+test('identical compactions across workspaces do not create workspace durable files', async () => {
   const firstWorkspace = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-compaction-workspace-a-'))
   const secondWorkspace = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-compaction-workspace-b-'))
   const messages = createConversationMessages()
@@ -619,9 +634,9 @@ test('identical compactions in different workspaces do not share the same in-fli
     ])
     assert.ok(first)
     assert.ok(second)
-    assert.equal(calls, 4)
-    assert.ok(await readWorkspaceDurableMemory(firstWorkspace))
-    assert.ok(await readWorkspaceDurableMemory(secondWorkspace))
+    assert.equal(calls, 2)
+    await assert.rejects(fs.stat(path.join(firstWorkspace, '.tidecode', 'memory', 'DURABLE.md')), { code: 'ENOENT' })
+    await assert.rejects(fs.stat(path.join(secondWorkspace, '.tidecode', 'memory', 'DURABLE.md')), { code: 'ENOENT' })
   } finally {
     await Promise.all([
       fs.rm(firstWorkspace, { force: true, recursive: true }),

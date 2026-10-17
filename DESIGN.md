@@ -1,8 +1,8 @@
 # Design
 
-## Requested per-chat durable memory
+## Per-chat durable memory
 
-Confirmed storage choice (2026-10-18; implementation pending): keep durable Markdown inside each chat's saved history, rather than creating a separate DURABLE.md file in the project. Chats in the same project should have independent durable state. A successful compaction should retain that chat's reconciled facts, constraints, decisions and open work for later compactions and reopening. Optional shared workspace memory is a distinct existing feature; changing it has not been requested as part of this storage choice.
+Implemented storage choice (2026-10-18): keep durable Markdown in the conversation's canonical compaction history, not in a separate project DURABLE.md file. Chats in the same project have independent durable state. Successful compaction saves both the reconciled long-term memory and a separate short-term continuation summary; reopening the chat restores its memory from the active branch's committed compaction history. Optional shared workspace MEMORY.md remains a distinct existing feature.
 
 ## AI tool invocation presentation
 

@@ -34,7 +34,7 @@ import {
 } from '../history/eventStore'
 import { projectCanonicalReplay } from '../history/replayProjector'
 import { applyWorkspaceInstructionsContext } from './prompts/workspaceInstructions'
-import { applyWorkspaceMemoryContext } from './memory/runtimeContext'
+import { applyConversationMemoryContext, applyWorkspaceMemoryContext } from './memory/runtimeContext'
 import { compactModelMessages } from './compaction/service'
 import {
   resolveAutomaticCompactionMessages,
@@ -293,6 +293,7 @@ export async function runToolEnabledChatStream(input: {
       workspaceRootPath,
       initialStoredSettings?.workspaceMemoryEnabled ?? true,
     )
+    modelMessages = applyConversationMemoryContext(modelMessages, replayConversationMemory)
 
     const anchorUserMessageId = [...input.startInput.messages].reverse()
       .find((message) => message.role === 'user')?.id ?? null
@@ -508,6 +509,7 @@ export async function runToolEnabledChatStream(input: {
             `${cacheKey}:compaction`,
           )
           compacted = await compactModelMessages({
+            conversationId,
             createStream: compactionStream,
             messages: compactionMessages,
             model: compactionModel.modelId,
@@ -747,6 +749,7 @@ export async function runToolEnabledChatStream(input: {
             `${cacheKey}:compaction:final`,
           )
           const compacted = await compactModelMessages({
+            conversationId,
             createStream: compactionStream,
             messages: finalCompactionMessages,
             model: compactionModel.modelId,

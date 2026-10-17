@@ -35,12 +35,12 @@ test('multiple retrieved contracts display as individually named nested tool blo
   const entries = getToolInvocationDisplayEntries(outer)
   assert.equal(entries.length, 2)
   assert.deepEqual(entries.map((entry) => getToolInvocationHeaderLabel(entry.invocation)), [
-    'Retrieved read tool', 'Retrieved skill.list tool',
+    'Retrieved read contract', 'Retrieved skill.list contract',
   ])
 })
   assert.equal(getToolInvocationHeaderLabel(invocation('available.search', { query: 'repository' })), 'Searched tools')
-  assert.equal(getToolInvocationHeaderLabel(invocation('available.get', { name: 'tools.read' })), 'Retrieved read tool')
-  assert.equal(getToolInvocationHeaderLabel(invocation('available.get', { name: 'tools.mcp.search_tool' })), 'Retrieved mcp.search_tool')
+  assert.equal(getToolInvocationHeaderLabel(invocation('available.get', { name: 'tools.read' })), 'Retrieved read contract')
+  assert.equal(getToolInvocationHeaderLabel(invocation('available.get', { name: 'tools.mcp.search_tool' })), 'Retrieved mcp.search_tool contract')
   assert.equal(getToolInvocationHeaderLabel(invocation('skill.list', {})), 'Listed skills')
   assert.equal(getToolInvocationHeaderLabel(invocation('skill.search', { query: 'typescript' })), 'Searched skills for typescript')
   assert.equal(getToolInvocationHeaderLabel(invocation('skill.load', { name: 'review' })), 'Loaded skill review')

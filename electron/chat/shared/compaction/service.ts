@@ -17,9 +17,7 @@ import { appendCodeModeReceiptsToSummary } from './codeModeReceipts'
 import { resolveProviderReasoningCapability, resolveReasoningRetention } from './reasoning'
 import { validateContinuationMarkdown } from './markdown'
 import { COMPACTION_MAX_OUTPUT_TOKENS } from './contracts'
-import { reconcileDurableMemory, type ConversationMemory } from './durableMemory'
-import { updateWorkspaceDurableMemory } from '../../../memory/service'
-import { normalizeWorkspacePath } from '../../../workspace/paths'
+import { reconcileDurableMemory } from './durableMemory'
 import { estimateModelMessageContextUsage } from '../../../../src/lib/contextUsage'
 import {
   appendUserPromptLedgerToSummary,
@@ -105,6 +103,7 @@ function buildCompactionKey(
   retainedContextTokens: number,
 ) {
   return JSON.stringify([
+    input.conversationId ?? null,
     input.model,
     input.providerId ?? 'unknown',
     input.reasoningEffort,
@@ -112,7 +111,6 @@ function buildCompactionKey(
     sourceDigest,
     previousPacket?.packetId ?? null,
     input.previousMemory?.sourceDigest ?? null,
-    input.workspaceRootPath ? normalizeWorkspacePath(input.workspaceRootPath) : null,
     retainedContextTokens,
   ])
 }
@@ -145,41 +143,17 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     window.sourceEndIndex,
     window.sourceStartIndex,
   )
-  let durableMemory: ConversationMemory | null = null
-  if (input.workspaceRootPath) {
-    await updateWorkspaceDurableMemory(input.workspaceRootPath, async (previous) => {
-      durableMemory = await reconcileDurableMemory({
-        createStream: input.createStream,
-        messages: window.evictedMessages,
-        model: input.model,
-        providerId: input.providerId,
-        previousMemory: previous
-          ? {
-              schema: 'tidecode.conversation_memory/v1',
-              markdown: previous.content,
-              sourceDigest: previous.revision,
-            }
-          : input.previousMemory,
-        reasoningEffort: input.reasoningEffort,
-        signal: input.signal,
-        sourceDigest,
-        sourceStartIndex: window.sourceStartIndex,
-      })
-      return durableMemory.markdown
-    })
-  } else {
-    durableMemory = await reconcileDurableMemory({
-      createStream: input.createStream,
-      messages: window.evictedMessages,
-      model: input.model,
-      providerId: input.providerId,
-      previousMemory: input.previousMemory,
-      reasoningEffort: input.reasoningEffort,
-      signal: input.signal,
-      sourceDigest,
-      sourceStartIndex: window.sourceStartIndex,
-    })
-  }
+  const durableMemory = await reconcileDurableMemory({
+    createStream: input.createStream,
+    messages: window.evictedMessages,
+    model: input.model,
+    providerId: input.providerId,
+    previousMemory: input.previousMemory,
+    reasoningEffort: input.reasoningEffort,
+    signal: input.signal,
+    sourceDigest,
+    sourceStartIndex: window.sourceStartIndex,
+  })
   if (!durableMemory) {
     throw new Error('Durable-memory reconciliation did not produce a workspace memory snapshot.')
   }
@@ -276,7 +250,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     anchorMessages: window.anchorMessages,
     contextMessages: input.messages,
     durableMemory,
-    includeDurableMemoryMessage: !input.workspaceRootPath,
+    includeDurableMemoryMessage: true,
     packet,
     tailMessages: window.tailMessages,
     retainedContextTokens,
