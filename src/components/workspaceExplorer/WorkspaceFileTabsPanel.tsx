@@ -2,6 +2,7 @@ import { ChevronRight, ClipboardCheck, Eye, LoaderCircle, TriangleAlert, X } fro
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -24,7 +25,7 @@ import { findWorkspaceTabByKey } from './workspaceFileTabsPanel/workspaceFileTab
 
 interface WorkspaceFileTabsPanelProps {
   activeTabKey: string | null
-  gitFileDiffs: readonly GitFileDiff[]
+  gitFileDiffs: readonly (GitFileDiff & { hasContent?: boolean })[]
   hasRepository: boolean
   isOpen: boolean
   onCloseTab: (tabKey: string) => void
@@ -63,6 +64,8 @@ export function WorkspaceFileTabsPanel({
 }: WorkspaceFileTabsPanelProps) {
   const hasTabs = tabs.length > 0
   const activeTab = findWorkspaceTabByKey(tabs, activeTabKey)
+  // Status-only rows can label tabs, but missing HEAD text is not an editor baseline.
+  const contentFileDiffs = useMemo(() => gitFileDiffs.filter((diff) => diff.hasContent !== false), [gitFileDiffs])
   const editorSelectionsRef = useRef(new Map<string, TextSelectionRange>())
   const activeEditorTabKeyRef = useRef<string | null>(null)
   const tabsViewportRef = useRef<HTMLDivElement | null>(null)
@@ -246,7 +249,7 @@ export function WorkspaceFileTabsPanel({
               const normalizedRelativePath = tab.relativePath.trim().replace(/\\/g, '/').replace(/^\/+/u, '')
               const gitDiff = gitFileDiffs.find((diff) => diff.fileName.trim().replace(/\\/g, '/').replace(/^\/+/u, '') === normalizedRelativePath)
               if (gitDiff) {
-                isNewFile = gitDiff.isUntracked || gitDiff.oldContent === null
+                isNewFile = gitDiff.isUntracked || (gitDiff.hasContent !== false && gitDiff.oldContent === null)
               }
             }
 
@@ -338,7 +341,7 @@ export function WorkspaceFileTabsPanel({
       <div className="min-h-0 flex-1 overflow-hidden">
         <WorkspaceFileTabsPanelContent
           activeTab={activeTab}
-          gitFileDiffs={gitFileDiffs}
+          gitFileDiffs={contentFileDiffs}
           hasRepository={hasRepository}
           initialSelection={activeEditorSelection}
           tabs={tabs}

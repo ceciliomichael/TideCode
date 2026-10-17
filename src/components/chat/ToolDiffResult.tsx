@@ -14,15 +14,16 @@ export const ToolDiffResult = memo(function ToolDiffResult({
   isStreaming,
   presentation,
 }: ToolDiffResultProps) {
+  if (!isOpen) {
+    return null
+  }
+
   return (
     <div
-      aria-hidden={isOpen ? undefined : true}
-      data-tool-diff-result={isOpen ? 'open' : 'premeasure'}
+      data-tool-diff-result="open"
       className={[
         'w-full text-sm text-muted-foreground/90 [&>*:last-child]:mb-0',
-        isOpen
-          ? 'mt-1.5'
-          : 'pointer-events-none invisible absolute inset-x-0 top-0 h-0 overflow-hidden',
+        'mt-1.5',
       ].join(' ')}
     >
       {presentation.kind === 'file_diff' ? (

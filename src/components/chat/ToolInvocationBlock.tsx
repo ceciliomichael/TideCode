@@ -3,7 +3,6 @@ import { ChevronRight } from 'lucide-react'
 import type { ToolInvocationTrace } from '../../types/chat'
 import { normalizeMarkdownText } from '../../lib/chatMessageContent'
 import { LiteralToolResult } from './LiteralToolResult'
-import { containsMarkdownBlockCode, MarkdownRenderer } from './MarkdownRenderer'
 import { TerminalToolResult } from './TerminalToolResult'
 import { ToolDecisionRequestCard, type ToolDecisionSubmission } from './ToolDecisionRequestCard'
 import { ToolDiffResult } from './ToolDiffResult'
@@ -13,6 +12,7 @@ import { isFileEditTool, isFileWriteTool } from './toolInvocationKinds'
 import { getToolResultDisplayBody, parseStructuredToolResultContent } from '../../lib/toolResultContent'
 import { normalizeWebSearchMarkdownBody } from '../../lib/webSearchResults'
 import { ToolImageResult } from './ToolImageResult'
+import { formatDiscoveryToolBody } from './toolInvocationDiscoveryPresentation'
 
 interface ToolInvocationBlockProps {
   conversationId?: string | null
@@ -152,38 +152,28 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   const isLiteralSourceTool =
     displayInvocation.toolName === 'read' ||
     displayInvocation.toolName === 'grep'
-  const parsedStructuredResult = displayInvocation.resultContent
+  const parsedStructuredResult = isOpen && displayInvocation.resultContent
     ? parseStructuredToolResultContent(displayInvocation.resultContent)
     : null
   const rawResultBody =
     parsedStructuredResult?.body
     ?? parsedStructuredResult?.metadata?.summary
-    ?? displayInvocation.resultContent
+    ?? (isOpen ? displayInvocation.resultContent : '')
     ?? ''
-  const displayResultBody = getToolResultDisplayBody(displayInvocation.toolName, rawResultBody)
+  const displayResultBody = formatDiscoveryToolBody(
+    displayInvocation.toolName,
+    getToolResultDisplayBody(displayInvocation.toolName, rawResultBody),
+  )
   const markdownResultBody = displayInvocation.toolName === 'web_search'
     ? normalizeWebSearchMarkdownBody(displayResultBody)
     : displayResultBody
   const normalizedResultBody = useMemo(
-    () => (isLiteralSourceTool ? '' : normalizeMarkdownText(markdownResultBody)),
-    [isLiteralSourceTool, markdownResultBody],
+    () => (isOpen && !isLiteralSourceTool ? normalizeMarkdownText(markdownResultBody) : ''),
+    [isOpen, isLiteralSourceTool, markdownResultBody],
   )
   const shouldLimitResultHeight =
     terminalToolName === null && !isFileWriteTool(displayInvocation.toolName) && !isFileEditTool(displayInvocation.toolName)
-  const canPremeasureMarkdownResult =
-    displayInvocation.state !== 'running' &&
-    displayInvocation.resultContent !== undefined &&
-    toolDiffPresentation === null &&
-    imageResultPresentation === null &&
-    terminalToolName === null &&
-    !isLiteralSourceTool
-  const shouldPremeasureMarkdownResult = useMemo(() => {
-    if (!canPremeasureMarkdownResult) {
-      return false
-    }
-
-    return containsMarkdownBlockCode(normalizedResultBody)
-  }, [canPremeasureMarkdownResult, normalizedResultBody])
+  const isMarkdownResult = toolDiffPresentation === null && imageResultPresentation === null && terminalToolName === null && !isLiteralSourceTool
 
   return (
     <div className="relative w-full">
@@ -216,13 +206,13 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
         </span>
       </button>
 
-      {toolDiffPresentation ? (
+      {isOpen && toolDiffPresentation ? (
         <ToolDiffResult
           isOpen={isOpen}
           isStreaming={displayInvocation.state === 'running'}
           presentation={toolDiffPresentation}
         />
-      ) : shouldPremeasureMarkdownResult ? (
+      ) : isOpen && isMarkdownResult && displayInvocation.resultContent ? (
         <ToolMarkdownResult
           content={normalizedResultBody}
           isOpen={isOpen}
@@ -248,15 +238,8 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
               isStreaming={displayInvocation.state === 'running'}
               toolName={terminalToolName}
             />
-          ) : isLiteralSourceTool ? (
-            <LiteralToolResult content={displayResultBody} />
           ) : (
-            <MarkdownRenderer
-              content={normalizedResultBody}
-              className="w-full opacity-85"
-              isStreaming={displayInvocation.state === 'running'}
-              preserveLineBreaks
-            />
+            <LiteralToolResult content={displayResultBody} />
           )}
         </div>
       ) : null}

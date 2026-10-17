@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   getCachedGitStatusSnapshot,
+  getCachedGitDiffSnapshot,
+  releaseGitDiffSnapshot,
   loadGitDiffSnapshot,
 } from '../../src/lib/gitDiffSnapshotCache'
 
@@ -100,129 +102,104 @@ test('loads status-only git metadata without reading diff content and coalesces 
   }
 })
 
-test('a forced refresh starts a fresh request instead of joining an in-flight one', async () => {
-  const deferredRequests: Deferred<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>[] = []
-  const restoreWindow = installTestWindow(() => {
-    const deferred = createDeferred<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>()
-    deferredRequests.push(deferred)
+
+test('mutation refreshes serialize and share one fresh read after an active read', async () => {
+  const pending: Deferred<Awaited<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>>[] = []
+  const restore = installTestWindow(() => {
+    const deferred = createDeferred<Awaited<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>>()
+    pending.push(deferred)
     return deferred.promise
   })
-
   try {
-    const workspacePath = `C:/force-refresh-test-${Date.now()}-${Math.random()}`
-
-    // The poll starts a slow request that captured the pre-discard state.
-    const staleRequestPromise = loadGitDiffSnapshot(workspacePath, {
-      forceRefresh: true,
-      includeContent: false,
-    })
-    assert.equal(deferredRequests.length, 1)
-
-    // A discard's forced refresh must not join the stale in-flight request.
-    const freshRequestPromise = loadGitDiffSnapshot(workspacePath, {
-      forceRefresh: true,
-      includeContent: false,
-    })
-    assert.equal(deferredRequests.length, 2)
-
-    // The stale request resolves after the fresh one with the old state; it
-    // must neither win the UI race nor pollute the cache.
-    deferredRequests[1]?.resolve({
-      fileDiffs: [],
-      hasRepository: true,
-    })
-    const freshSnapshot = await freshRequestPromise
-    assert.deepEqual(freshSnapshot.fileDiffs, [])
-
-    deferredRequests[0]?.resolve({
-      fileDiffs: makeModifiedFilePayload({ includeContent: false }),
-      hasRepository: true,
-    })
-    await staleRequestPromise
-
-    assert.equal(getCachedGitStatusSnapshot(workspacePath)?.fileDiffs.length ?? 0, 0)
-
-    // A later non-forced load is served from the cache populated by the
-    // freshest request, not the superseded stale one.
-    const cachedSnapshot = await loadGitDiffSnapshot(workspacePath, { includeContent: false })
-    assert.deepEqual(cachedSnapshot.fileDiffs, [])
+    const workspace = 'C:/serialized-mutations'
+    const first = loadGitDiffSnapshot(workspace, { forceRefresh: true })
+    await Promise.resolve()
+    const second = loadGitDiffSnapshot(workspace, { forceRefresh: true })
+    const third = loadGitDiffSnapshot(workspace, { forceRefresh: true })
+    assert.equal(pending.length, 1, 'mutations must queue rather than overlap reads')
+    pending[0].resolve({ hasRepository: true, fileDiffs: makeModifiedFilePayload() })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(pending.length, 2, 'the burst needs only one fresh post-mutation read')
+    assert.equal(getCachedGitDiffSnapshot(workspace), null, 'stale contents must not enter the cache')
+    pending[1].resolve({ hasRepository: true, fileDiffs: [] })
+    for (const result of await Promise.all([first, second, third])) {
+      assert.deepEqual(result.fileDiffs, [])
+    }
+    assert.deepEqual(getCachedGitDiffSnapshot(workspace)?.fileDiffs, [])
   } finally {
-    restoreWindow()
+    restore()
   }
 })
 
-test('background forced refreshes coalesce when explicitly allowed', async () => {
-  const deferredRequests: Deferred<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>[] = []
-  const restoreWindow = installTestWindow(() => {
-    const deferred = createDeferred<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>()
-    deferredRequests.push(deferred)
-    return deferred.promise
-  })
-
+test('background forced refreshes reuse the active read without queueing more work', async () => {
+  const deferred = createDeferred<Awaited<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>>()
+  let calls = 0
+  const restore = installTestWindow(() => { calls += 1; return deferred.promise })
   try {
-    const workspacePath = `C:/background-force-refresh-${Date.now()}-${Math.random()}`
-    const firstRequest = loadGitDiffSnapshot(workspacePath, {
-      coalesceForcedRefresh: true,
-      forceRefresh: true,
-      includeContent: false,
-    })
-    const secondRequest = loadGitDiffSnapshot(workspacePath, {
-      coalesceForcedRefresh: true,
-      forceRefresh: true,
-      includeContent: false,
-    })
-
-    assert.equal(deferredRequests.length, 1)
-    deferredRequests[0]?.resolve({
-      fileDiffs: makeModifiedFilePayload({ includeContent: false }),
-      hasRepository: true,
-    })
-
-    const [firstSnapshot, secondSnapshot] = await Promise.all([firstRequest, secondRequest])
-    assert.deepEqual(secondSnapshot, firstSnapshot)
+    const options = { forceRefresh: true, coalesceForcedRefresh: true, includeContent: false }
+    const first = loadGitDiffSnapshot('C:/coalesced-poll', options)
+    const second = loadGitDiffSnapshot('C:/coalesced-poll', options)
+    await Promise.resolve()
+    assert.equal(calls, 1)
+    deferred.resolve({ hasRepository: true, fileDiffs: [] })
+    await Promise.all([first, second])
+    assert.equal(calls, 1)
   } finally {
-    restoreWindow()
+    restore()
   }
 })
 
-test('a stale superseded request does not overwrite the cache after a forced refresh completes', async () => {
-  const deferredRequests: Deferred<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>[] = []
-  const restoreWindow = installTestWindow(() => {
-    const deferred = createDeferred<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>()
-    deferredRequests.push(deferred)
+test('closing a content consumer releases cache and prevents an active read refilling it', async () => {
+  const deferred = createDeferred<Awaited<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>>()
+  const restore = installTestWindow(() => deferred.promise)
+  try {
+    const workspace = 'C:/closed-content'
+    const pending = loadGitDiffSnapshot(workspace)
+    await Promise.resolve()
+    releaseGitDiffSnapshot(workspace)
+    deferred.resolve({ hasRepository: true, fileDiffs: makeModifiedFilePayload() })
+    await pending
+    assert.equal(getCachedGitDiffSnapshot(workspace), null)
+  } finally {
+    restore()
+  }
+})
+
+test('reopening during a released read gets a fresh snapshot without overlapping it', async () => {
+  const pending: Deferred<Awaited<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>>[] = []
+  const restore = installTestWindow(() => {
+    const deferred = createDeferred<Awaited<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>>()
+    pending.push(deferred)
     return deferred.promise
   })
-
   try {
-    const workspacePath = `C:/stale-cache-test-${Date.now()}-${Math.random()}`
-
-    const staleRequestPromise = loadGitDiffSnapshot(workspacePath, {
-      forceRefresh: true,
-      includeContent: false,
-    })
-    const freshRequestPromise = loadGitDiffSnapshot(workspacePath, {
-      forceRefresh: true,
-      includeContent: false,
-    })
-
-    // Fresh request resolves first and populates the cache.
-    deferredRequests[1]?.resolve({
-      fileDiffs: [],
-      hasRepository: true,
-    })
-    await freshRequestPromise
-    assert.equal(getCachedGitStatusSnapshot(workspacePath)?.fileDiffs.length ?? 0, 0)
-
-    // The stale request completes afterwards; the cache must stay fresh.
-    deferredRequests[0]?.resolve({
-      fileDiffs: makeModifiedFilePayload({ includeContent: false }),
-      hasRepository: true,
-    })
-    await staleRequestPromise
-
-    const cachedSnapshot = await loadGitDiffSnapshot(workspacePath, { includeContent: false })
-    assert.deepEqual(cachedSnapshot.fileDiffs, [])
+    const workspace = 'C:/reopened-content'
+    const old = loadGitDiffSnapshot(workspace)
+    await Promise.resolve()
+    releaseGitDiffSnapshot(workspace)
+    const fresh = loadGitDiffSnapshot(workspace)
+    assert.equal(pending.length, 1)
+    pending[0].resolve({ hasRepository: true, fileDiffs: makeModifiedFilePayload() })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(pending.length, 2)
+    pending[1].resolve({ hasRepository: true, fileDiffs: [] })
+    await old
+    assert.deepEqual((await fresh).fileDiffs, [])
   } finally {
-    restoreWindow()
+    restore()
+  }
+})
+
+test('oversized contents remain usable by their caller without entering the inactive cache', async () => {
+  const file = makeModifiedFilePayload()[0]
+  file.newContent = 'x'.repeat(9 * 1024 * 1024)
+  const restore = installTestWindow(async () => ({ hasRepository: true, fileDiffs: [file] }))
+  try {
+    const workspace = 'C:/oversized-content'
+    const result = await loadGitDiffSnapshot(workspace)
+    assert.equal(result.fileDiffs[0].newContent.length, file.newContent.length)
+    assert.equal(getCachedGitDiffSnapshot(workspace), null)
+  } finally {
+    restore()
   }
 })

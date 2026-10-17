@@ -16,6 +16,43 @@ import { getTerminalToolPresentationItems } from '../../electron/cli/desktopTool
 const WORKSPACE_ROOT_PATH = '/workspace'
 const TARGET_FILE_PATH = `${WORKSPACE_ROOT_PATH}/src/example.ts`
 
+test('discovery, skill, and MCP calls show specific labels and readable results', () => {
+  const invocation = (toolName: string, args: object): ToolInvocationTrace => ({
+    argumentsText: JSON.stringify(args), id: toolName, startedAt: 0, state: 'completed', toolName,
+  })
+
+test('multiple retrieved contracts display as individually named nested tool blocks', () => {
+  const calls = ['tools.read', 'tools.skill.list'].map((name) => ({
+    name: 'available.get', arguments: { name }, status: 'success', summary: 'Retrieved tools', body: JSON.stringify({ name }),
+  }))
+  const outer: ToolInvocationTrace = {
+    argumentsText: '{}', id: 'exec-multiple-get', startedAt: 0, state: 'completed', toolName: 'exec',
+    resultContent: formatStructuredToolResultContent({
+      schema: 'tidecode.tool_result/v1', status: 'success', summary: 'Completed',
+      toolCallId: 'exec-multiple-get', toolName: 'exec', semantics: { tool_calls: calls },
+    }, 'Retrieved contracts'),
+  }
+  const entries = getToolInvocationDisplayEntries(outer)
+  assert.equal(entries.length, 2)
+  assert.deepEqual(entries.map((entry) => getToolInvocationHeaderLabel(entry.invocation)), [
+    'Retrieved read tool', 'Retrieved skill.list tool',
+  ])
+})
+  assert.equal(getToolInvocationHeaderLabel(invocation('available.search', { query: 'repository' })), 'Searched tools')
+  assert.equal(getToolInvocationHeaderLabel(invocation('available.get', { name: 'tools.read' })), 'Retrieved read tool')
+  assert.equal(getToolInvocationHeaderLabel(invocation('available.get', { name: 'tools.mcp.search_tool' })), 'Retrieved mcp.search_tool')
+  assert.equal(getToolInvocationHeaderLabel(invocation('skill.list', {})), 'Listed skills')
+  assert.equal(getToolInvocationHeaderLabel(invocation('skill.search', { query: 'typescript' })), 'Searched skills for typescript')
+  assert.equal(getToolInvocationHeaderLabel(invocation('skill.load', { name: 'review' })), 'Loaded skill review')
+  assert.equal(getToolInvocationHeaderLabel(invocation('mcp.search_repositories', { query: 'tidecode' })), 'Ran MCP search repositories')
+  assert.match(buildToolInvocationGroupSummary([
+    invocation('available.search', { query: 'repo' }),
+    invocation('available.get', { name: 'tools.read' }),
+    invocation('skill.load', { name: 'review' }),
+    invocation('mcp.search_repositories', {}),
+  ]), /tool/u)
+})
+
 test('plan tool headers use review-oriented labels', () => {
   assert.equal(
     getToolInvocationHeaderLabel({
@@ -933,15 +970,15 @@ test('skill tool header labels use activation wording and the skill name', () =>
 
   assert.equal(
     getToolInvocationHeaderLabel(runningInvocation, undefined, WORKSPACE_ROOT_PATH),
-    'Running skill.load docx',
+    'Loading skill docx',
   )
   assert.equal(
     getToolInvocationHeaderLabel({ ...runningInvocation, state: 'completed' }, undefined, WORKSPACE_ROOT_PATH),
-    'Completed skill.load docx',
+    'Loaded skill docx',
   )
   assert.equal(
     getToolInvocationHeaderLabel({ ...runningInvocation, state: 'failed' }, undefined, WORKSPACE_ROOT_PATH),
-    'Failed skill.load docx',
+    'Skill load failed docx',
   )
 })
 

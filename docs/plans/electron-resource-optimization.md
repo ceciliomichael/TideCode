@@ -1,8 +1,82 @@
-# Electron resource optimization plan — proposed, awaiting approval
+# Electron resource optimization plan — approved implementation
+
+The approved batch is implemented. Current behavior, three matched before/after CPU/RAM runs, twenty-cycle model cleanup and >60-second recovery, passing focused checks and pre-existing full-suite failures are recorded in `../performance.md`. The future follow-ups at the end remain outside this batch. `useChatInterfaceController.ts` and the existing status-merge tests did not need changes: orchestration gating and new scoped-metadata tests cover their existing callers.
+
+## Revised scope: immediate sending and preserved UX
+
+This revision follows the user's request to improve speed and RAM/CPU usage while retaining existing UX. It puts desktop Send responsiveness first; the steps and additional files here supplement the original structure and change list below. The worktree was clean when this follow-up investigation began. Earlier uncommitted changes cannot be assumed to remain uncommitted or to explain the installed app's lag.
+
+### Confirmed Send bottleneck
+
+`useChatMessages.ts` enables `optimisticRemotePresentation` only for the remote browser. Desktop `persistAndStreamMessage` waits for `persistUserTurn` before displaying a new user bubble. That path loads/creates the conversation, creates a checkpoint, reads workspace instruction/environment context and saves the message. Remote already presents a stable-ID bubble before these operations complete. This establishes a visibility dependency on I/O; it does not measure the share of delay attributable to each operation.
+
+### Revised implementation order
+
+1. **Display an accepted desktop submission immediately.** Generalize the existing optimistic path across desktop and remote, using the final message IDs. Show the bubble and clear the submitted composer before awaiting persistence, then reconcile saved attachments/context onto that bubble. Keep validation and send/queue gates. Provider execution still waits for successful checkpoint/context/history persistence.
+2. **Make pending-send reconciliation safe.** A failed save removes only that submission and restores its draft only while it owns the composer. Never overwrite text typed since Send or another chat's draft. Cover cancellation, edits, fresh conversations, batched sends and navigation. Extract focused presentation helpers from the large send workflow instead of adding transport-specific branches or retaining the old remote-only switch.
+3. **Apply the original Git/background-work fixes.** Gate full text loading on Diff/editor consumers, bound execution/retention, and eliminate all-project startup Git fanout. Preserve statuses, editor baselines and post-mutation freshness. Capture the baseline before changing these behaviors.
+4. **Remove hidden tool-body rendering with interaction checks.** Preserve headers/counts, collapse controls, keyboard access, copy behavior and scroll anchoring. Use lightweight size estimates and the existing loading presentation when a requested heavy view initializes. Measure first-open latency/layout; do not compensate by mounting every hidden editor again.
+5. **Verify Send latency and resource behavior.** Extend synthetic scenarios to measure Send-to-bubble paint separately from saving/provider start. Use blocked persistence and failure/race tests, then measure idle CPU/RAM and repeated panel/tool cycles. Run focused tests, typecheck, build and applicable full tests, reporting artifact type and measurement limits.
+
+### UX constraints and tradeoffs
+
+- Preserve Browser sessions/tabs and unsaved page state: no page eviction or Browser lifetime-policy change in this batch.
+- Preserve dirty editor contents, selections, focus, panel widths, actions, attachments, queues, cancellation, editing/revert and follow-latest behavior.
+- Required saving/checkpoint work remains before provider execution. Immediate presentation is not evidence that a turn has already saved successfully.
+- Treat first-open loading and scroll continuity as verification requirements. Bring back a revised plan if preserving them needs a material architectural/scope change.
+- A renderer blocked by other synchronous work cannot paint immediately. Measure actual paint rather than equating a state update with visibility.
+
+### Additional expected structure and explicit file list
+
+The visible +/− badge also consumes snapshot totals while panels are closed. Compact native Git statistics preserve those totals without file bodies. This directly supports the approved count/UX requirement: `electron/git/serviceDiff.ts` is modified to attach statistics to both snapshot modes; `electron/git/diffStats.ts` is created for NUL-safe numstat parsing and bounded streaming counts for untracked/unborn files; `tests/gitDiffStats.test.ts` is created to verify line totals, rename parsing, binary/untracked files and unborn repositories. No IPC schema changes are needed because per-file counts already exist in the contract.
+
+`tests/codex/gitServiceDiff.test.ts` is also modified so its metadata expectations retain text-file line counts while still checking that binary rows and full snapshots behave correctly.
+
+These files supplement the full original tree/list below; no new dependency, data migration or provider protocol is expected.
+
+```text
+src/hooks/
+  useChatMessages.ts
+  useChatComposerState.ts
+  useChatSessionState.ts
+  chatMessageSendWorkflow.ts
+  chatMessageSendTypes.ts
+  chatOptimisticSendPresentation.ts
+tests/
+  chat/chatMessageSendWorkflow.test.ts
+  chatOptimisticSendPresentation.test.ts
+AGENTS_LEARNING.md
+```
+
+| Action | File | Responsibility/change |
+| --- | --- | --- |
+| Modify | `src/hooks/useChatMessages.ts` | Remove remote-only optimistic configuration and its unused runtime import |
+| Modify | `src/hooks/useChatComposerState.ts` | Expose current composer ownership/revision so asynchronous settlement cannot overwrite newer typed text or attachments |
+| Modify | `src/hooks/useChatSessionState.ts` | Apply pending-send rollback as a functional message update against the latest queued React state, preserving incoming updates |
+| Modify | `src/hooks/chatMessageSendWorkflow.ts` | Present before persistence; retain save/provider ordering and ownership-safe reconciliation/rollback |
+| Modify | `src/hooks/chatMessageSendTypes.ts` | Remove remote-only presentation switch; describe necessary pending-send ownership inputs |
+| Create | `src/hooks/chatOptimisticSendPresentation.ts` | Focused optimistic message construction and reconciliation/rollback decisions, separate from persistence/provider orchestration |
+| Modify | `tests/chat/chatMessageSendWorkflow.test.ts` | Desktop/remote display before blocked I/O; draft/edit/batch reconciliation, failed save, cancellation/navigation and no premature provider start |
+| Create | `tests/chatOptimisticSendPresentation.test.ts` | Minimal ownership/race cases catching removal of another turn, duplicate IDs or restoration over newer composer text |
+| Modify | `AGENTS_LEARNING.md` | Record explicit UX-preservation requirement for this optimization work |
+
+The already-listed profiler and architecture/design/performance documents also cover Send latency, shared immediate presentation and measured results. This revision supersedes the original statement that the first batch only addresses Git, profiling and tool rendering.
+
+### Additional acceptance criteria
+
+- With persistence deliberately blocked, an existing desktop chat and a fresh desktop draft already show exactly one submitted user bubble. Saving retains the same message ID.
+- A failed save never starts the provider, leaves no phantom saved turn, and does not erase newer composer text or alter a newly selected chat.
+- Edit/revert/cancel and queued/batched sends retain their behavior, attachments and mention maps.
+- Target a visible bubble within 100 ms of an accepted ordinary Send in an isolated idle desktop fixture; report median/p95 and actual paint evidence. This is a verification target, not a guarantee under machine-wide overload.
+- Browser preservation remains unchanged. No user-state loss is accepted as a RAM optimization.
+
+### Baseline verification before implementation
+
+The five focused send/history/gate/queue/edit test files produced 37 passes and one failure. `tests/codex/chatHistoryWorkflows.test.ts` fails `revert helpers rewind the clicked message and every later user turn` at its `revertedChatMode` assertion: actual `agent`, expected `plan`. The failure also reproduces when run alone. No application code had changed. Record it separately from optimization regressions; do not silently alter mode/revert behavior as unrelated cleanup. If it prevents validating required Send/revert behavior, investigate and bring back the smallest justified scope adjustment.
 
 ## Intended result and boundary
 
-Reduce RAM pressure and CPU work at launch and while optional surfaces are closed, retaining Electron and existing user workflows. This is a proposal, not an implemented change or an approved architecture migration. The supporting findings are in `docs/resource-audit-2026-10-17.md`.
+Reduce RAM pressure and CPU work at launch and while optional surfaces are closed, retaining Electron and existing user workflows. The user approved this revised batch. Implementation and verification results are recorded in `docs/performance.md`; no architecture migration is included. The supporting findings are in `docs/resource-audit-2026-10-17.md`.
 
 The first batch deliberately addresses the most concrete findings: measurement gaps, full Git snapshots without consumers, inactive-project startup Git fanout, and hidden tool-body premeasurement. Browser page eviction, transcript virtualization, incremental workspace indexing, history storage and Rust work remain separately scoped follow-ups after measuring this batch.
 
@@ -36,6 +110,7 @@ src/
       ToolInvocationBlock.tsx
       ToolDiffResult.tsx
       ToolMarkdownResult.tsx
+      MarkdownRenderer.tsx
 tests/
   codex/
     gitDiffSnapshotCache.test.ts
@@ -71,6 +146,7 @@ All paths are relative to the repository root. No dependency, storage schema, mi
 | Modify | `src/components/chat/ToolInvocationBlock.tsx` | Gate result parsing and heavy body mounting on expansion; retain lightweight header summaries |
 | Modify | `src/components/chat/ToolDiffResult.tsx` | Remove hidden premeasurement body rendering |
 | Modify | `src/components/chat/ToolMarkdownResult.tsx` | Remove hidden premeasurement body rendering |
+| Modify | `src/components/chat/MarkdownRenderer.tsx` | Remove the code-block detector made obsolete by removing hidden premeasurement |
 | Modify | `tests/codex/gitDiffSnapshotCache.test.ts` | Catch overlapping execution, lost post-mutation refresh, obsolete cache repopulation, byte-budget and expiry failures |
 | Modify | `tests/codex/gitDiffStatusMerge.test.ts` | Catch loss of staged/unstaged/rename/conflict status while content is unloaded or later hydrated |
 | Modify | `tests/codex/gitStatusCache.test.ts` | Remove expectations for deleted all-project prefetch helper if present; preserve ordinary status caching behavior |

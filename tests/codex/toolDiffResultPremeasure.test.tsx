@@ -18,7 +18,7 @@ function createCompletedInvocation(overrides: Partial<ToolInvocationTrace>): Too
   }
 }
 
-test('collapsed write tool mounts its diff in the hidden premeasure container', () => {
+test('collapsed write tool leaves its heavy diff unmounted', () => {
   const invocation = createCompletedInvocation({
     resultPresentation: {
       fileName: 'src/example.ts',
@@ -30,12 +30,12 @@ test('collapsed write tool mounts its diff in the hidden premeasure container', 
 
   const markup = renderToStaticMarkup(createElement(ToolInvocationBlock, { invocation }))
 
-  assert.match(markup, /data-tool-diff-result="premeasure"/u)
-  assert.match(markup, /pointer-events-none invisible absolute inset-x-0 top-0 h-0 overflow-hidden/u)
-  assert.match(markup, /height:160px/u)
+  assert.doesNotMatch(markup, /data-tool-diff-result=/u)
+  assert.doesNotMatch(markup, /workspace-monaco-diff/u)
+  assert.doesNotMatch(markup, /height:160px/u)
 })
 
-test('collapsed edit tool mounts every grouped change diff for premeasurement', () => {
+test('collapsed edit tool leaves grouped change diffs unmounted', () => {
   const invocation = createCompletedInvocation({
     toolName: 'edit',
     resultPresentation: {
@@ -61,8 +61,8 @@ test('collapsed edit tool mounts every grouped change diff for premeasurement', 
 
   const markup = renderToStaticMarkup(createElement(ToolInvocationBlock, { invocation }))
 
-  assert.match(markup, /data-tool-diff-result="premeasure"/u)
-  assert.equal(markup.split('height:160px').length - 1, 2)
+  assert.doesNotMatch(markup, /data-tool-diff-result=/u)
+  assert.equal(markup.split('height:160px').length - 1, 0)
 })
 
 test('collapsed non-diff tool leaves its result body unmounted', () => {

@@ -1,7 +1,10 @@
 import { getDiffSummary } from './textDiff'
-import type { FileDiffToolResultPresentation, GitFileDiff, Message } from '../types/chat'
+import type { FileDiffToolResultPresentation, GitDiffLineCounts, GitFileDiff, Message } from '../types/chat'
 
 export interface ConversationFileDiff {
+  hasContent?: boolean
+  stagedLineCounts?: GitDiffLineCounts
+  unstagedLineCounts?: GitDiffLineCounts
   addedLineCount: number
   changeStatus?: 'added' | 'modified' | 'deleted' | 'renamed' | 'conflicted' | 'untracked'
   contentSignature: string
@@ -66,36 +69,56 @@ function normalizeFileDiff(result: FileDiffToolResultPresentation): Conversation
   }
 }
 
-function normalizeRawFileDiff(result: GitFileDiff): ConversationFileDiff {
-  const computedSummary = getDiffSummary(result.oldContent, result.newContent)
+function normalizeRawFileDiff(result: GitFileDiff, includeContent: boolean): ConversationFileDiff {
+  const computedSummary = includeContent && (result.addedLineCount === undefined || result.removedLineCount === undefined)
+    ? getDiffSummary(result.oldContent, result.newContent)
+    : { addedLineCount: 0, removedLineCount: 0 }
   const isDeleted = result.isDeleted ?? false
 
   return {
+    hasContent: includeContent,
+    stagedLineCounts: result.stagedLineCounts,
+    unstagedLineCounts: result.unstagedLineCounts,
     addedLineCount: result.addedLineCount ?? computedSummary.addedLineCount,
-    contentSignature: buildDiffContentSignature(result.oldContent, result.newContent),
+    contentSignature: includeContent ? buildDiffContentSignature(result.oldContent, result.newContent) : 'status',
     fileName: result.fileName,
     ...(result.changeStatus ? { changeStatus: result.changeStatus } : {}),
     ...(result.originalFileName ? { originalFileName: result.originalFileName } : {}),
     ...(result.stagedChangeStatus ? { stagedChangeStatus: result.stagedChangeStatus } : {}),
     ...(result.unstagedChangeStatus ? { unstagedChangeStatus: result.unstagedChangeStatus } : {}),
-    ...(result.indexContent !== undefined ? { indexContent: result.indexContent } : {}),
+    ...(result.indexContent !== undefined ? { indexContent: includeContent ? result.indexContent : null } : {}),
     isStaged: result.isStaged,
     isUnstaged: result.isUnstaged,
     isUntracked: result.isUntracked,
     isDeleted,
-    newContent: result.newContent,
-    oldContent: result.oldContent,
+    newContent: includeContent ? result.newContent : '',
+    oldContent: includeContent ? result.oldContent : null,
     removedLineCount: result.removedLineCount ?? computedSummary.removedLineCount,
   }
 }
 
-export function projectGitFileDiffScope(diff: ConversationFileDiff, scope: 'staged' | 'unstaged'): ConversationFileDiff {
+export function projectGitFileDiffScope(diff: ConversationFileDiff, scope: 'staged' | 'unstaged', includeContent = true): ConversationFileDiff {
+  const scopeStatus = scope === 'staged' ? diff.stagedChangeStatus : diff.unstagedChangeStatus
+  const scopeCounts = scope === 'staged' ? diff.stagedLineCounts : diff.unstagedLineCounts
+  if (!includeContent || diff.hasContent === false) {
+    return {
+      ...diff,
+      hasContent: false,
+      ...(scopeCounts ?? {}),
+      changeStatus: diff.changeStatus === 'conflicted' ? 'conflicted' : scopeStatus ?? diff.changeStatus,
+      isDeleted: scopeStatus === 'deleted',
+      contentSignature: 'status',
+      oldContent: null,
+      indexContent: null,
+      newContent: '',
+    }
+  }
   // Ordinary chat/branch diff snapshots have no index snapshot to project.
   if (diff.indexContent === undefined || diff.changeStatus === 'conflicted') return diff
 
   const oldContent = scope === 'staged' ? diff.oldContent : diff.indexContent
   const newContent = scope === 'staged' ? (diff.indexContent ?? '') : diff.newContent
-  const summary = getDiffSummary(oldContent, newContent)
+  const summary = scopeCounts ?? getDiffSummary(oldContent, newContent)
   const changeStatus = scope === 'staged' ? diff.stagedChangeStatus : diff.unstagedChangeStatus
   return {
     ...diff,
@@ -109,9 +132,9 @@ export function projectGitFileDiffScope(diff: ConversationFileDiff, scope: 'stag
   }
 }
 
-export function buildFileDiffSnapshot(fileDiffs: readonly GitFileDiff[]): ConversationDiffSnapshot {
+export function buildFileDiffSnapshot(fileDiffs: readonly GitFileDiff[], includeContent = true): ConversationDiffSnapshot {
   const normalizedFileDiffs = fileDiffs
-    .map((fileDiff) => normalizeRawFileDiff(fileDiff))
+    .map((fileDiff) => normalizeRawFileDiff(fileDiff, includeContent))
     .sort((left, right) => left.fileName.localeCompare(right.fileName, undefined, { sensitivity: 'base' }))
 
   let totalAddedLineCount = 0

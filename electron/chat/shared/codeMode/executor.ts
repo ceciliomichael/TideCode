@@ -4,9 +4,11 @@ import type { AppTerminalExecutionMode } from '../../../../src/types/chat'
 import type { AgentToolRegistry } from '../tools/registry'
 import type { CodeModeExecutionLimits, CodeModeExecutionResult } from './types'
 import { executeCodeModeV2 } from './v2/engine'
+import type { ToolDiscoveryState } from '../ai/registry/sessionDiscovery'
 
 export class CodeModeExecutor {
   private readonly workspaceRootPath: string
+  private readonly discoveryState: ToolDiscoveryState
 
   public constructor(
     private readonly registry: AgentToolRegistry,
@@ -14,9 +16,11 @@ export class CodeModeExecutor {
     options: {
       terminalExecutionMode?: AppTerminalExecutionMode
       workspaceRootPath?: string
+      discoveryState?: ToolDiscoveryState
     } = {},
   ) {
     this.workspaceRootPath = path.resolve(options.workspaceRootPath ?? process.cwd())
+    this.discoveryState = options.discoveryState ?? { obtainedTools: new Set(), discoveredMcpTools: new Set() }
   }
 
   public async run(
@@ -35,6 +39,8 @@ export class CodeModeExecutor {
       limits: options.limits,
       payloads: options.payloads,
       registry: this.registry,
+      obtainedTools: this.discoveryState.obtainedTools,
+      discoveredMcpTools: this.discoveryState.discoveredMcpTools,
       source,
       workspaceRootPath: this.workspaceRootPath,
     })

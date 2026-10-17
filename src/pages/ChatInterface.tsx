@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { ChatInterfaceContent } from './chatInterface/ChatInterfaceContent'
 import { useChatRuntimeConfig } from '../hooks/useChatRuntimeConfig'
 import type { ChatMessagesController } from '../hooks/useChatMessages'
@@ -120,14 +120,10 @@ export function ChatInterface({
     reasoningEffort: gitTaskModelSelection.reasoningEffort,
     workspacePath: activeWorkspacePath,
   })
-  // Keep full diff contents warm while the side panels are closed so opening
-  // either panel only changes visibility instead of triggering a second render.
-  const gitDiffSnapshot = useGitDiffSnapshot({
-    hasRepository,
-    pollingEnabled: true,
-    workspacePath: activeWorkspacePath,
-  })
-  const refreshGitDiffSnapshot = gitDiffSnapshot.refresh
+  const diffRefreshRef = useRef<ReturnType<typeof useGitDiffSnapshot>['refresh']>(async () => undefined)
+  const refreshGitDiffSnapshot = useCallback<ReturnType<typeof useGitDiffSnapshot>['refresh']>(
+    (options) => diffRefreshRef.current(options), [],
+  )
   const sidebarOpenChangeHandlerRef = useRef<(nextSidebarOpen: boolean) => void>(() => undefined)
   const activeTerminalWorkspaceKey = getTerminalWorkspaceKey({
     activeConversationId: chatMessages.activeConversationId,
@@ -170,6 +166,16 @@ export function ChatInterface({
     settings,
   })
 
+  const activeWorkspaceTab = workspaceState.workspaceFileTabs.find(tab => tab.tabKey === workspaceState.activeWorkspaceTabKey)
+  const hasEditorContentConsumer = workspaceState.isWorkspaceTabsPanelOpen && activeWorkspaceTab?.kind === 'file'
+  const gitDiffSnapshot = useGitDiffSnapshot({
+    hasRepository,
+    includeContent: hasRepository && isActiveScreen && ((isRightPanelOpen && rightPanelTab === 'diff') || hasEditorContentConsumer),
+    pollingEnabled: isActiveScreen,
+    workspacePath: activeWorkspacePath,
+  })
+  diffRefreshRef.current = gitDiffSnapshot.refresh
+
   useEffect(() => {
     sidebarOpenChangeHandlerRef.current = workspaceState.handleSidebarOpenChange
   }, [workspaceState.handleSidebarOpenChange])
@@ -179,7 +185,7 @@ export function ChatInterface({
       return
     }
 
-    void refreshGitDiffSnapshot({ forceRefresh: true, silent: true })
+    void refreshGitDiffSnapshot({ coalesceForcedRefresh: true, forceRefresh: true, silent: true })
   }, [hasRepository, isRightPanelOpen, refreshGitDiffSnapshot, rightPanelTab])
 
   return (

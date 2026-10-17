@@ -3,7 +3,6 @@ import test from 'node:test'
 import {
   getCachedGitStatus,
   loadGitStatus,
-  prefetchGitStatuses,
 } from '../../src/lib/gitStatusCache'
 
 interface GitStatusTestWindow {
@@ -29,7 +28,7 @@ function installTestWindow(getStatus: GitStatusTestWindow['tidecodeGit']['getSta
   }
 }
 
-test('prefetchGitStatuses warms the cache before a workspace is selected', async () => {
+test('a selected workspace status load warms and reuses its cache', async () => {
   const calls: string[] = []
   const restoreWindow = installTestWindow(async (workspacePath) => {
     calls.push(workspacePath)
@@ -46,7 +45,7 @@ test('prefetchGitStatuses warms the cache before a workspace is selected', async
 
   try {
     const workspacePath = `C:/status-cache-test-${Date.now()}-${Math.random()}`
-    await prefetchGitStatuses([workspacePath, workspacePath])
+    await Promise.all([loadGitStatus(workspacePath), loadGitStatus(workspacePath)])
 
     assert.deepEqual(calls, [workspacePath])
     assert.equal(getCachedGitStatus(workspacePath)?.addedLineCount, 4)

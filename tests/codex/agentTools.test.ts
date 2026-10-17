@@ -65,7 +65,7 @@ test('Skill APIs are independent documented operations when enabled', async () =
   const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent', enabledSkills: skills })
   for (const name of ['skill.list', 'skill.search', 'skill.load']) assert.ok(bundle.registry.get(name))
   assert.equal(bundle.registry.get('skill'), undefined)
-  const result = await bundle.codeModeExecutor.run('const s = await tools.skill.list({}); return s.body;')
+  const result = await bundle.codeModeExecutor.run('await tools.available.get({ name: "tools.skill.list" }); const s = await tools.skill.list({}); return s.body;')
   assert.equal(result.status, 'success', result.error)
   assert.match(String(result.output), /example/u)
   await bundle.codeModeExecutor.dispose()

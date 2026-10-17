@@ -11,6 +11,7 @@ import {
 import { createChatAssistantDraftManager } from './chatAssistantDrafts'
 import { streamAssistantResponse, toErrorMessage } from './chatMessageRuntime'
 import { createChatStreamProgressPersistenceController } from './chatStreamProgressPersistence'
+import { createOptimisticUserMessages, rollbackOptimisticUserMessages } from './chatOptimisticSendPresentation'
 
 import type { PersistAndStreamMessageInput, PersistedUserTurn } from './chatMessageSendTypes'
 
@@ -153,11 +154,18 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
   let optimisticPresentationConversationId: string | null = null
   let optimisticDraftApplied = false
   let optimisticallyClearedMainComposer = false
+  let optimisticMessages: Message[] = []
+  let clearedComposerRevision: number | null = null
+  const ownsComposer = () =>
+    (input.activeConversationIdRef.current === initiatingConversationId ||
+      (initiatingConversationId === null && input.activeConversationIdRef.current === conversationIdForCleanup)) &&
+    input.selectedFolderIdRef.current === initiatingFolderId &&
+    (clearedComposerRevision === null || input.getMainComposerRevision() === clearedComposerRevision)
   const shouldRollbackUserMessageOnAbort = input.targetEditMessageId === null
   const canRestoreMainComposerOnAbort =
     shouldRollbackUserMessageOnAbort && !isPlanStatusMessage(input.originalText)
   const shouldRestoreMainComposerOnAbort = () =>
-    canRestoreMainComposerOnAbort && (input.shouldRestoreMainComposerOnAbort?.() ?? true)
+    canRestoreMainComposerOnAbort && ownsComposer() && (input.shouldRestoreMainComposerOnAbort?.() ?? true)
 
   const releasePendingDraftReservation = () => {
     if (!hasPendingDraftReservation) {
@@ -182,68 +190,53 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
   const submittedMessages = input.messageBatch ?? [{ attachments: input.attachments, text: input.trimmedText }]
   const preferredMessageIds = input.targetEditMessageId
     ? [input.targetEditMessageId]
-    : input.preferredMessageIds ?? (
-        input.optimisticRemotePresentation
-          ? submittedMessages.map(() => createClientId())
-          : undefined
-      )
+    : submittedMessages.map((_, index) => input.preferredMessageIds?.[index] ?? createClientId())
 
-  if (input.optimisticRemotePresentation) {
-    const timestamp = Date.now()
-    const optimisticMessages = submittedMessages.map((message, index): Message => ({
-      ...(message.attachments.length > 0 ? { attachments: [...message.attachments] } : {}),
-      chatMode: input.draftChatMode,
-      content: message.text.trim(),
-      id: preferredMessageIds?.[index] ?? createClientId(),
-      mentionPathMap: message.mentionPathMap,
-      modelId: input.runtimeSelection.modelId,
-      providerId,
-      reasoningEffort: input.runtimeSelection.reasoningEffort,
-      role: 'user',
-      timestamp: timestamp + index,
-    }))
+  optimisticMessages = createOptimisticUserMessages(input, providerId, preferredMessageIds)
 
-    if (initiatingConversationId) {
-      const currentConversation = input.conversationRuntimeStatesRef.current[initiatingConversationId]?.conversation
-      if (currentConversation) {
-        optimisticOriginalMessages = currentConversation.messages
-        optimisticPresentationConversationId = initiatingConversationId
+  if (initiatingConversationId) {
+    const currentConversation = input.conversationRuntimeStatesRef.current[initiatingConversationId]?.conversation
+    if (currentConversation) {
+      optimisticOriginalMessages = currentConversation.messages
+      optimisticPresentationConversationId = initiatingConversationId
 
-        if (input.targetEditMessageId) {
-          const targetMessageIndex = currentConversation.messages.findIndex(
-            (message) => message.id === input.targetEditMessageId && message.role === 'user',
-          )
-          const optimisticEditedMessage = optimisticMessages[0]
-          if (targetMessageIndex >= 0 && optimisticEditedMessage) {
-            const currentTargetMessage = currentConversation.messages[targetMessageIndex]
-            input.replaceLocalMessages(initiatingConversationId, [
-              ...currentConversation.messages.slice(0, targetMessageIndex),
-              {
-                ...currentTargetMessage,
-                ...optimisticEditedMessage,
-                id: currentTargetMessage.id,
-                timestamp: currentTargetMessage.timestamp,
-              },
-            ])
+      if (input.targetEditMessageId) {
+        const targetMessageIndex = currentConversation.messages.findIndex(
+          (message) => message.id === input.targetEditMessageId && message.role === 'user',
+        )
+        const optimisticEditedMessage = optimisticMessages[0]
+        if (targetMessageIndex >= 0 && optimisticEditedMessage) {
+          const currentTargetMessage = currentConversation.messages[targetMessageIndex]
+          const editedMessage = {
+            ...currentTargetMessage,
+            ...optimisticEditedMessage,
+            id: currentTargetMessage.id,
+            timestamp: currentTargetMessage.timestamp,
           }
-        } else {
+          optimisticMessages = [editedMessage]
           input.replaceLocalMessages(initiatingConversationId, [
-            ...currentConversation.messages,
-            ...optimisticMessages,
+            ...currentConversation.messages.slice(0, targetMessageIndex),
+            editedMessage,
           ])
         }
+      } else {
+        input.replaceLocalMessages(initiatingConversationId, [
+          ...currentConversation.messages,
+          ...optimisticMessages,
+        ])
       }
-    } else {
-      input.setOptimisticDraftMessages(optimisticMessages)
-      optimisticDraftApplied = true
     }
+  } else {
+    input.setOptimisticDraftMessages(optimisticMessages, initiatingFolderId)
+    optimisticDraftApplied = true
+  }
 
-    if (input.targetEditMessageId === null && input.resetMainComposerAfterSend !== false) {
-      input.setMainComposerValue('')
-      input.setMainComposerAttachments([])
-      input.setMainComposerMentionPathMap(new Map())
-      optimisticallyClearedMainComposer = true
-    }
+  if (input.targetEditMessageId === null && input.resetMainComposerAfterSend !== false) {
+    input.setMainComposerValue('')
+    input.setMainComposerAttachments([])
+    input.setMainComposerMentionPathMap(new Map())
+    optimisticallyClearedMainComposer = true
+    clearedComposerRevision = input.getMainComposerRevision()
   }
 
   try {
@@ -291,7 +284,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
 
     if (isUserMessageReverted || hasPendingAbort) {
       if (optimisticDraftApplied) {
-        input.setOptimisticDraftMessages([])
+        input.setOptimisticDraftMessages([], initiatingFolderId)
         optimisticDraftApplied = false
       }
       if (shouldRollbackUserMessageOnAbort) {
@@ -302,7 +295,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
           shouldKeepSelected,
           userMessageId: persistedUserMessage.id,
         })
-      } else if (input.optimisticRemotePresentation) {
+      } else {
         input.upsertConversation(conversationForRun)
         if (shouldKeepSelected) {
           input.applyConversation(conversationForRun)
@@ -321,7 +314,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       input.applyConversation(conversationForRun)
     }
     if (optimisticDraftApplied) {
-      input.setOptimisticDraftMessages([])
+      input.setOptimisticDraftMessages([], initiatingFolderId)
       optimisticDraftApplied = false
     }
 
@@ -330,12 +323,6 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       // message ids being reused on later sends after history rewrites.
       input.completeEditingMessage()
     }
-    if (input.targetEditMessageId === null && shouldKeepSelected && input.resetMainComposerAfterSend !== false) {
-      input.setMainComposerValue('')
-      input.setMainComposerAttachments([])
-      input.setMainComposerMentionPathMap(new Map())
-    }
-
     if (input.syntheticAssistantMessage) {
       const finalizedConversationMessages = [
         ...conversationForRun.messages,
@@ -535,15 +522,18 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     input.updateConversationSummary(savedConversationForRun)
   } catch (caughtError) {
     console.error(caughtError)
-    if (!requestAccepted && input.optimisticRemotePresentation) {
+    if (!requestAccepted) {
       if (optimisticPresentationConversationId && optimisticOriginalMessages) {
-        input.replaceLocalMessages(optimisticPresentationConversationId, optimisticOriginalMessages)
+        const originalMessages = optimisticOriginalMessages
+        input.replaceLocalMessages(optimisticPresentationConversationId, currentMessages => rollbackOptimisticUserMessages(
+          currentMessages, originalMessages, optimisticMessages, input.targetEditMessageId,
+        ))
       }
       if (optimisticDraftApplied) {
-        input.setOptimisticDraftMessages([])
+        input.setOptimisticDraftMessages([], initiatingFolderId)
         optimisticDraftApplied = false
       }
-      if (optimisticallyClearedMainComposer) {
+      if (optimisticallyClearedMainComposer && ownsComposer()) {
         const restoredComposerDraft = restoreChatComposerDraft(input.originalText)
         input.setMainComposerValue(restoredComposerDraft.value)
         input.setMainComposerAttachments(input.attachments)

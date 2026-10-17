@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
+import type { GitDiffLineCounts } from '../types/chat'
 import type { ConversationDiffSnapshot } from '../lib/chatDiffs'
 import {
   getCachedGitDiffSnapshot,
   getCachedGitStatusSnapshot,
   getEmptyGitDiffSnapshot,
   loadGitDiffSnapshot,
+  releaseGitDiffSnapshot,
 } from '../lib/gitDiffSnapshotCache'
 import { appendNewDiffsToSnapshot } from '../lib/diffSnapshotOrdering'
 import { normalizeGitWorkspacePath } from '../lib/gitBranchStateCache'
@@ -29,6 +31,10 @@ interface UseGitDiffSnapshotResult {
 const GIT_DIFF_POLL_INTERVAL_MS = 2_000
 const GIT_FULL_DIFF_POLL_EVERY = 5
 
+function areLineCountsEqual(left: GitDiffLineCounts | undefined, right: GitDiffLineCounts | undefined) {
+  return left?.addedLineCount === right?.addedLineCount && left?.removedLineCount === right?.removedLineCount
+}
+
 function areDiffSnapshotsEqual(left: ConversationDiffSnapshot, right: ConversationDiffSnapshot) {
   if (
     left.totalAddedLineCount !== right.totalAddedLineCount ||
@@ -42,7 +48,10 @@ function areDiffSnapshotsEqual(left: ConversationDiffSnapshot, right: Conversati
     const leftFileDiff = left.fileDiffs[index]
     const rightFileDiff = right.fileDiffs[index]
     if (
+      leftFileDiff.hasContent !== rightFileDiff.hasContent ||
       leftFileDiff.fileName !== rightFileDiff.fileName ||
+      !areLineCountsEqual(leftFileDiff.stagedLineCounts, rightFileDiff.stagedLineCounts) ||
+      !areLineCountsEqual(leftFileDiff.unstagedLineCounts, rightFileDiff.unstagedLineCounts) ||
       leftFileDiff.addedLineCount !== rightFileDiff.addedLineCount ||
       leftFileDiff.contentSignature !== rightFileDiff.contentSignature ||
       leftFileDiff.indexContent !== rightFileDiff.indexContent ||
@@ -75,6 +84,10 @@ function areGitStatusSnapshotsEqual(left: ConversationDiffSnapshot, right: Conve
     const rightFileDiff = rightByFileName.get(leftFileDiff.fileName)
     if (
       !rightFileDiff ||
+      !areLineCountsEqual(leftFileDiff.stagedLineCounts, rightFileDiff.stagedLineCounts) ||
+      !areLineCountsEqual(leftFileDiff.unstagedLineCounts, rightFileDiff.unstagedLineCounts) ||
+      leftFileDiff.addedLineCount !== rightFileDiff.addedLineCount ||
+      leftFileDiff.removedLineCount !== rightFileDiff.removedLineCount ||
       leftFileDiff.isStaged !== rightFileDiff.isStaged ||
       leftFileDiff.isUnstaged !== rightFileDiff.isUnstaged ||
       leftFileDiff.isUntracked !== rightFileDiff.isUntracked ||
@@ -94,17 +107,18 @@ function areGitStatusSnapshotsEqual(left: ConversationDiffSnapshot, right: Conve
 export function mergeGitStatusSnapshot(
   currentSnapshot: ConversationDiffSnapshot,
   statusSnapshot: ConversationDiffSnapshot,
-  preserveContent = false,
 ): ConversationDiffSnapshot {
   const currentByFileName = new Map(currentSnapshot.fileDiffs.map((fileDiff) => [fileDiff.fileName, fileDiff]))
-  const fileDiffs = statusSnapshot.fileDiffs.flatMap((statusFileDiff) => {
+  const fileDiffs = statusSnapshot.fileDiffs.map((statusFileDiff) => {
     const currentFileDiff = currentByFileName.get(statusFileDiff.fileName)
-    if (!currentFileDiff) {
-      return preserveContent ? [] : [statusFileDiff]
+    if (!currentFileDiff || currentFileDiff.hasContent === false) {
+      return statusFileDiff
     }
 
-    return [{
+    return {
       ...currentFileDiff,
+      stagedLineCounts: statusFileDiff.stagedLineCounts,
+      unstagedLineCounts: statusFileDiff.unstagedLineCounts,
       isStaged: statusFileDiff.isStaged,
       isUnstaged: statusFileDiff.isUnstaged,
       isUntracked: statusFileDiff.isUntracked,
@@ -113,7 +127,7 @@ export function mergeGitStatusSnapshot(
       stagedChangeStatus: statusFileDiff.stagedChangeStatus,
       unstagedChangeStatus: statusFileDiff.unstagedChangeStatus,
       originalFileName: statusFileDiff.originalFileName,
-    }]
+    }
   })
 
   return {
@@ -133,13 +147,17 @@ export function useGitDiffSnapshot({
   useGitSourceControlWatcher(normalizedWorkspacePath)
   const [snapshot, setSnapshot] = useState<ConversationDiffSnapshot>(
     () =>
-      (includeContent ? getCachedGitDiffSnapshot(normalizedWorkspacePath) : getCachedGitStatusSnapshot(normalizedWorkspacePath)) ??
+      (includeContent ? getCachedGitDiffSnapshot(normalizedWorkspacePath) : null) ??
+      getCachedGitStatusSnapshot(normalizedWorkspacePath) ??
       getEmptyGitDiffSnapshot(),
   )
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const requestIdRef = useRef(0)
   const activeWorkspacePathRef = useRef(normalizedWorkspacePath)
+  const activeContentModeRef = useRef(includeContent)
+  activeWorkspacePathRef.current = normalizedWorkspacePath
+  activeContentModeRef.current = includeContent
   const pollCycleRef = useRef(0)
   const snapshotRef = useRef(snapshot)
   const snapshotIdentityRef = useRef({
@@ -186,7 +204,8 @@ export function useGitDiffSnapshot({
       })
       if (
         requestId !== requestIdRef.current ||
-        requestWorkspacePath !== activeWorkspacePathRef.current
+        requestWorkspacePath !== activeWorkspacePathRef.current ||
+        includeContent !== activeContentModeRef.current
       ) {
         return
       }
@@ -204,7 +223,8 @@ export function useGitDiffSnapshot({
     } catch (error) {
       if (
         requestId !== requestIdRef.current ||
-        requestWorkspacePath !== activeWorkspacePathRef.current
+        requestWorkspacePath !== activeWorkspacePathRef.current ||
+        includeContent !== activeContentModeRef.current
       ) {
         return
       }
@@ -214,7 +234,7 @@ export function useGitDiffSnapshot({
       if (
         requestId === requestIdRef.current &&
         requestWorkspacePath === activeWorkspacePathRef.current &&
-        !options?.silent
+        includeContent === activeContentModeRef.current
       ) {
         setIsLoading(false)
       }
@@ -233,7 +253,7 @@ export function useGitDiffSnapshot({
         forceRefresh: true,
         includeContent: false,
       })
-      if (requestWorkspacePath !== activeWorkspacePathRef.current) {
+      if (requestWorkspacePath !== activeWorkspacePathRef.current || includeContent !== activeContentModeRef.current) {
         return false
       }
 
@@ -242,7 +262,9 @@ export function useGitDiffSnapshot({
         return false
       }
 
-      const nextSnapshot = mergeGitStatusSnapshot(currentSnapshot, statusSnapshot, includeContent)
+      const nextSnapshot = includeContent
+        ? mergeGitStatusSnapshot(currentSnapshot, statusSnapshot)
+        : appendNewDiffsToSnapshot(currentSnapshot, statusSnapshot)
       snapshotRef.current = nextSnapshot
       setSnapshot(nextSnapshot)
       return true
@@ -252,24 +274,30 @@ export function useGitDiffSnapshot({
   }, [includeContent, workspacePath])
 
   useEffect(() => {
+    requestIdRef.current += 1
     snapshotIdentityRef.current = {
       includeContent,
       workspacePath: normalizeGitWorkspacePath(workspacePath),
     }
     const cachedSnapshot =
-      (includeContent ? getCachedGitDiffSnapshot(workspacePath) : getCachedGitStatusSnapshot(workspacePath)) ??
+      (includeContent ? getCachedGitDiffSnapshot(workspacePath) : null) ??
+      getCachedGitStatusSnapshot(workspacePath) ??
       getEmptyGitDiffSnapshot()
+    snapshotRef.current = cachedSnapshot
     setSnapshot((currentSnapshot) => (areDiffSnapshotsEqual(currentSnapshot, cachedSnapshot) ? currentSnapshot : cachedSnapshot))
-    void refresh()
-  }, [includeContent, refresh, workspacePath])
-
-  useEffect(() => {
-    if (!pollingEnabled || !hasRepository || !normalizedWorkspacePath) {
-      return
+    // A cold list must not wait for every file body. Warm status remains visible
+    // while the independent full-content request hydrates its preview rows.
+    if (includeContent && !getCachedGitStatusSnapshot(workspacePath)) {
+      void refreshStatus({ coalesceForcedRefresh: true })
     }
-
-    void refresh({ forceRefresh: true, silent: true })
-  }, [hasRepository, normalizedWorkspacePath, pollingEnabled, refresh, workspacePath])
+    void refresh()
+    return () => {
+      requestIdRef.current += 1
+      if (includeContent) {
+        releaseGitDiffSnapshot(workspacePath)
+      }
+    }
+  }, [includeContent, refresh, refreshStatus, workspacePath])
 
   useEffect(() => {
     if (!pollingEnabled || !hasRepository || !normalizedWorkspacePath) {
@@ -322,7 +350,9 @@ export function useGitDiffSnapshot({
     errorMessage,
     isLoading,
     refresh,
-    snapshot,
+    snapshot: snapshotIdentityRef.current.workspacePath === normalizedWorkspacePath
+      ? snapshot
+      : getCachedGitStatusSnapshot(normalizedWorkspacePath) ?? getEmptyGitDiffSnapshot(),
   }
 }
 

@@ -79,11 +79,3 @@ export async function loadGitStatus(
   inFlightGitStatusRequests.set(normalizedWorkspacePath, nextRequest)
   return nextRequest
 }
-
-export async function prefetchGitStatuses(workspacePaths: readonly (string | null | undefined)[]) {
-  const uniqueWorkspacePaths = Array.from(
-    new Set(workspacePaths.map((workspacePath) => normalizeGitWorkspacePath(workspacePath)).filter(Boolean)),
-  )
-
-  await Promise.allSettled(uniqueWorkspacePaths.map((workspacePath) => loadGitStatus(workspacePath)))
-}

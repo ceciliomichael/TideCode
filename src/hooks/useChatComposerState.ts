@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { isHumanUserMessage } from '../lib/chatMessageMetadata'
 import {
   buildChatMentionPathMap,
@@ -58,11 +58,25 @@ function cloneAttachments(attachments: readonly ChatAttachment[]) {
 }
 
 export function useChatComposerState(messages: Message[]) {
-  const [mainComposerValue, setMainComposerValue] = useState('')
-  const [mainComposerAttachments, setMainComposerAttachments] = useState<ChatAttachment[]>([])
-  const [mainComposerMentionPathMap, setMainComposerMentionPathMap] = useState<Map<string, string>>(
+  const [mainComposerValue, setMainComposerValueState] = useState('')
+  const [mainComposerAttachments, setMainComposerAttachmentsState] = useState<ChatAttachment[]>([])
+  const [mainComposerMentionPathMap, setMainComposerMentionPathMapState] = useState<Map<string, string>>(
     () => new Map(),
   )
+  const mainComposerRevisionRef = useRef(0)
+  const getMainComposerRevision = useCallback(() => mainComposerRevisionRef.current, [])
+  const setMainComposerValue: Dispatch<SetStateAction<string>> = useCallback((value) => {
+    mainComposerRevisionRef.current += 1
+    setMainComposerValueState(value)
+  }, [])
+  const setMainComposerAttachments: Dispatch<SetStateAction<ChatAttachment[]>> = useCallback((value) => {
+    mainComposerRevisionRef.current += 1
+    setMainComposerAttachmentsState(value)
+  }, [])
+  const setMainComposerMentionPathMap: Dispatch<SetStateAction<Map<string, string>>> = useCallback((value) => {
+    mainComposerRevisionRef.current += 1
+    setMainComposerMentionPathMapState(value)
+  }, [])
   const [editComposerValue, setEditComposerValue] = useState('')
   const [editComposerAttachments, setEditComposerAttachments] = useState<ChatAttachment[]>([])
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
@@ -154,6 +168,7 @@ export function useChatComposerState(messages: Message[]) {
     editComposerValue !== editInitialValue || !haveSameAttachments(editComposerAttachments, editInitialAttachments)
 
   return {
+    getMainComposerRevision,
     mainComposerValue,
     setMainComposerValue,
     mainComposerAttachments,

@@ -1,8 +1,20 @@
 # Design
 
+## Requested per-chat durable memory
+
+Confirmed storage choice (2026-10-18; implementation pending): keep durable Markdown inside each chat's saved history, rather than creating a separate DURABLE.md file in the project. Chats in the same project should have independent durable state. A successful compaction should retain that chat's reconciled facts, constraints, decisions and open work for later compactions and reopening. Optional shared workspace memory is a distinct existing feature; changing it has not been requested as part of this storage choice.
+
 ## AI tool invocation presentation
 
 Chat displays a TideCode `exec` call through its individual nested API invocations, preserving file diffs, terminal sessions, plan previews and errors. The model may also receive provider-native search tools. Tool names and usage documentation come from the registered canonical paths; missing instructions, unknown names and invalid arguments are explicit failures. The internal `tools.available.search` API exposes discoverable, mode-authorized native and connected MCP paths without introducing separate provider-facing TideCode tools.
+
+The model sees a concise native API name catalog in `exec`. Search returns names only; `tools.available.get` supplies instructions, argument schema, and exact signature when needed. For connected MCP capabilities, the model searches first, then gets the matching full contract. A tool's first execution requires its contract to have been retrieved; subsequent executions in the same chat can reuse the discovery state. Unauthorized or removed capabilities are never enabled by cached discovery.
+
+Tool rows present discovery search/get, skill operations, and nested MCP calls using descriptive state-dependent titles and their query/name target. Discovery and skill results reuse the established expandable result body, with structured JSON formatted for readability only. Group summaries distinguish searches, retrieved contracts, skill operations and MCP executions from terminal and file work.
+
+Internal discovery operations emit UI-visible nested receipts even when no external tool executes. Contract retrieval uses the shared label `Retrieved tools` rather than an individual tool name, so multi-contract exec programs no longer fall back to `Ran code`.
+
+When a model attempts an authorized API without retrieving its contract first, the interpreter fetches and records the exact `available.get` contract, stops that exec program before the attempted operation, and returns the contract with retry guidance to the model. The renderer shows only the successful `Retrieved tools` entry. MCP capabilities still require discovery by search first; mode and workspace authorization are unchanged.
 
 ## Light and dark color system
 
@@ -42,7 +54,9 @@ The Browser control is available only in the desktop Electron app. Remote web cl
 
 ## Resource retention and previews
 
-Current visibility behavior has resource costs: closing Diff or Source Control unmounts the panel but keeps its shared full-content Git refresh active. Individual collapsed tool diffs and Markdown results containing code may render hidden bodies for premeasurement; collapsing the outer work group unmounts its children. The Browser toolbar toggle returns to chat while retaining live pages; closing the final tab releases that project's session. An Electron-first resource optimization proposal is recorded in `docs/plans/electron-resource-optimization.md`; its proposed behavior changes are not implemented or approved.
+Desktop and remote Send show the accepted user message before checkpoint/context/history saving finishes, preserving its identity when saving completes. Required persistence still precedes provider execution. Saving or failure handling must not overwrite newly typed composer text or another conversation's draft.
+
+Closed Diff/Source Control surfaces keep lightweight Git metadata without full-content refreshes unless an active workspace editor needs a Git baseline. Collapsed individual tool results show headers/counts without invisible editor premeasurement; opening uses the existing loading/size presentation. Browser toolbar toggling continues to preserve live pages, and closing the final tab releases that project's session. No Browser session/state policy changed as part of this optimization.
 
 The selected chat and ongoing background runs stay available. Three recent inactive transcripts may be reused within a memory budget; other chats reload from saved history when selected. Retention never deletes conversations or their attachments.
 
@@ -71,3 +85,7 @@ The sidebar Add Folder action keeps the native operating-system folder dialog on
 ## Windows tray menu
 
 The TideCode notification-area menu retains its custom colors, sizing, layout, and labels. Closing retains the original Git sequence: disable mouse input before setting opacity to zero rather than hiding or destroying the native window. The preloaded popup takes focus when opened so clicking elsewhere can dismiss it through focus loss without depending solely on the global mouse hook. One right-click opens the popup; a second right-click closes it and returns without reopening. Only the tray callback toggles on an icon click. Outside-click and focus-loss handlers ignore the icon's effective hit area, which includes the opening click plus a 10-pixel margin even when Windows reports an empty or incomplete tray rectangle. Other outside clicks, right-clicks inside the popup, Escape, and either menu action close the popup. Left-clicking the icon closes it and shows the main window.
+
+Diff retains its cached changed-file list on opening/reopening while refreshing contents. A cold project obtains its status list independently of full file text. Expanded pending previews retain their header, file actions and expansion state with the existing loading presentation; Staged/Unstaged per-file +/− counts appear with the cached rows from scope-specific metadata, including while previews are pending. Hydrating preview contents does not replace them with a different counting method. Switching projects never presents the previous project's list. Closed-panel full-content release remains enabled.
+
+Conversation Diff file names, icons, counts and action controls use the same header geometry before and after expanding a file, while its preview loads and after collapse/reopening. Counts retain their width beside truncated long names; the action column reserves the same space for Staged and Unstaged rows. The clicked header does not change its baseline or spacing to make room for a preview. Rows below an expanded preview still move normally as content is revealed or its measured height changes.

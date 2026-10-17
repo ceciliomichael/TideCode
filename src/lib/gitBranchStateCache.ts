@@ -111,13 +111,3 @@ export async function loadGitBranchState(
   inFlightBranchStateRequests.set(normalizedWorkspacePath, nextRequest)
   return nextRequest
 }
-
-export async function prefetchGitBranchStates(workspacePaths: readonly (string | null | undefined)[]) {
-  const uniqueWorkspacePaths = Array.from(
-    new Set(workspacePaths.map((workspacePath) => normalizeGitWorkspacePath(workspacePath)).filter(Boolean)),
-  )
-
-  await Promise.allSettled(
-    uniqueWorkspacePaths.map((workspacePath) => loadGitBranchState(workspacePath)),
-  )
-}

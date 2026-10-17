@@ -1,5 +1,7 @@
 # Electron RAM and CPU audit — 2026-10-17
 
+The findings below preserve the pre-optimization audit. The user subsequently approved the revised Electron batch, which has now been implemented. Current measurements, resolved items and verification limits are in [the performance results](performance.md#electron-responsiveness-and-background-work--2026-10-17). Browser session policy, transcript windowing, workspace indexing and history storage remain follow-up work.
+
 ## Conclusion and evidence limits
 
 Optimize the current Electron application first. The clearest findings concern work performed without a visible consumer, concurrent Git subprocesses, invisible editor rendering, and retention of browser pages. Rewriting these paths in Rust while retaining their current lifecycle would leave substantial avoidable work in place.
@@ -153,6 +155,8 @@ If a later Rust experiment is justified, replace one measured boundary and retur
 Primary references: [Electron CPU measurement semantics](https://www.electronjs.org/docs/latest/api/structures/cpu-usage), [Electron WebContents lifecycle/background throttling](https://www.electronjs.org/docs/latest/api/web-contents/), [Tauri process model](https://v2.tauri.app/concept/process-model/), [NAPI-RS buffer ownership and conversion](https://napi.rs/docs/concepts/typed-array). Framework descriptions support these boundary distinctions, not app-specific savings estimates.
 
 ## Verification performed and outstanding
+
+Follow-up Send investigation: desktop immediate presentation is disabled by `optimisticRemotePresentation: isRemoteBrowserRuntime()` in `useChatMessages.ts`. Desktop therefore waits for history creation/loading, checkpoint/context work and persistence before its user bubble appears. Remote already presents before this I/O. The revised optimization proposal generalizes immediate display while preserving saving and cancellation semantics. At follow-up start the worktree was clean. Focused baseline Send/history/queue/edit tests then produced 37 passes and one pre-existing revert-mode assertion failure (`agent` versus expected `plan`), reproduced in isolation. These follow-up results are separate from the earlier 21-test audit run below.
 
 Executed 21 existing tests across Git snapshot loading/status merge, collapsed tool diff/Markdown premeasurement, Browser new tabs/history, and transcript retention: 21 passed, zero failed. Tests confirm current behavior, including the unwanted hidden-render paths; they do not certify that the resource problem is fixed. No implementation was made, so a production build/full-suite run was not used as a substitute for resource measurement.
 

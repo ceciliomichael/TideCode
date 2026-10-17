@@ -649,7 +649,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     })
   }, [])
 
-  const replaceLocalMessages = useCallback((conversationId: string, messages: Message[]) => {
+  const replaceLocalMessages = useCallback((conversationId: string, messages: Message[] | ((current: Message[]) => Message[])) => {
     setConversationRuntimeStates((currentValue) => {
       const conversationState = currentValue[conversationId]
       if (!conversationState) {
@@ -660,7 +660,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
         ...currentValue,
         [conversationId]: updateConversationRecord(conversationState, (conversation) => ({
           ...conversation,
-          messages,
+          messages: typeof messages === 'function' ? messages(conversation.messages) : messages,
         })),
       }
     })

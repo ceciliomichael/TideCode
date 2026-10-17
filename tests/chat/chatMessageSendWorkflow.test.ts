@@ -119,7 +119,9 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   let streamListener: ((event: Record<string, unknown> & { streamId: string; type: string }) => void) | null = null
   const errors: string[] = []
   const composerValues: string[] = []
+  let composerRevision = 0
   let optimisticDraftMessages: Message[] = []
+  let providerStarts = 0
   const originalText = options.originalText ?? 'Please update the README'
 
   const upsertConversationRecord = (nextConversation: ConversationRecord) => {
@@ -195,7 +197,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     isUserMessageReverted: () => options.isUserMessageReverted ?? false,
     markTextStreamingPulse: () => undefined,
     originalText,
-    optimisticRemotePresentation: false,
+    getMainComposerRevision: () => composerRevision,
     replaceLocalMessages: (conversationId, messages) => {
       const existingState = runtimeStatesRef.current[conversationId]
       if (!existingState) {
@@ -205,7 +207,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
         ...existingState,
         conversation: {
           ...existingState.conversation,
-          messages,
+          messages: typeof messages === 'function' ? messages(existingState.conversation.messages) : messages,
         },
       }
     },
@@ -244,6 +246,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     setMainComposerAttachments: () => undefined,
     setMainComposerMentionPathMap: () => undefined,
     setMainComposerValue: (value) => {
+      composerRevision += 1
       composerValues.push(value)
     },
     setPendingDraftSendCount: () => undefined,
@@ -287,6 +290,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
         }
       },
       startStream: async () => {
+        providerStarts += 1
         queueMicrotask(() => {
           if (options.streamContent) {
             streamListener?.({ delta: options.streamContent, streamId, type: 'content_delta' })
@@ -343,6 +347,8 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
 
 
   return {
+    windowStub,
+    getProviderStarts: () => providerStarts,
     activeConversationIdRef,
     composerValues,
     conversation,
@@ -363,9 +369,8 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   }
 }
 
-test('remote web send presents the user message immediately and still completes through shared run persistence', async () => {
+test('desktop and remote send presents the user message immediately and still completes through shared run persistence', async () => {
   const harness = createWorkflowHarness({ streamContent: 'Done', usesSharedRunPersistence: true })
-  harness.input.optimisticRemotePresentation = true
   harness.input.upsertConversation(harness.conversation)
 
   try {
@@ -386,7 +391,7 @@ test('remote web send presents the user message immediately and still completes 
   }
 })
 
-test('remote web edit replaces the existing user bubble immediately and removes the later branch', async () => {
+test('editing replaces the existing user bubble immediately and removes the later branch', async () => {
   const harness = createWorkflowHarness({ streamContent: 'Updated response' })
   const originalUserMessage: Message = {
     content: 'Original request',
@@ -406,7 +411,6 @@ test('remote web edit replaces the existing user bubble immediately and removes 
   }
   harness.history.conversations.set(conversationWithHistory.id, conversationWithHistory)
   harness.input.upsertConversation(conversationWithHistory)
-  harness.input.optimisticRemotePresentation = true
   harness.input.targetEditMessageId = originalUserMessage.id
   harness.input.originalText = 'Edited request'
   harness.input.trimmedText = 'Edited request'
@@ -426,11 +430,10 @@ test('remote web edit replaces the existing user bubble immediately and removes 
   }
 })
 
-test('remote web new chat presents a draft user bubble before the host creates the conversation', async () => {
+test('a new chat presents a draft user bubble before the host creates the conversation', async () => {
   const harness = createWorkflowHarness({ streamContent: 'Welcome' })
   harness.input.activeConversationId = null
   harness.activeConversationIdRef.current = null
-  harness.input.optimisticRemotePresentation = true
 
   try {
     const pendingSend = persistAndStreamMessage(harness.input)
@@ -467,7 +470,7 @@ test('a stream that completes after the turn was reverted must not resurrect the
       true,
       'a rollback replace must be written after the ghost stream completed',
     )
-    assert.deepEqual(harness.composerValues, ['Please update the README'], 'composer must be restored')
+    assert.equal(harness.composerValues.at(-1), 'Please update the README', 'composer must be restored')
   } finally {
     harness.restoreWindow()
   }
@@ -658,6 +661,87 @@ test('aborting a plan revision request does not restore its status marker to the
     assert.equal(accepted, true)
     assert.deepEqual(harness.history.getStoredMessages(harness.conversation.id), [], 'history must be rolled back')
     assert.deepEqual(harness.composerValues, [''], 'the revision marker must not return to the composer')
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+
+test('desktop bubble renders before a blocked checkpoint and retains its ID after persistence', async () => {
+  const harness = createWorkflowHarness()
+  let release!: () => void
+  const blocked = new Promise<void>(resolve => { release = resolve })
+  harness.windowStub.tidecodeWorkspace.createCheckpoint = async () => {
+    await blocked
+    return { createdAt: 1, id: 'held-checkpoint' }
+  }
+  try {
+    const sending = persistAndStreamMessage(harness.input)
+    const optimistic = harness.getRuntimeMessages(harness.conversation.id)[0]
+    assert.ok(optimistic)
+    assert.equal(harness.history.getStoredMessages(harness.conversation.id).length, 0)
+    assert.equal(harness.getProviderStarts(), 0)
+    harness.input.setMainComposerValue('My next request')
+    release()
+    assert.equal(await sending, true)
+    assert.equal(harness.history.getStoredMessages(harness.conversation.id)[0].id, optimistic.id)
+    assert.equal(harness.composerValues.at(-1), 'My next request', 'settlement must not clear newly typed text')
+  } finally {
+    release()
+    harness.restoreWindow()
+  }
+})
+
+test('failed persistence removes its bubble and restores an unchanged composer without starting a provider', async (t) => {
+  const harness = createWorkflowHarness()
+  t.mock.method(console, 'error', () => undefined)
+  harness.history.api.appendMessages = async () => { throw new Error('Disk full') }
+  try {
+    assert.equal(await persistAndStreamMessage(harness.input), false)
+    assert.deepEqual(harness.getRuntimeMessages(harness.conversation.id), [])
+    assert.equal(harness.composerValues.at(-1), harness.input.originalText)
+    assert.equal(harness.getProviderStarts(), 0)
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('failed persistence preserves new composer text and unrelated incoming messages', async (t) => {
+  const harness = createWorkflowHarness()
+  t.mock.method(console, 'error', () => undefined)
+  let rejectSave!: (error: Error) => void
+  harness.windowStub.tidecodeWorkspace.createCheckpoint = () => new Promise((_, reject) => { rejectSave = reject })
+  try {
+    const sending = persistAndStreamMessage(harness.input)
+    await new Promise(resolve => setImmediate(resolve))
+    harness.input.setMainComposerValue('Do not erase this')
+    const incoming: Message = { id: 'incoming', role: 'assistant', content: 'Shared update', timestamp: 2 }
+    harness.input.appendLocalMessage(harness.conversation.id, incoming)
+    rejectSave(new Error('Checkpoint failed'))
+    assert.equal(await sending, false)
+    assert.deepEqual(harness.getRuntimeMessages(harness.conversation.id), [incoming])
+    assert.equal(harness.composerValues.at(-1), 'Do not erase this')
+    assert.equal(harness.getProviderStarts(), 0)
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('a pending send never steals selection or restores its composer after navigation', async (t) => {
+  const harness = createWorkflowHarness()
+  t.mock.method(console, 'error', () => undefined)
+  let rejectSave!: (error: Error) => void
+  harness.windowStub.tidecodeWorkspace.createCheckpoint = () => new Promise((_, reject) => { rejectSave = reject })
+  try {
+    const sending = persistAndStreamMessage(harness.input)
+    await new Promise(resolve => setImmediate(resolve))
+    harness.activeConversationIdRef.current = 'other-chat'
+    harness.input.setMainComposerValue('Other chat draft')
+    rejectSave(new Error('Checkpoint failed'))
+    await sending
+    assert.equal(harness.activeConversationIdRef.current, 'other-chat')
+    assert.equal(harness.composerValues.at(-1), 'Other chat draft')
+    assert.equal(harness.getProviderStarts(), 0)
   } finally {
     harness.restoreWindow()
   }

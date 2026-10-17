@@ -27,6 +27,7 @@ export type CodeModeDiagnosticKind =
   | 'UnknownTool'
   | 'InvalidToolArguments'
   | 'PermissionDenied'
+  | 'ToolContractRequired'
   | 'ToolExecutionError'
   | 'StepLimitExceeded'
   | 'ToolCallLimitExceeded'

@@ -3,7 +3,6 @@ import { formatExplicitCodeModeOutput, formatImplicitCodeModeToolResults } from 
 import type { AgentToolExecutionResult } from '../../toolTypes'
 import type { CodeModeExecutor } from '../../codeMode/executor'
 import { isDynamicAgentTool, type AgentToolRegistry } from '../../tools/registry'
-import { createAgentToolCallableContract } from '../../tools/callableContract'
 import { getApiInstructions, getExecInstructions } from '../registry/documentation'
 
 const EXEC_INPUT_SCHEMA = {
@@ -30,20 +29,35 @@ interface ExecInput {
   payloads?: Record<string, string>
 }
 
+const MAX_NESTED_DISPLAY_BODY_CHARS = 64_000
+
+function displayReceipt(body: string | undefined) {
+  if (typeof body !== 'string') return {}
+  if (body.length <= MAX_NESTED_DISPLAY_BODY_CHARS) return { body }
+  return {
+    body: `${body.slice(0, MAX_NESTED_DISPLAY_BODY_CHARS)}\n\n[Display truncated; read the file in smaller ranges to view more.]`,
+    body_omitted: true,
+    body_bytes: Buffer.byteLength(body, 'utf8'),
+  }
+}
+
 export function buildExecDescription(registry: AgentToolRegistry) {
   const authority = 'The host enforces current workspace and mode permissions. Sandbox restricts paths; Full Access may broaden authorized paths. Neither mode enables imports, Node globals or ambient host authority.'
   const docs = registry.entries
     .filter((entry) => !isDynamicAgentTool(entry))
-    .map((entry) => createAgentToolCallableContract(entry))
+    .map((entry) => `- tools.${entry.name}`)
   const discovery = getApiInstructions('available.search')
+  const getContract = getApiInstructions('available.get')
   return [
     getExecInstructions(),
     authority,
-    'Authorized internal APIs (call only inside this exec program):',
-    ...docs.map((entry) => `- ${entry.signature}: ${entry.description}`),
-    'tools.available.search({ query?: string, namespace?: string, limit?: number, offset?: number }): Promise<SearchResults>',
+    'Authorized native API names (details are NOT preloaded):',
+    ...docs,
+    'tools.available.search({ query?: string, namespace?: string, limit?: number, offset?: number }): Promise<{ items: { name: string }[], remaining: number, next: { offset: number } | null }>',
+    'tools.available.get({ name: string }): Promise<{ name: string, description: string, signature: string, inputSchema: object }>',
     discovery,
-    'Connected MCP APIs are discovered through tools.available.search({ namespace: "mcp", query: "..." }). Execute only exact returned tools.mcp.<name> paths.',
+    getContract,
+    'Before executing ANY native API, retrieve its exact contract using tools.available.get. For MCP, search by capability first, then get the exact returned name. Retrieved contracts are remembered for the lifetime of this chat runtime.',
   ].join('\n\n')
 }
 
@@ -97,9 +111,7 @@ export function createExecTool(
           tool_call_count: result.toolCalls.length,
           tool_calls: result.toolCalls.map((call) => ({
             arguments: call.arguments,
-            ...(typeof call.body === 'string' && call.body.length <= 2000 ? { body: call.body } : {}),
-            ...(typeof call.body === 'string' && call.body.length > 2000
-              ? { body_omitted: true, body_bytes: Buffer.byteLength(call.body, 'utf8') } : {}),
+            ...displayReceipt(call.body),
             duration_ms: call.durationMs,
             name: call.name,
             ...(call.resultPresentation ? { result_presentation: call.resultPresentation } : {}),

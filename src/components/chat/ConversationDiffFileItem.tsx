@@ -1,9 +1,8 @@
-import { memo, useCallback, useMemo, type CSSProperties, type ReactElement } from 'react'
-import { ChevronRight, Minus, Plus, Undo2 } from 'lucide-react'
+import { memo, useCallback, type CSSProperties, type ReactElement } from 'react'
+import { Minus, Plus, Undo2 } from 'lucide-react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
-import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import { DiffViewer } from './DiffViewer'
-import { PathLabel } from './PathLabel'
+import { CONVERSATION_DIFF_ROW_HEIGHT_PX, DiffFileHeader } from './DiffFileHeader'
 import { Tooltip } from '../Tooltip'
 
 interface ConversationDiffFileItemProps {
@@ -25,6 +24,7 @@ export type DiffPanelScope = 'branch' | 'last_turn' | 'staged' | 'unstaged'
 
 const collapsedDiffFileRowStyle: CSSProperties = {
   contain: 'layout paint',
+  height: CONVERSATION_DIFF_ROW_HEIGHT_PX,
 }
 
 const compactActionButtonClassName =
@@ -169,52 +169,32 @@ function CollapsedConversationDiffFileRow({
   onUnstageFile,
   selectedScope,
 }: CollapsedConversationDiffFileRowProps) {
-  const iconConfig = useMemo(() => resolveFileIconConfig({ fileName: diff.fileName }), [diff.fileName])
-  const FileIcon = iconConfig.icon
-
   return (
     <div
       className="my-0 w-full overflow-hidden rounded-none border-0 border-b border-border bg-surface shadow-none"
       style={collapsedDiffFileRowStyle}
     >
-      <div className="group flex w-full items-center justify-between bg-surface px-4 py-3 text-[12px] text-muted-foreground">
-        <button
-          type="button"
-          aria-expanded={false}
-          onClick={onExpand}
-          onFocus={() => {
-            void onPreloadDiff(diff)
-            onPrewarmDiff(diff.fileName)
-          }}
-          onPointerEnter={() => {
-            void onPreloadDiff(diff)
-            onPrewarmDiff(diff.fileName)
-          }}
-          className="group flex min-w-0 flex-1 items-center text-left"
-        >
-          <span className="inline-flex min-h-4 min-w-0 flex-1 items-center gap-2">
-            <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
-              <FileIcon
-                size={14}
-                style={{ color: iconConfig.color }}
-                aria-hidden="true"
-                className="transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0"
-              />
-              <ChevronRight
-                size={14}
-                className="absolute inset-0 m-auto text-muted-foreground opacity-0 transition-[opacity,transform] duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
-              />
-            </span>
-            <span className="relative top-px inline-flex min-w-0 items-center gap-2">
-              <PathLabel path={diff.fileName} className="min-w-0 leading-[1] text-foreground" />
-              <span className="inline-flex items-center gap-1 text-xs leading-none">
-                    <span className="leading-none text-git-added">{`+${diff.addedLineCount}`}</span>
-                    <span className="leading-none text-git-removed">{`-${diff.removedLineCount}`}</span>
-              </span>
-            </span>
+      <DiffFileHeader
+        filePath={diff.fileName}
+        collapsible
+        isExpanded={false}
+        stableLayout
+        onToggle={onExpand}
+        onFocus={() => {
+          void onPreloadDiff(diff)
+          onPrewarmDiff(diff.fileName)
+        }}
+        onPointerEnter={() => {
+          void onPreloadDiff(diff)
+          onPrewarmDiff(diff.fileName)
+        }}
+        inlineContent={
+          <span className="inline-flex items-center gap-1 text-xs leading-none">
+            <span className="leading-none text-git-added">{`+${diff.addedLineCount}`}</span>
+            <span className="leading-none text-git-removed">{`-${diff.removedLineCount}`}</span>
           </span>
-        </button>
-        <span className="ml-3 inline-flex w-[4.5rem] shrink-0 items-center justify-end">
+        }
+        rightContent={
           <DiffFileActionButtons
             diff={diff}
             isPending={isPending}
@@ -224,8 +204,8 @@ function CollapsedConversationDiffFileRow({
             onStageFile={onStageFile}
             onUnstageFile={onUnstageFile}
           />
-        </span>
-      </div>
+        }
+      />
     </div>
   )
 }
@@ -278,11 +258,13 @@ function ConversationDiffFileItemComponent({
   return (
     <>
       <DiffViewer
+        stableHeaderLayout
         collapsible
         defaultExpanded={false}
         diffCacheKey={diff.contentSignature}
         filePath={diff.fileName}
         isExpanded={isExpanded}
+        isContentLoading={diff.hasContent === false}
         newContent={diff.newContent}
         oldContent={diff.oldContent}
         prewarm={shouldPrewarm && !isExpanded}
@@ -293,8 +275,8 @@ function ConversationDiffFileItemComponent({
         onPrewarmReady={handlePrewarmReady}
         headerInlineContent={
           <span className="inline-flex items-center gap-1 text-xs leading-none">
-                    <span className="leading-none text-git-added">{`+${diff.addedLineCount}`}</span>
-                    <span className="leading-none text-git-removed">{`-${diff.removedLineCount}`}</span>
+            <span className="leading-none text-git-added">{`+${diff.addedLineCount}`}</span>
+            <span className="leading-none text-git-removed">{`-${diff.removedLineCount}`}</span>
           </span>
         }
         headerRightContent={
@@ -337,6 +319,7 @@ function areConversationDiffFileItemPropsEqual(
     left.isExpanded === right.isExpanded &&
     left.pendingFileActionPath === right.pendingFileActionPath &&
     left.selectedScope === right.selectedScope &&
+    left.diff.hasContent === right.diff.hasContent &&
     left.diff.fileName === right.diff.fileName &&
     left.onPreloadDiff === right.onPreloadDiff &&
     left.onPrewarmDiff === right.onPrewarmDiff &&

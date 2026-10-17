@@ -9,7 +9,6 @@ import { useChatStreamingState } from './useChatStreamingState'
 import { useInitializeChatHistory } from './useInitializeChatHistory'
 import type { AppLanguage } from '../lib/appSettings'
 import { getPlanPathsCreatedByRevertedUserMessage } from '../lib/planPresentation'
-import { isRemoteBrowserRuntime } from '../remote/webBridge'
 import type { ChatMode, ConversationEditSession, ConversationModelPreference, Message, RevertEditSession } from '../types/chat'
 import { applyHistoryCutoff } from './chatHistoryCutoff'
 import {
@@ -57,7 +56,18 @@ export function useChatMessages(input: UseChatMessagesInput) {
     initialSelectedFolderId: preferredDraftFolderId,
     initialSelectedFolderName: preferredDraftFolderName,
   })
-  const [optimisticDraftMessages, setOptimisticDraftMessages] = useState<Message[]>(EMPTY_MESSAGES)
+  const [optimisticDraft, setOptimisticDraft] = useState<{ folderId: string | null; messages: Message[] } | null>(null)
+  const setOptimisticDraftMessages = useCallback((messages: Message[], folderId: string | null) => {
+    setOptimisticDraft(current => {
+      if (messages.length > 0) {
+        return { folderId, messages }
+      }
+      return current?.folderId === folderId ? null : current
+    })
+  }, [])
+  const optimisticDraftMessages = optimisticDraft?.folderId === sessionState.selectedFolderId
+    ? optimisticDraft.messages
+    : EMPTY_MESSAGES
   const [historyCutoffByConversation, setHistoryCutoffByConversation] = useState<Record<string, string>>({})
   const [optimisticEditedPresentationByConversation, setOptimisticEditedPresentationByConversation] = useState<
     Record<string, OptimisticEditedMessagePresentation>
@@ -694,7 +704,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     mainComposerValue: composerState.mainComposerValue,
     markTextStreamingPulse: streamingState.markTextStreamingPulse,
     pendingDraftSendCount,
-    optimisticRemotePresentation: isRemoteBrowserRuntime(),
+    getMainComposerRevision: composerState.getMainComposerRevision,
     removeLocalMessage: sessionState.removeLocalMessage,
     replaceLocalMessages: sessionState.replaceLocalMessages,
     selectedFolderId: sessionState.selectedFolderId,

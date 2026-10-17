@@ -1,5 +1,60 @@
 # TideCode memory investigation
 
+
+## Electron responsiveness and background work — 2026-10-17
+
+This is the current follow-up to `docs/resource-audit-2026-10-17.md`. Earlier sections below describe prior optimization passes and their historical verification results.
+
+### Implemented behavior
+
+- Desktop and remote sends now present stable-ID user bubbles before checkpoint/context/history persistence. Provider execution still waits for persistence. Revision/selection ownership protects newer composer text and other chats; failed presentation rollback updates the latest queued runtime state instead of replacing unrelated messages. Fresh-draft presentation is scoped to its folder.
+- Full Git contents load for Diff or a workspace editor needing a HEAD baseline. Closed surfaces and Source Control rows use metadata. The visible +/− badge remains available through compact native Git numstat counts, with bounded streaming/count caching for untracked/unborn files. These are Git line statistics rather than the old renderer-normalized text calculation; end-of-file/newline cases can consequently differ numerically while matching Git's statistics. No file bodies are retained in metadata rows.
+- Snapshot requests serialize per workspace/request kind; a mutation burst queues one fresh read rather than overlapping old reads. Closing content demand prevents stale cache refill and releases its full snapshot. Inactive caching has a three-entry/16 MiB source-string budget; active callers can use larger snapshots without caching them.
+- Startup no longer prefetches Git state across saved inactive projects. Selected-workspace hooks initialize their own data.
+- Individual collapsed tool results do not mount hidden Monaco/Markdown bodies. Opening retains the existing size/loading presentation; closing unmounts the view. Existing editor model expiry remains in use. Browser live sessions, tabs and page state are unchanged.
+
+### Matched built measurements
+
+Windows / Electron 43.7.5; three sequential baseline runs from unchanged commit `35ed71d6`, then three sequential changed builds. Each isolated fixture contains 32 minimal chats sharing a synthetic Git repository with 50 modified files of 500 source lines each. The scenario samples 12 seconds of initial idle, lists history, switches 12 chats, and samples 12 seconds of recovery, without opening optional panels or forcing GC. End-to-end sampled duration was 36.2–36.5 seconds before and 35.6–35.7 after. These are unpackaged built Electron runs, not an installed-package benchmark or a model of every real workspace.
+
+| Measurement | Baseline runs | Changed runs | Median change |
+| --- | --- | --- | --- |
+| Full-content Git snapshot requests, panels closed | 6 / 6 / 6 | 0 / 0 / 0 | Eliminated in this scenario |
+| Sampled Electron CPU seconds through scenario end | 11.11 / 9.90 / 9.99 | 6.66 / 6.41 / 6.33 | 9.99 → 6.41; 35.8% less CPU time |
+| Main-process CPU seconds | 6.21 / 5.81 / 5.80 | 3.08 / 3.03 / 2.98 | 5.81 → 3.03; 47.8% less |
+| Highest sampled aggregate working set, MiB | 787.3 / 798.6 / 791.2 | 760.1 / 745.8 / 748.2 | 791.2 → 748.2; 5.4% lower |
+| Aggregate working set after recovery, MiB | 711.5 / 677.4 / 711.4 | 671.8 / 672.9 / 671.4 | 711.4 → 671.8; 5.6% lower |
+| Aggregate private committed memory after recovery, MiB | 359.4 / 325.6 / 358.2 | 324.7 / 323.8 / 326.5 | 358.2 → 324.7; 9.4% lower |
+
+CPU values sum `cumulativeCPUUsage` for sampled Electron processes; short-lived native Git children and the external profiling/Vite driver are excluded. These are consumed CPU seconds, not a steady-idle CPU percentage. Working-set sums can double-count shared pages; private committed memory is not physical RAM. The recovery sample is short and the memory gain is modest; this does not prove a universal RAM target or elimination of every intermittent spike. All six reports contain zero scenario failures.
+
+Raw baseline reports are under `%TEMP%/tidecode-memory-profile-nXVEhz`, `tidecode-memory-profile-jnOmoM`, and `tidecode-memory-profile-VVWE7B`. Final reports are under `tidecode-memory-profile-UatjyB`, `tidecode-memory-profile-MCLqio`, and `tidecode-memory-profile-Et0J6I`. Each directory contains `report.json` and synthetic fixtures. Earlier exploratory runs are not included in this table.
+
+### Interaction and lifecycle verification
+
+An isolated Vite/Electron renderer exercises the actual Send workflow through a React button with a deliberately blocked checkpoint and synthetic saving; it does not contact a provider. Ten clicks in report `%TEMP%/tidecode-memory-profile-Li5Rsi/report.json` showed the pending bubble in the DOM after two animation-frame opportunities, with 2 ms median and 13 ms maximum elapsed time. The checkpoint was still blocked at each visibility assertion, and settlement left exactly one user bubble plus the synthetic response. This verifies presentation independent of saving; it is a small synthetic workflow fixture, not a compositor timestamp, a full production-chat paint benchmark, or a network latency claim.
+
+The same report verifies zero content reads during 11 seconds with panels closed, content loading on demand, metadata-only refresh after closing, and a line-count-only change refreshing the closed-panel badge. A startup hook fixture with ten saved inactive projects makes zero Git requests. Twenty tool open/close cycles hold at two models while expanded and release to zero after the existing 30-second model grace period. The closed body has no Monaco editor DOM.
+
+The `--resources` PDF/Monaco scenario separately passed its PDF worker/canvas-release checks and on-demand language/theme checks during this work. The final extended `--interactions` report is `%TEMP%/tidecode-memory-profile-tGqvZD/report.json`: zero scenario failures, twenty cycles with two models while open and zero after expiry, and an `interaction-recovery` memory sample more than 60 seconds after the last close with zero canvas backing pixels. Its separate ten-click fixture measured 1.8 ms median / 9.8 ms maximum frame-opportunity DOM visibility. Shared runtime/module code remains loaded after first use; releasing models does not unload Monaco or imply a return to an empty-renderer heap. One exploratory extended run stalled during the cold Monaco fixture and was stopped; the profiler now bounds each interaction scenario to 90 seconds and records its stage on timeout. The subsequent extended run completed successfully. No browser page-discard policy was introduced or exercised.
+
+### Correctness checks and remaining limits
+
+Production build and TypeScript checking pass. The final full Node suite reports 1,434 passes, 53 failures, and one skipped test (1,488 total). All 53 failure names also reproduce in an archived unchanged HEAD checkout; they include obsolete tool imports/runtime setup from the earlier exec migration and the existing revert-mode assertion. That unchanged checkout has two additional TypeScript fixture-resolution failures caused by its different dependency layout. No new full-suite failure name was introduced. This is not a green full-suite result; unrelated migration/test repairs remain outside this optimization batch.
+
+All 68 final focused tests pass. They cover blocked/failing saves, stable IDs, newer-draft preservation, navigation, editing/batches/abort behavior, latest-state rollback, serial Git refreshes, cache release/reopen races and budgets, native Git counts (renames/partial staging/binary/untracked/unborn cases), scoped metadata, and collapsed tool rendering. Browser/session behavior and long real provider/terminal/MCP workloads were not exhaustively exercised. The installed TideCode executable was not replaced; these results concern the changed source and its generated build.
+
+Reproduce sequentially after building:
+
+```powershell
+npm run build
+node scripts/profile-memory.mjs --mode built --git-fixture --history-mib 0 --seconds 12 --recovery-seconds 12
+node scripts/profile-memory.mjs --mode dev --interactions --history-mib 0 --seconds 0 --recovery-seconds 0
+```
+
+The profiler now records CPU counters, all WebContents ownership/type/PID mappings and Git request kinds. `--interactions` runs the Send/Git/startup/tool fixtures without the PDF scenario; `--resources` includes PDF, Monaco and those interaction checks. Fixtures and temporary service namespaces remain isolated.
+
+
 ## Scope and measurement
 
 This pass covers the Electron application, renderer resource ownership, history loading, shared run-service, terminals, and editor caches. It preserves the worktree's existing lazy editor/settings/preview startup, bounded diff/highlight/Mermaid/checkpoint caches, event-driven Git refresh, and demand-started run-service changes.

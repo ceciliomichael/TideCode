@@ -1,8 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { loadGitBranchState, prefetchGitBranchStates } from '../lib/gitBranchStateCache'
-import { prefetchGitStatuses } from '../lib/gitStatusCache'
 import { createSingleFlightTask, type SingleFlightTask } from '../lib/singleFlightTask'
-import { scheduleStartupBackgroundTask } from '../lib/startupBackgroundTask'
 import { loadInitialChatHistory } from './chatHistoryWorkflows'
 
 interface UseInitializeChatHistoryInput {
@@ -33,7 +30,6 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
     }
 
     let isMounted = true
-    let cancelBackgroundPrefetch: (() => void) | null = null
 
     async function initializeConversations() {
       try {
@@ -45,28 +41,12 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
           ),
         )
         const snapshot = await initializationTaskRef.current.run()
-        const initialWorkspacePath = snapshot.initialConversation?.agentContextRootPath ?? null
 
         if (!isMounted) {
           return
         }
 
         initializeHistory(snapshot)
-        const workspacePaths = [
-          ...snapshot.folderSummaries.map((folderSummary) => folderSummary.path),
-          ...snapshot.conversationSummaries.map((conversationSummary) => conversationSummary.agentContextRootPath),
-        ]
-        cancelBackgroundPrefetch = scheduleStartupBackgroundTask(
-          () => {
-            if (initialWorkspacePath) {
-              void loadGitBranchState(initialWorkspacePath).catch(() => undefined)
-            }
-
-            void prefetchGitStatuses(workspacePaths)
-            void prefetchGitBranchStates(workspacePaths)
-          },
-          { delayMs: 1_500, idleTimeoutMs: 5_000 },
-        )
       } catch (caughtError) {
         console.error(caughtError)
         if (isMounted) {
@@ -83,7 +63,6 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
 
     return () => {
       isMounted = false
-      cancelBackgroundPrefetch?.()
     }
   }, [
     enabled,

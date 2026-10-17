@@ -18,15 +18,16 @@ export const ToolMarkdownResult = memo(function ToolMarkdownResult({
     ? 'mt-1.5 max-h-80 overflow-y-auto pr-1'
     : 'mt-1.5'
 
+  if (!isOpen) {
+    return null
+  }
+
   return (
     <div
-      aria-hidden={isOpen ? undefined : true}
-      data-tool-markdown-result={isOpen ? 'open' : 'premeasure'}
+      data-tool-markdown-result="open"
       className={[
         'w-full text-sm text-muted-foreground/90 [&>*:last-child]:mb-0',
-        isOpen
-          ? openClassName
-          : 'pointer-events-none invisible absolute inset-x-0 top-0 h-0 overflow-hidden',
+        openClassName,
       ].join(' ')}
     >
       <MarkdownRenderer

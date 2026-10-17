@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { CONVERSATION_DIFF_ROW_HEIGHT_PX } from './DiffFileHeader'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import {
   calculateVariableSizeVirtualRange,
@@ -39,7 +40,6 @@ interface MeasuredConversationDiffRowProps {
   shouldPrewarm: boolean
 }
 
-const DEFAULT_COLLAPSED_DIFF_ROW_HEIGHT_PX = 49
 const DEFAULT_EXPANDED_DIFF_ROW_HEIGHT_PX = 360
 const DIFF_LIST_OVERSCAN_PX = 320
 const DIFF_LIST_VIRTUALIZATION_THRESHOLD = 24
@@ -56,10 +56,6 @@ function scheduleDiffPrewarmTask(callback: () => void) {
 
   const handle = window.setTimeout(callback, 32)
   return () => window.clearTimeout(handle)
-}
-
-function getEstimatedDiffRowHeight(isExpanded: boolean) {
-  return isExpanded ? DEFAULT_EXPANDED_DIFF_ROW_HEIGHT_PX : DEFAULT_COLLAPSED_DIFF_ROW_HEIGHT_PX
 }
 
 const rowWrapperStyle: CSSProperties = {
@@ -86,8 +82,8 @@ const MeasuredConversationDiffRow = memo(function MeasuredConversationDiffRow({
 }: MeasuredConversationDiffRowProps) {
   const rowRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => {
-    if (!rowRef.current) {
+  useLayoutEffect(() => {
+    if (!isExpanded || !rowRef.current) {
       return
     }
 
@@ -169,8 +165,10 @@ export const VirtualizedConversationDiffFileList = memo(function VirtualizedConv
   const itemHeights = useMemo(
     () =>
       diffs.map((diff) => {
-        const measuredHeight = measuredHeightsByPath[diff.fileName]
-        return measuredHeight ?? getEstimatedDiffRowHeight(expandedFilePathSet.has(diff.fileName))
+        if (!expandedFilePathSet.has(diff.fileName)) {
+          return CONVERSATION_DIFF_ROW_HEIGHT_PX
+        }
+        return measuredHeightsByPath[diff.fileName] ?? DEFAULT_EXPANDED_DIFF_ROW_HEIGHT_PX
       }),
     [diffs, expandedFilePathSet, measuredHeightsByPath],
   )

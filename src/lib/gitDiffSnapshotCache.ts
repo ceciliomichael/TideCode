@@ -11,28 +11,34 @@ const MAX_STATUS_SNAPSHOT_CACHE_ENTRIES = 12
 
 const diffSnapshotCache = new Map<string, ConversationDiffSnapshot>()
 const statusSnapshotCache = new Map<string, ConversationDiffSnapshot>()
-const inFlightDiffSnapshotRequests = new Map<string, Promise<ConversationDiffSnapshot>>()
-
-function getSnapshotCache(includeContent: boolean) {
-  return includeContent ? diffSnapshotCache : statusSnapshotCache
+interface SnapshotRequest {
+  promise: Promise<ConversationDiffSnapshot>
+  pending: boolean
+  revision: number
+  cacheRevision: number | null
 }
+const inFlightDiffSnapshotRequests = new Map<string, SnapshotRequest>()
+const MAX_FULL_DIFF_CACHE_BYTES = 16 * 1024 * 1024
 
-function getRequestKey(workspacePath: string, includeContent: boolean) {
-  return `${includeContent ? 'content' : 'status'}:${workspacePath}`
+function estimateSnapshotBytes(snapshot: ConversationDiffSnapshot) {
+  return snapshot.fileDiffs.reduce((bytes, file) => bytes + 2 * (
+    (file.oldContent?.length ?? 0) + (file.indexContent?.length ?? 0) + file.newContent.length
+  ), 0)
 }
 
 function setCachedDiffSnapshot(cacheKey: string, snapshot: ConversationDiffSnapshot) {
-  if (diffSnapshotCache.has(cacheKey)) {
-    diffSnapshotCache.delete(cacheKey)
+  diffSnapshotCache.delete(cacheKey)
+  if (estimateSnapshotBytes(snapshot) > MAX_FULL_DIFF_CACHE_BYTES) {
+    return
   }
-
   diffSnapshotCache.set(cacheKey, snapshot)
-  while (diffSnapshotCache.size > MAX_FULL_DIFF_SNAPSHOT_CACHE_ENTRIES) {
+  let totalBytes = Array.from(diffSnapshotCache.values()).reduce((sum, entry) => sum + estimateSnapshotBytes(entry), 0)
+  while (diffSnapshotCache.size > MAX_FULL_DIFF_SNAPSHOT_CACHE_ENTRIES || totalBytes > MAX_FULL_DIFF_CACHE_BYTES) {
     const oldestKey = diffSnapshotCache.keys().next().value
-    if (typeof oldestKey !== 'string') {
+    if (oldestKey === undefined) {
       break
     }
-
+    totalBytes -= estimateSnapshotBytes(diffSnapshotCache.get(oldestKey)!)
     diffSnapshotCache.delete(oldestKey)
   }
 }
@@ -42,119 +48,107 @@ export function getEmptyGitDiffSnapshot() {
 }
 
 export function getCachedGitDiffSnapshot(workspacePath: string | null | undefined) {
-  const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
-  if (!normalizedWorkspacePath) {
+  const normalized = normalizeGitWorkspacePath(workspacePath)
+  if (!normalized) {
     return null
   }
-
-  const cachedSnapshot = diffSnapshotCache.get(normalizedWorkspacePath)
-  if (!cachedSnapshot) {
+  const snapshot = diffSnapshotCache.get(normalized)
+  if (!snapshot) {
     return null
   }
+  diffSnapshotCache.delete(normalized)
+  diffSnapshotCache.set(normalized, snapshot)
+  return snapshot
+}
 
-  // Keep most recently accessed entries alive while older snapshots are evicted.
-  setCachedDiffSnapshot(normalizedWorkspacePath, cachedSnapshot)
-  return cachedSnapshot
+export function releaseGitDiffSnapshot(workspacePath: string | null | undefined) {
+  const normalized = normalizeGitWorkspacePath(workspacePath)
+  if (!normalized) {
+    return
+  }
+  diffSnapshotCache.delete(normalized)
+  const request = inFlightDiffSnapshotRequests.get(`content:${normalized}`)
+  if (request) {
+    request.revision += 1
+    request.cacheRevision = null
+    request.pending = false
+  }
 }
 
 function setCachedStatusSnapshot(cacheKey: string, snapshot: ConversationDiffSnapshot) {
-  if (statusSnapshotCache.has(cacheKey)) {
-    statusSnapshotCache.delete(cacheKey)
-  }
-
+  statusSnapshotCache.delete(cacheKey)
   statusSnapshotCache.set(cacheKey, snapshot)
   while (statusSnapshotCache.size > MAX_STATUS_SNAPSHOT_CACHE_ENTRIES) {
     const oldestKey = statusSnapshotCache.keys().next().value
-    if (typeof oldestKey !== 'string') {
+    if (oldestKey === undefined) {
       break
     }
-
     statusSnapshotCache.delete(oldestKey)
   }
 }
 
 export function getCachedGitStatusSnapshot(workspacePath: string | null | undefined) {
-  const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
-  if (!normalizedWorkspacePath) {
-    return null
-  }
-
-  const cachedSnapshot = statusSnapshotCache.get(normalizedWorkspacePath)
-  if (!cachedSnapshot) {
-    return null
-  }
-
-  return cachedSnapshot
+  const normalized = normalizeGitWorkspacePath(workspacePath)
+  return normalized ? statusSnapshotCache.get(normalized) ?? null : null
 }
 
 export async function loadGitDiffSnapshot(
   workspacePath: string | null | undefined,
   options?: { coalesceForcedRefresh?: boolean; forceRefresh?: boolean; includeContent?: boolean },
-) {
-  const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
-  if (!normalizedWorkspacePath) {
+): Promise<ConversationDiffSnapshot> {
+  const normalized = normalizeGitWorkspacePath(workspacePath)
+  if (!normalized) {
     return EMPTY_DIFF_SNAPSHOT
   }
-
   const includeContent = options?.includeContent !== false
-  const snapshotCache = getSnapshotCache(includeContent)
-  const requestKey = getRequestKey(normalizedWorkspacePath, includeContent)
-
-  if (!options?.forceRefresh) {
-    const cachedDiffSnapshot = snapshotCache.get(normalizedWorkspacePath)
-    if (cachedDiffSnapshot) {
-      return cachedDiffSnapshot
+  const requestKey = `${includeContent ? 'content' : 'status'}:${normalized}`
+  const existing = inFlightDiffSnapshotRequests.get(requestKey)
+  if (existing) {
+    if ((options?.forceRefresh && !options.coalesceForcedRefresh) || existing.cacheRevision === null) {
+      existing.pending = true
+      existing.revision += 1
+      existing.cacheRevision = existing.revision
     }
+    return existing.promise
+  }
+  const cached = includeContent ? getCachedGitDiffSnapshot(normalized) : getCachedGitStatusSnapshot(normalized)
+  if (!options?.forceRefresh && cached) {
+    return cached
   }
 
-  // Non-forced loads always coalesce. Background polling may explicitly allow
-  // a forced refresh to coalesce as well, but mutation/watcher refreshes keep
-  // the default behavior of starting a fresh request so they cannot reuse a
-  // pre-mutation snapshot.
-  const existingRequest = inFlightDiffSnapshotRequests.get(requestKey)
-  if (existingRequest && (!options?.forceRefresh || options.coalesceForcedRefresh)) {
-    return existingRequest
-  }
-
-  const nextRequest = window.tidecodeGit
-    .getDiffs(normalizedWorkspacePath, { includeContent })
-    .then((diffSnapshot) => {
-      const fileDiffs = includeContent
-        ? diffSnapshot.fileDiffs
-        : diffSnapshot.fileDiffs.map((fileDiff) => ({
-            ...fileDiff,
-            addedLineCount: 0,
-            removedLineCount: 0,
-          }))
-      const normalizedSnapshot = diffSnapshot.hasRepository
-        ? buildFileDiffSnapshot(fileDiffs)
-        : EMPTY_DIFF_SNAPSHOT
-      // Only the newest request for this key may populate the cache. A request
-      // superseded by a forced refresh could otherwise overwrite fresher
-      // results with the pre-mutation state.
-      if (inFlightDiffSnapshotRequests.get(requestKey) === nextRequest) {
-        if (includeContent) {
-          setCachedDiffSnapshot(normalizedWorkspacePath, normalizedSnapshot)
-        } else {
-          setCachedStatusSnapshot(normalizedWorkspacePath, normalizedSnapshot)
+  const request: SnapshotRequest = { pending: false, revision: 0, cacheRevision: 0, promise: Promise.resolve(EMPTY_DIFF_SNAPSHOT) }
+  // Defer the read one microtask so the registry owns the request before any
+  // completion or reentrant refresh can inspect it.
+  request.promise = Promise.resolve().then(async () => {
+    let result = EMPTY_DIFF_SNAPSHOT
+    do {
+      request.pending = false
+      const revision = request.revision
+      let payload
+      try {
+        payload = await window.tidecodeGit.getDiffs(normalized, { includeContent })
+      } catch (error) {
+        if (request.pending) {
+          continue
         }
+        throw error
       }
-      return normalizedSnapshot
-    })
-    .finally(() => {
-      if (inFlightDiffSnapshotRequests.get(requestKey) === nextRequest) {
-        inFlightDiffSnapshotRequests.delete(requestKey)
+      if (request.cacheRevision !== revision || request.revision !== revision) {
+        continue
       }
-    })
-
-  inFlightDiffSnapshotRequests.set(requestKey, nextRequest)
-  return nextRequest
-}
-
-export async function prefetchGitDiffSnapshots(workspacePaths: readonly (string | null | undefined)[]) {
-  const uniqueWorkspacePaths = Array.from(
-    new Set(workspacePaths.map((workspacePath) => normalizeGitWorkspacePath(workspacePath)).filter(Boolean)),
-  )
-
-  await Promise.allSettled(uniqueWorkspacePaths.map((workspacePath) => loadGitDiffSnapshot(workspacePath)))
+      result = payload.hasRepository ? buildFileDiffSnapshot(payload.fileDiffs, includeContent) : EMPTY_DIFF_SNAPSHOT
+      if (includeContent) {
+        setCachedDiffSnapshot(normalized, result)
+      } else {
+        setCachedStatusSnapshot(normalized, result)
+      }
+    } while (request.pending)
+    return result
+  }).finally(() => {
+    if (inFlightDiffSnapshotRequests.get(requestKey) === request) {
+      inFlightDiffSnapshotRequests.delete(requestKey)
+    }
+  })
+  inFlightDiffSnapshotRequests.set(requestKey, request)
+  return request.promise
 }

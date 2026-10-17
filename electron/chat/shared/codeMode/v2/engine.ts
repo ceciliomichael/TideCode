@@ -11,6 +11,8 @@ import { CodeModeRuntimeError, formatDiagnostic, toDiagnostic } from './model'
 import { ToolRuntime } from './toolRuntime'
 
 export interface ExecuteCodeModeV2Options {
+  obtainedTools?: Set<string>
+  discoveredMcpTools?: Set<string>
   abortSignal?: AbortSignal
   allowedToolNames?: readonly string[]
   executionId: string
@@ -116,6 +118,8 @@ export async function executeCodeModeV2(options: ExecuteCodeModeV2Options): Prom
   }, limits.timeoutMs)
 
   const toolRuntime = new ToolRuntime(options.registry, {
+    obtainedTools: options.obtainedTools ?? new Set<string>(),
+    discoveredMcpTools: options.discoveredMcpTools ?? new Set<string>(),
     abortSignal: executionController.signal,
     allowedToolNames: options.allowedToolNames,
     executionId: options.executionId,
@@ -181,6 +185,18 @@ export async function executeCodeModeV2(options: ExecuteCodeModeV2Options): Prom
       normalizedError = new CodeModeRuntimeError('Cancelled', 'Code Mode execution was aborted.')
     }
     const diagnostic = toDiagnostic(normalizedError)
+    if (diagnostic.kind === 'ToolContractRequired') {
+      return {
+        engine: 'v2',
+        executionId: options.executionId,
+        output: diagnostic.message,
+        status: 'success',
+        steps,
+        summary: 'Retrieved tools',
+        toolCalls,
+        truncated: false,
+      }
+    }
     return {
       diagnostic,
       engine: 'v2',

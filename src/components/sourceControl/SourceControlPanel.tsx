@@ -130,9 +130,9 @@ function SourceControlPanelContent({
       fileDiff.isUnstaged || fileDiff.isUntracked || (!fileDiff.isStaged && !fileDiff.isUnstaged && !fileDiff.isUntracked),
     [],
   )
-  const stagedFileDiffs = useMemo(() => fileDiffs.filter((fileDiff) => fileDiff.isStaged).map((fileDiff) => projectGitFileDiffScope(fileDiff, 'staged')), [fileDiffs])
+  const stagedFileDiffs = useMemo(() => fileDiffs.filter((fileDiff) => fileDiff.isStaged).map((fileDiff) => projectGitFileDiffScope(fileDiff, 'staged', false)), [fileDiffs])
   const unstagedFileDiffs = useMemo(
-    () => fileDiffs.filter((fileDiff) => isUnstagedLikeFileDiff(fileDiff)).map((fileDiff) => projectGitFileDiffScope(fileDiff, 'unstaged')),
+    () => fileDiffs.filter((fileDiff) => isUnstagedLikeFileDiff(fileDiff)).map((fileDiff) => projectGitFileDiffScope(fileDiff, 'unstaged', false)),
     [fileDiffs, isUnstagedLikeFileDiff],
   )
   const shouldUseSplitLayout = isChangesSectionOpen

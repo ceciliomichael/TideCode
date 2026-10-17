@@ -18,6 +18,8 @@ interface ToolInvocationSummaryCounts {
   planUpdateCount: number
   memoryCount: number
   toolSearchCount: number
+  toolGetCount: number
+  skillCount: number
 }
 
 function pluralize(count: number, singular: string) {
@@ -53,9 +55,11 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
     return 'mcpCount'
   }
 
-  if (toolName === 'tool_search') {
+  if (toolName === 'tool_search' || toolName === 'available.search') {
     return 'toolSearchCount'
   }
+  if (toolName === 'available.get') return 'toolGetCount'
+  if (toolName.startsWith('skill.')) return 'skillCount'
 
   if (
     toolName.startsWith('terminal.')
@@ -233,6 +237,8 @@ export function buildToolInvocationGroupSummary(
     planUpdateCount: 0,
     memoryCount: 0,
     toolSearchCount: 0,
+    toolGetCount: 0,
+    skillCount: 0,
   }
   const otherToolCounts = new Map<string, number>()
   const mutationFilesByKind = new Map<string, Set<string>>()
@@ -308,6 +314,12 @@ export function buildToolInvocationGroupSummary(
         recordMixedBucket('web-search')
       } else if (classifiedBucket === 'mcpCount') {
         recordMixedBucket('mcp')
+      } else if (classifiedBucket === 'toolSearchCount') {
+        recordMixedBucket('tool-search')
+      } else if (classifiedBucket === 'toolGetCount') {
+        recordMixedBucket('tool-get')
+      } else if (classifiedBucket === 'skillCount') {
+        recordMixedBucket('skill')
       } else if (classifiedBucket === 'commandCount') {
         recordMixedBucket('command')
       } else if (classifiedBucket === 'exploredFileCount') {
@@ -360,6 +372,9 @@ export function buildToolInvocationGroupSummary(
       if (bucketKey === 'mcp') {
         return `ran ${pluralize(count, 'MCP')}`
       }
+      if (bucketKey === 'tool-search') return `searched ${pluralize(count, 'tool')}`
+      if (bucketKey === 'tool-get') return `retrieved ${pluralize(count, 'tool contract')}`
+      if (bucketKey === 'skill') return `used ${pluralize(count, 'skill tool')}`
       if (bucketKey === 'command') {
         return `ran ${pluralize(count, 'terminal tool')}`
       }
@@ -402,6 +417,8 @@ export function buildToolInvocationGroupSummary(
   if (counts.toolSearchCount > 0) {
     summaryParts.push(`ran ${pluralize(counts.toolSearchCount, 'tool search')}`)
   }
+  if (counts.toolGetCount > 0) summaryParts.push(`retrieved ${pluralize(counts.toolGetCount, 'tool contract')}`)
+  if (counts.skillCount > 0) summaryParts.push(`used ${pluralize(counts.skillCount, 'skill tool')}`)
   if (counts.commandCount > 0) {
     summaryParts.push(`ran ${pluralize(counts.commandCount, 'terminal tool')}`)
   }

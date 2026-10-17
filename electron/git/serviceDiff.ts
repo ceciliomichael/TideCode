@@ -1,6 +1,7 @@
 import type { GitDiffLoadOptions, GitDiffSnapshot, GitFileDiff } from '../../src/types/chat'
 import { readHeadFile, readIndexFile, readWorkingTreeFile, resolveRepositoryRoot, runGit } from './repositoryContext'
 import { normalizeGitFilePath } from './serviceHelpers'
+import { readGitDiffStats } from './diffStats'
 
 type ChangeStatus = NonNullable<GitFileDiff['changeStatus']>
 interface ChangedFileStatus {
@@ -130,21 +131,24 @@ export async function getGitDiffSnapshot(
   }
 
   const changedFiles = await readChangedFiles(repoRootPath)
+  const stats = changedFiles.length > 0 ? await readGitDiffStats(repoRootPath, changedFiles) : new Map()
   const fileDiffs = options?.includeContent === false
     ? changedFiles.map((status): GitFileDiff => {
         return {
           ...status,
-          addedLineCount: 0,
+          ...stats.get(status.fileName),
           indexContent: null,
           newContent: '',
           oldContent: null,
-          removedLineCount: 0,
         }
       })
     : (
         await mapWithConcurrency(
           changedFiles,
-          (status) => buildGitFileDiff(repoRootPath, status),
+          async (status) => ({
+            ...await buildGitFileDiff(repoRootPath, status),
+            ...(stats.get(status.fileName) ?? { addedLineCount: 0, removedLineCount: 0 }),
+          }),
           MAX_CONCURRENT_FILE_READS,
         )
       )

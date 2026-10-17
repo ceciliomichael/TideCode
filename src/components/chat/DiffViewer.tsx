@@ -1,7 +1,5 @@
-import { lazy, memo, Suspense, useMemo, useState, type ReactNode } from 'react'
-import { ChevronRight } from 'lucide-react'
-import { resolveFileIconConfig } from '../../lib/fileIconResolver'
-import { PathLabel } from './PathLabel'
+import { lazy, memo, Suspense, useState, type ReactNode } from 'react'
+import { DiffFileHeader } from './DiffFileHeader'
 import { WorkspaceMonacoDiffLoadingView } from './diffViewer/WorkspaceMonacoDiffLoadingView'
 import { clampWorkspaceMonacoDiffHeight, resolveWorkspaceMonacoDiffMaxHeight } from './diffViewer/workspaceMonacoDiffConfig'
 import { preloadWorkspaceMonacoDiffView } from '../../lib/workspaceMonacoPreload'
@@ -21,11 +19,13 @@ interface DiffViewerProps {
   defaultExpanded?: boolean
   diffCacheKey?: string
   filePath: string
+  stableHeaderLayout?: boolean
   headerClassName?: string
   headerInlineContent?: ReactNode
   headerRightContent?: ReactNode
   headerTrailingContent?: ReactNode
   isExpanded?: boolean
+  isContentLoading?: boolean
   isStreaming?: boolean
   layout?: 'card' | 'stacked'
   maxBodyHeightClassName?: string
@@ -50,11 +50,13 @@ function areDiffViewerPropsEqual(left: DiffViewerProps, right: DiffViewerProps) 
     left.defaultExpanded === right.defaultExpanded &&
     left.diffCacheKey === right.diffCacheKey &&
     left.filePath === right.filePath &&
+    left.stableHeaderLayout === right.stableHeaderLayout &&
     left.headerClassName === right.headerClassName &&
     left.headerInlineContent === right.headerInlineContent &&
     left.headerRightContent === right.headerRightContent &&
     left.headerTrailingContent === right.headerTrailingContent &&
     left.isExpanded === right.isExpanded &&
+    left.isContentLoading === right.isContentLoading &&
     left.isStreaming === right.isStreaming &&
     left.layout === right.layout &&
     left.maxBodyHeightClassName === right.maxBodyHeightClassName &&
@@ -76,11 +78,13 @@ function DiffViewerComponent({
   defaultExpanded = true,
   diffCacheKey,
   filePath,
+  stableHeaderLayout = false,
   headerClassName,
   headerInlineContent,
   headerRightContent,
   headerTrailingContent,
   isExpanded: expandedProp,
+  isContentLoading = false,
   isStreaming = false,
   layout = 'card',
   maxBodyHeightClassName,
@@ -98,78 +102,28 @@ function DiffViewerComponent({
   const shouldRenderDiffContent = !collapsible || isExpanded || prewarm
   const isPrewarmOnly = prewarm && collapsible && !isExpanded
   const isStackedLayout = layout === 'stacked'
-  const iconConfig = useMemo(() => resolveFileIconConfig({ fileName: filePath }), [filePath])
-  const FileIcon = iconConfig.icon
   const initialBodyHeight = clampWorkspaceMonacoDiffHeight(
     INITIAL_DIFF_HEIGHT_PX,
     resolveWorkspaceMonacoDiffMaxHeight(maxBodyHeightClassName),
   )
-  const headerMainContent = useMemo(
-    () => (
-      <span className="inline-flex min-h-4 min-w-0 flex-1 items-center gap-2">
-        <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
-          <FileIcon
-            size={14}
-            style={{ color: iconConfig.color }}
-            aria-hidden="true"
-            className={collapsible ? 'transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0' : ''}
-          />
-          {collapsible ? (
-            <ChevronRight
-              size={14}
-              className={[
-                'absolute inset-0 m-auto text-muted-foreground opacity-0 transition-[opacity,transform] duration-200 group-hover:opacity-100 group-focus-visible:opacity-100',
-                isExpanded ? 'rotate-90' : '',
-              ].join(' ')}
-            />
-          ) : null}
-        </span>
-        <span className="inline-flex min-w-0 items-center gap-2">
-          <PathLabel path={filePath} className="min-w-0 leading-[1] text-foreground" />
-          {headerInlineContent ? <span className="inline-flex shrink-0 items-center">{headerInlineContent}</span> : null}
-          {headerTrailingContent ? <span className="inline-flex shrink-0 items-center">{headerTrailingContent}</span> : null}
-        </span>
-      </span>
-    ),
-    [FileIcon, collapsible, filePath, headerInlineContent, headerTrailingContent, iconConfig.color, isExpanded],
-  )
-
-
-  const hasRightHeaderContent = Boolean(headerRightContent)
-  const header = collapsible ? (
-    <div
-      className={[
-        'non-selectable-ui group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center bg-surface px-4 py-3 text-[12px] text-muted-foreground',
-        isExpanded ? 'border-b border-border' : '',
-        headerClassName ?? '',
-      ].join(' ')}
-    >
-      <button
-        type="button"
-        aria-expanded={isExpanded}
-        onClick={() => {
-          const nextExpanded = !isExpanded
-          if (expandedProp === undefined) {
-            setInternalExpanded(nextExpanded)
-          }
-          onExpandedChange?.(nextExpanded)
-        }}
-        className="group flex min-w-0 w-full items-center text-left"
-      >
-        {headerMainContent}
-      </button>
-      {hasRightHeaderContent ? <span className="ml-3 inline-flex shrink-0 items-center">{headerRightContent}</span> : null}
-    </div>
-  ) : (
-    <div
-      className={[
-        'non-selectable-ui grid w-full grid-cols-[minmax(0,1fr)_auto] items-center border-b border-border bg-surface px-4 py-3 text-[12px] text-muted-foreground',
-        headerClassName ?? '',
-      ].join(' ')}
-    >
-      {headerMainContent}
-      {hasRightHeaderContent ? <span className="ml-3 inline-flex shrink-0 items-center">{headerRightContent}</span> : null}
-    </div>
+  const header = (
+    <DiffFileHeader
+      filePath={filePath}
+      collapsible={collapsible}
+      isExpanded={isExpanded}
+      stableLayout={stableHeaderLayout}
+      className={headerClassName}
+      inlineContent={headerInlineContent}
+      rightContent={headerRightContent}
+      trailingContent={headerTrailingContent}
+      onToggle={() => {
+        const nextExpanded = !isExpanded
+        if (expandedProp === undefined) {
+          setInternalExpanded(nextExpanded)
+        }
+        onExpandedChange?.(nextExpanded)
+      }}
+    />
   )
 
   return (
@@ -188,26 +142,31 @@ function DiffViewerComponent({
       {shouldRenderDiffContent ? (
         <div
           data-diff-content="true"
+          aria-busy={isContentLoading}
           className={[
             'selectable-ui',
             isStackedLayout ? 'overflow-hidden bg-surface' : 'overflow-hidden rounded-b-2xl bg-surface',
           ].join(' ')}
         >
-          <Suspense fallback={<WorkspaceMonacoDiffLoadingView height={initialBodyHeight} />}>
-            <WorkspaceMonacoDiffView
-              key={diffCacheKey ?? filePath}
-              contextLines={contextLines}
-              contentSignature={diffCacheKey}
-              filePath={filePath}
-              isStreaming={isStreaming}
-              maxBodyHeightClassName={maxBodyHeightClassName}
-              newContent={newContent}
-              onReady={onPrewarmReady}
-              oldContent={oldContent}
-              startLineNumber={startLineNumber}
-              viewOnly={viewOnly}
-            />
-          </Suspense>
+          {isContentLoading ? (
+            <WorkspaceMonacoDiffLoadingView height={initialBodyHeight} />
+          ) : (
+            <Suspense fallback={<WorkspaceMonacoDiffLoadingView height={initialBodyHeight} />}>
+              <WorkspaceMonacoDiffView
+                key={diffCacheKey ?? filePath}
+                contextLines={contextLines}
+                contentSignature={diffCacheKey}
+                filePath={filePath}
+                isStreaming={isStreaming}
+                maxBodyHeightClassName={maxBodyHeightClassName}
+                newContent={newContent}
+                onReady={onPrewarmReady}
+                oldContent={oldContent}
+                startLineNumber={startLineNumber}
+                viewOnly={viewOnly}
+              />
+            </Suspense>
+          )}
         </div>
       ) : null}
     </div>

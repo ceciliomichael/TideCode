@@ -24,7 +24,14 @@ export interface CreateGitBranchInput {
   workspacePath: string
 }
 
+export interface GitDiffLineCounts {
+  addedLineCount: number
+  removedLineCount: number
+}
+
 export interface GitFileDiff {
+  stagedLineCounts?: GitDiffLineCounts
+  unstagedLineCounts?: GitDiffLineCounts
   addedLineCount?: number
   changeStatus?: 'added' | 'modified' | 'deleted' | 'renamed' | 'conflicted' | 'untracked'
   fileName: string

@@ -7,6 +7,7 @@ import type { CodeModeExecutionLimits, CodeModeToolCallRecord } from '../types'
 import { CodeModeRuntimeError, CodePromise, ToolReference, type AstNode } from './model'
 import { copyBoundaryValue } from './values'
 import { searchAvailableApis } from '../../ai/tools/available/search/search'
+import { getAvailableApi } from '../../ai/tools/available/get/get'
 
 const HIDDEN_MODEL_SEMANTIC_KEYS = new Set([
   'active',
@@ -83,6 +84,8 @@ export interface ToolSearchInput {
 }
 
 export interface ToolRuntimeOptions {
+  obtainedTools: Set<string>
+  discoveredMcpTools: Set<string>
   abortSignal: AbortSignal
   allowedToolNames?: readonly string[]
   executionId: string
@@ -201,7 +204,7 @@ export class ToolRuntime {
     const rootChildren = this.childNames.get('') ?? new Set<string>()
     rootChildren.add('available')
     this.childNames.set('', rootChildren)
-    this.childNames.set('available', new Set(['search']))
+    this.childNames.set('available', new Set(['search', 'get']))
     for (const key of this.projectedByPath.keys()) {
       if (this.childNames.has(key)) {
         throw new Error(`Code Mode API path is both a namespace and callable: tools.${key}`)
@@ -225,10 +228,13 @@ export class ToolRuntime {
     }
     const next = [...reference.path, name]
     const key = next.join('.')
-    if (this.projectedByPath.has(key) || this.childNames.has(key) || key === 'available.search') {
+    if (this.projectedByPath.has(key) || this.childNames.has(key) || key === 'available.search' || key === 'available.get') {
       return new ToolReference(next)
     }
-    const available = [...(this.childNames.get(reference.path.join('.')) ?? [])].slice(0, 8)
+    const parentPath = reference.path.join('.')
+    const available = parentPath === 'mcp'
+      ? []
+      : [...(this.childNames.get(parentPath) ?? [])].slice(0, 8)
     throw new CodeModeRuntimeError(
       'UnknownTool',
       `Unknown Code Mode capability tools.${key}.`,
@@ -238,16 +244,39 @@ export class ToolRuntime {
   }
 
   keys(reference: ToolReference): string[] {
-    return [...(this.childNames.get(reference.path.join('.')) ?? [])].sort()
+    const parentPath = reference.path.join('.')
+    if (parentPath === 'mcp') {
+      return [...this.options.discoveredMcpTools].map((name) => name.slice('tools.mcp.'.length)).sort()
+    }
+    return [...(this.childNames.get(parentPath) ?? [])].sort()
   }
 
   call(reference: ToolReference, args: unknown[], node: AstNode): CodePromise {
     const key = reference.path.join('.')
     if (key === 'available.search') {
-      return this.track(Promise.resolve(this.search(args[0], node)))
+      const result = this.search(args[0], node)
+      this.recordDiscovery('available.search', args[0], result, 'Searched tools')
+      return this.track(Promise.resolve(result))
+    }
+    if (key === 'available.get') {
+      const result = this.get(args[0], node)
+      this.recordDiscovery('available.get', args[0], result, 'Retrieved tools')
+      return this.track(Promise.resolve(result))
     }
     const tool = this.projectedByPath.get(key)
     if (!tool) throw new CodeModeRuntimeError('UnknownTool', `tools.${key} is not callable.`, node)
+    if (!this.options.obtainedTools.has(key)) {
+      if (tool.entry.namespace === 'mcp' && !this.options.discoveredMcpTools.has(tool.expression)) {
+        throw new CodeModeRuntimeError('UnknownTool', `Search for this MCP capability with tools.available.search before using it.`, node)
+      }
+      const contract = this.get({ name: tool.expression }, node)
+      this.recordDiscovery('available.get', { name: tool.expression }, contract, 'Retrieved tools')
+      throw new CodeModeRuntimeError(
+        'ToolContractRequired',
+        `The attempted ${tool.expression} call was not executed because its instructions had not been retrieved. TideCode retrieved them now. Review this complete tools.available.get result and retry the operation with the correct arguments:\n${JSON.stringify(contract, null, 2)}`,
+        node,
+      )
+    }
     if (args.length !== 1) {
       throw new CodeModeRuntimeError('InvalidToolArguments', `${tool.expression} expects exactly one input value.`, node)
     }
@@ -269,22 +298,55 @@ export class ToolRuntime {
     return new CodePromise(promise)
   }
 
+  private recordDiscovery(name: string, input: unknown, result: unknown, summary: string): void {
+    this.options.toolCalls.push({
+      arguments: copyBoundaryValue(input ?? {}, 'Discovery receipt arguments'),
+      body: JSON.stringify(result, null, 2),
+      durationMs: 0,
+      name,
+      status: 'success',
+      summary,
+    })
+  }
+
   private search(input: unknown, node: AstNode): Record<string, unknown> {
     const raw = input === undefined ? Object.create(null) : copyBoundaryValue(input, 'Code Mode search input', node)
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.$codemode.search expects an object.', node)
+      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.search expects an object.', node)
     }
+
     const value = raw as ToolSearchInput
     const query = typeof value.query === 'string' ? value.query.trim().toLowerCase() : ''
     const namespace = typeof value.namespace === 'string' ? value.namespace.trim().toLowerCase() : undefined
     const limit = Number.isInteger(value.limit) ? Math.max(1, Math.min(50, Number(value.limit))) : 10
     const offset = Number.isInteger(value.offset) ? Math.max(0, Number(value.offset)) : 0
-    return searchAvailableApis([...this.projectedByPath.values()].map((tool) => ({
+    const result = searchAvailableApis([...this.projectedByPath.values()].map((tool) => ({
       path: tool.expression,
       description: tool.entry.description,
       namespace: tool.entry.namespace,
       signature: schemaSignature(tool),
     })), { query, namespace, limit, offset })
+    for (const item of result.items) {
+      if (item.name.startsWith('tools.mcp.')) this.options.discoveredMcpTools.add(item.name)
+    }
+    return result
+  }
+
+  private get(input: unknown, node: AstNode): Record<string, unknown> {
+    const raw = copyBoundaryValue(input, 'Available get input', node)
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)
+      || Object.keys(raw).some((key) => key !== 'name')
+      || typeof (raw as Record<string, unknown>).name !== 'string') {
+      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.get requires exactly { name: string }.', node)
+    }
+    const name = (raw as { name: string }).name
+    const tool = [...this.projectedByPath.values()].find((item) => item.expression === name)
+    if (!tool) throw new CodeModeRuntimeError('UnknownTool', `Unknown or unauthorized API: ${name}.`, node)
+    if (tool.entry.namespace === 'mcp' && !this.options.discoveredMcpTools.has(name)) {
+      throw new CodeModeRuntimeError('PermissionDenied', `Discover MCP API ${name} using tools.available.search before get.`, node)
+    }
+    this.options.obtainedTools.add(tool.path.join('.'))
+    return { ...getAvailableApi(tool.entry, tool.expression, schemaSignature(tool)) }
   }
 
   private async mutationKeys(tool: ProjectedTool, input: unknown): Promise<string[]> {

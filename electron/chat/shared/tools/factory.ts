@@ -5,6 +5,7 @@ import type { AgentToolContext } from '../toolTypes'
 import { CodeModeExecutor } from '../codeMode/executor'
 import { createExecTool } from '../ai/exec/exec'
 import { documentNativeApi } from '../ai/registry/documentation'
+import { createToolDiscoveryState } from '../ai/registry/sessionDiscovery'
 import { createReadApi } from '../ai/tools/read/read'
 import { createListApi } from '../ai/tools/list/list'
 import { createGlobApi } from '../ai/tools/glob/glob'
@@ -88,6 +89,12 @@ export async function createAgentToolBundle(
   const executor = new CodeModeExecutor(registry, undefined, {
     terminalExecutionMode: planMode ? 'sandbox' : input.terminalExecutionMode,
     workspaceRootPath: input.workspaceRootPath,
+    discoveryState: createToolDiscoveryState(
+      input.conversationId,
+      input.workspaceRootPath,
+      options.chatMode ?? 'agent',
+      input.terminalExecutionMode ?? 'sandbox',
+    ),
   })
   const tools: ToolSet = {
     exec: createExecTool(executor, registry),

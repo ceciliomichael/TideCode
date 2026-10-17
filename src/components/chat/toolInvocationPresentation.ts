@@ -10,6 +10,7 @@ import {
   TERMINATED_TOOL_EXECUTION_MESSAGE,
 } from '../../lib/toolResultContent'
 import { isFileEditTool, isFileMutationTool, isFileWriteTool } from './toolInvocationKinds'
+import { getDiscoveryToolTarget, getDiscoveryToolVerb } from './toolInvocationDiscoveryPresentation'
 
 import {
   getBasename,
@@ -71,6 +72,8 @@ function getReadToolRange(invocation: ToolInvocationTrace) {
 }
 
 function getToolVerb(invocation: ToolInvocationTrace) {
+  const discoveryVerb = getDiscoveryToolVerb(invocation)
+  if (discoveryVerb) return discoveryVerb
   const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
   const parsedArguments = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown> | null
   const operation =
@@ -581,6 +584,8 @@ export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace)
 }
 
 function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: string | null) {
+  const discoveryTarget = getDiscoveryToolTarget(invocation)
+  if (discoveryTarget) return discoveryTarget
   const parsedArguments = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown>
   const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
 
