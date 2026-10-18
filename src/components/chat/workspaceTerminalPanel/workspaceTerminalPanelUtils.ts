@@ -186,6 +186,20 @@ export function createTerminalTabKey(workspaceKey: string, tabIndex: number) {
   return `${encodeURIComponent(workspaceKey)}${TERMINAL_TAB_KEY_SEPARATOR}${tabIndex}`;
 }
 
+export function nextTerminalTabGeneration(generations: Map<string, number>, tabKey: string) {
+  const generation = (generations.get(tabKey) ?? 0) + 1;
+  generations.set(tabKey, generation);
+  return generation;
+}
+
+export function isCurrentTerminalTabGeneration(
+  generations: Map<string, number>,
+  tabKey: string,
+  generation: number,
+) {
+  return generations.get(tabKey) === generation;
+}
+
 export function getWorkspaceKeyFromTerminalTabKey(tabKey: string) {
   const separatorIndex = tabKey.indexOf(TERMINAL_TAB_KEY_SEPARATOR);
   if (separatorIndex === -1) {

@@ -203,11 +203,16 @@ export function createTerminalInstance({
           errorMessage.includes("already exited") || errorMessage.includes("does not belong");
         if (!sessionEnded) {
           console.error(`Failed to write terminal input for tab ${tabKey}`, error);
+          setTerminalTabs((currentTabs) => currentTabs.map((candidate) =>
+            candidate.key === tabKey && candidate.sessionId === sessionId
+              ? { ...candidate, errorMessage: `Terminal input failed: ${errorMessage}`, status: "error" }
+              : candidate,
+          ));
           return;
         }
         sessionIdToTabKeyRef.current.delete(sessionId);
         setTerminalTabs((currentTabs) => currentTabs.map((candidate) =>
-          candidate.key === tabKey
+          candidate.key === tabKey && candidate.sessionId === sessionId
             ? { ...candidate, errorMessage: null, exitCode: candidate.exitCode ?? 0,
                 sessionId: null, status: "exited" }
             : candidate,

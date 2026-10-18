@@ -51,15 +51,16 @@ export function useTerminalSessionEvents({
           ? { ...tab, exitCode: event.exitCode, sessionId: null, status: "exited" as const }
           : tab,
       );
-      setTerminalTabs(markExited);
+      if (workspaceKey === activeWorkspaceKeyRef.current) {
+        setTerminalTabs(markExited);
+      }
 
       const instance = tabInstancesRef.current.get(tabKey);
       if (instance) {
         instance.terminal.writeln(exitMessage);
-        return;
       }
       const storedWorkspaceState = terminalWorkspaceStateRef.current[workspaceKey];
-      if (storedWorkspaceState) {
+      if (storedWorkspaceState && workspaceKey !== activeWorkspaceKeyRef.current) {
         storedWorkspaceState.terminalTabs = markExited(storedWorkspaceState.terminalTabs);
       }
     });

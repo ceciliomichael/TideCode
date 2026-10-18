@@ -1,4 +1,4 @@
-import { Archive, FolderOpen, MessageSquareText } from 'lucide-react'
+import { Archive, ChevronDown, FolderOpen, MessageSquareText } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { ARCHIVED_FOLDER_ID, PINNED_FOLDER_ID } from '../../hooks/chatHistoryViewModels'
 import type { ConversationGroupPreview } from '../../types/chat'
@@ -111,12 +111,13 @@ export function ConversationHistoryList({
         />
       ))}
       {remainingThreadCount > 0 ? (
-        <div className="px-4 py-2">
+        <div className="px-2 pt-1">
           <button
             type="button"
             onClick={() => setVisibleThreadCount((currentValue) => currentValue + THREAD_BATCH_SIZE)}
-            className="min-h-10 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground"
+            className="flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground"
           >
+            <ChevronDown size={14} aria-hidden="true" />
             Show {Math.min(remainingThreadCount, THREAD_BATCH_SIZE)} more
           </button>
         </div>

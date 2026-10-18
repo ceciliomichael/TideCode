@@ -23,6 +23,9 @@ import {
   createTerminalTabKey,
   getUserFacingErrorMessage,
   getSessionDimensions,
+  getWorkspaceKeyFromTerminalTabKey,
+  isCurrentTerminalTabGeneration,
+  nextTerminalTabGeneration,
   reorderTabList,
   resolveTerminalSessionWorkspaceRootPath,
   sanitizeTerminalBuffer,
@@ -49,8 +52,31 @@ autoCreateTabOnOpen = false,
   const activeTabKeyRef = useRef<string | null>(null);
   const activeSessionIdRef = useRef<number | null>(null);
   const sessionIdToTabKeyRef = useRef<Map<number, string>>(new Map());
+  const tabGenerationRef = useRef<Map<string, number>>(new Map());
   const tabBuffersRef = useRef<Map<string, string>>(new Map());
   const restartTerminalTabRef = useRef<(tabKey: string) => void>(() => undefined);
+  const invalidateTabGeneration = useCallback((tabKey: string) =>
+    nextTerminalTabGeneration(tabGenerationRef.current, tabKey), []);
+  const isCurrentGeneration = useCallback((tabKey: string, generation: number) =>
+    isCurrentTerminalTabGeneration(tabGenerationRef.current, tabKey, generation), []);
+  const updateSessionTab = useCallback((
+    tabKey: string,
+    update: (tab: TerminalTabState) => TerminalTabState,
+  ) => {
+    const tabWorkspaceKey = getWorkspaceKeyFromTerminalTabKey(tabKey);
+    if (tabWorkspaceKey === activeWorkspaceKeyRef.current) {
+      const nextTabs = terminalTabsRef.current.map((tab) =>
+        tab.key === tabKey ? update(tab) : tab);
+      terminalTabsRef.current = nextTabs;
+      setTerminalTabs(nextTabs);
+    } else {
+      const stored = tabWorkspaceKey ? terminalWorkspaceStateRef.current[tabWorkspaceKey] : undefined;
+      if (stored) {
+        stored.terminalTabs = stored.terminalTabs.map((tab) =>
+          tab.key === tabKey ? update(tab) : tab);
+      }
+    }
+  }, []);
   const [terminalTabs, setTerminalTabs] = useState<TerminalTabState[]>([]);
   const [activeTerminalTabKey, setActiveTerminalTabKey] = useState<string | null>(null);
 
@@ -145,9 +171,10 @@ autoCreateTabOnOpen = false,
         instance.container.style.display = isTargetActive ? "block" : "none";
         if (isTargetActive && isOpen) {
           setTimeout(() => {
-            if (syncTabSize(key, true)) {
-              instance.terminal.focus();
-            }
+            if (tabInstancesRef.current.get(key) !== instance ||
+                activeTabKeyRef.current !== key) return;
+            syncTabSize(key, true);
+            instance.terminal.focus();
           }, 0);
         }
       });
@@ -175,6 +202,7 @@ autoCreateTabOnOpen = false,
 
     nextTabIndexRef.current = tabIndex + 1;
     const tabKey = createTerminalTabKey(workspaceKey, tabIndex);
+    const generation = invalidateTabGeneration(tabKey);
     const nextTab: TerminalTabState = {
       errorMessage: null,
       exitCode: null,
@@ -186,8 +214,10 @@ autoCreateTabOnOpen = false,
     };
 
     tabBuffersRef.current.set(tabKey, "");
-    setTerminalTabs((currentTabs) => [...currentTabs, nextTab]);
+    terminalTabsRef.current = [...currentTabs, nextTab];
+    setTerminalTabs(terminalTabsRef.current);
     setActiveTerminalTabKey(tabKey);
+    activeTabKeyRef.current = tabKey;
 
     const instance = ensureTabInstance(tabKey);
     updateTabVisibility(tabKey);
@@ -203,14 +233,20 @@ autoCreateTabOnOpen = false,
         workspaceRootPath: workspacePathRef.current,
       });
 
+      if (!isCurrentGeneration(tabKey, generation)) {
+        void window.tidecodeTerminal.closeSession({
+          sessionId: session.sessionId,
+          workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(session.workspaceRootPath),
+        }).catch(console.error);
+        return;
+      }
+
       sessionIdToTabKeyRef.current.set(session.sessionId, tabKey);
       const sanitizedOutput = boundTerminalReplayBuffer(sanitizeTerminalBuffer(session.bufferedOutput));
       tabBuffersRef.current.set(tabKey, sanitizedOutput);
 
-      setTerminalTabs((currentTabs) =>
-        currentTabs.map((tab) =>
-          tab.key === tabKey
-            ? {
+      updateSessionTab(tabKey, (tab) =>
+          ({
                 ...tab,
                 errorMessage: null,
                 exitCode: null,
@@ -221,35 +257,30 @@ autoCreateTabOnOpen = false,
                 workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(
                   session.workspaceRootPath,
                 ),
-              }
-            : tab,
-        ),
+              }),
       );
 
       if (sanitizedOutput.length > 0) {
         instance.terminal.write(sanitizedOutput);
       }
-      instance.terminal.focus();
       syncTabSize(tabKey, true);
+      if (activeTabKeyRef.current === tabKey && isOpen) instance.terminal.focus();
     } catch (error) {
+      if (!isCurrentGeneration(tabKey, generation)) return;
       const message = getUserFacingErrorMessage(error);
-      setTerminalTabs((currentTabs) =>
-        currentTabs.map((tab) =>
-          tab.key === tabKey
-            ? {
+      updateSessionTab(tabKey, (tab) =>
+          ({
                 ...tab,
                 errorMessage: message,
                 sessionId: null,
                 status: "error",
-              }
-            : tab,
-        ),
+              }),
       );
 
       instance.terminal.writeln(`\r\n\r\nFailed to start terminal: ${message}`);
       console.error("Failed to start terminal session", error);
     }
-  }, [ensureTabInstance, syncTabSize, updateTabVisibility, workspaceKey]);
+  }, [ensureTabInstance, invalidateTabGeneration, isCurrentGeneration, isOpen, syncTabSize, updateSessionTab, updateTabVisibility, workspaceKey]);
 
   const removeTerminalTabFromUi = useCallback(
     (tabKey: string) => {
@@ -258,6 +289,7 @@ autoCreateTabOnOpen = false,
       if (currentTabIndex === -1) return;
 
       const currentTab = currentTabs[currentTabIndex];
+      invalidateTabGeneration(tabKey);
       if (currentTab.sessionId !== null) {
         sessionIdToTabKeyRef.current.delete(currentTab.sessionId);
       }
@@ -286,7 +318,7 @@ autoCreateTabOnOpen = false,
       setActiveTerminalTabKey(nextActiveTab.key);
       updateTabVisibility(nextActiveTab.key);
     },
-    [disposeTabInstance, onClose, updateTabVisibility],
+    [disposeTabInstance, invalidateTabGeneration, onClose, updateTabVisibility],
   );
 
   const closeTerminalTab = useCallback(
@@ -317,7 +349,8 @@ autoCreateTabOnOpen = false,
 
   useEffect(() => {
     return window.tidecodeTerminal.onTabClosed((event) => {
-      const explicitTabKey = event.tabKey && terminalTabsRef.current.some((tab) => tab.key === event.tabKey)
+      const explicitTabKey = event.tabKey && terminalTabsRef.current.some((tab) =>
+        tab.key === event.tabKey && tab.sessionId === event.sessionId)
         ? event.tabKey
         : null;
       const tabKey = explicitTabKey ?? sessionIdToTabKeyRef.current.get(event.sessionId) ?? null;
@@ -340,35 +373,31 @@ autoCreateTabOnOpen = false,
       if (!currentTab) {
         return;
       }
+      const generation = invalidateTabGeneration(tabKey);
+      updateSessionTab(tabKey, (tab) => ({
+        ...tab,
+        errorMessage: null,
+        exitCode: null,
+        sessionId: null,
+        status: "connecting",
+      }));
 
       if (currentTab.sessionId !== null) {
         sessionIdToTabKeyRef.current.delete(currentTab.sessionId);
-        void window.tidecodeTerminal
+        try {
+          await window.tidecodeTerminal
           .closeSession({
             sessionId: currentTab.sessionId,
             workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(currentTab.workspaceRootPath),
-          })
-          .catch((error) => {
-            console.error("Failed to close terminal session during restart", error);
           });
+        } catch (error) {
+          console.error("Failed to close terminal session during restart", error);
+        }
       }
+      if (!isCurrentGeneration(tabKey, generation)) return;
 
       disposeTabInstance(tabKey);
       tabBuffersRef.current.set(tabKey, "");
-
-      setTerminalTabs((currentTabs) =>
-        currentTabs.map((tab) =>
-          tab.key === tabKey
-            ? {
-                ...tab,
-                errorMessage: null,
-                exitCode: null,
-                sessionId: null,
-                status: "connecting",
-              }
-            : tab,
-        ),
-      );
 
       const instance = ensureTabInstance(tabKey);
       updateTabVisibility(activeTabKeyRef.current);
@@ -378,20 +407,26 @@ autoCreateTabOnOpen = false,
       try {
         const session = await window.tidecodeTerminal.createSession({
           cols: dimensions.cols,
-          cwd: workspacePathRef.current,
+          cwd: currentTab.workspaceRootPath,
           rows: dimensions.rows,
           sessionKey: tabKey,
-          workspaceRootPath: workspacePathRef.current,
+          workspaceRootPath: currentTab.workspaceRootPath,
         });
+
+        if (!isCurrentGeneration(tabKey, generation)) {
+          void window.tidecodeTerminal.closeSession({
+            sessionId: session.sessionId,
+            workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(session.workspaceRootPath),
+          }).catch(console.error);
+          return;
+        }
 
         sessionIdToTabKeyRef.current.set(session.sessionId, tabKey);
         const sanitizedOutput = boundTerminalReplayBuffer(sanitizeTerminalBuffer(session.bufferedOutput));
         tabBuffersRef.current.set(tabKey, sanitizedOutput);
 
-        setTerminalTabs((currentTabs) =>
-          currentTabs.map((tab) =>
-            tab.key === tabKey
-              ? {
+        updateSessionTab(tabKey, (tab) =>
+            ({
                   ...tab,
                   errorMessage: null,
                   exitCode: null,
@@ -400,9 +435,7 @@ autoCreateTabOnOpen = false,
                     session.workspaceRootPath,
                   ),
                   status: "ready",
-                }
-              : tab,
-          ),
+                }),
         );
 
         if (sanitizedOutput.length > 0) {
@@ -413,35 +446,34 @@ autoCreateTabOnOpen = false,
           syncTabSize(tabKey, true);
         }
       } catch (error) {
+        if (!isCurrentGeneration(tabKey, generation)) return;
         const message = getUserFacingErrorMessage(error);
-        setTerminalTabs((currentTabs) =>
-          currentTabs.map((tab) =>
-            tab.key === tabKey
-              ? {
+        updateSessionTab(tabKey, (tab) =>
+            ({
                   ...tab,
                   errorMessage: message,
                   sessionId: null,
                   status: "error",
-                }
-              : tab,
-          ),
+                }),
         );
 
         instance.terminal.writeln(`\r\n\r\nFailed to start terminal: ${message}`);
         console.error("Failed to restart terminal session", error);
       }
     },
-    [disposeTabInstance, ensureTabInstance, syncTabSize, updateTabVisibility],
+    [disposeTabInstance, ensureTabInstance, invalidateTabGeneration, isCurrentGeneration, syncTabSize, updateSessionTab, updateTabVisibility],
   );
   restartTerminalTabRef.current = restartTerminalTab;
 
   const selectTerminalTab = useCallback(
     (tabKey: string) => {
       if (activeTabKeyRef.current === tabKey) {
+        tabInstancesRef.current.get(tabKey)?.terminal.focus();
         return;
       }
 
       setActiveTerminalTabKey(tabKey);
+      activeTabKeyRef.current = tabKey;
       updateTabVisibility(tabKey);
     },
     [updateTabVisibility],
