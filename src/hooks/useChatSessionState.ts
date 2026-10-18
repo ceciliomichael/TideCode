@@ -370,6 +370,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
 
   useEffect(() => {
     let disposed = false
+    let refreshVersion = 0
 
     const applyProjection = (projection: SharedRunProjection) => {
       if (disposed) return
@@ -393,9 +394,9 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
       })
     }
 
-    const loadProjection = (run: SharedRunSnapshot) => {
+    const loadProjection = (run: SharedRunSnapshot, forceRefresh = false) => {
       const existingProjection = sharedRunProjectionsByConversationIdRef.current.get(run.conversationId)
-      if (existingProjection?.runId === run.runId) return
+      if (!forceRefresh && existingProjection?.runId === run.runId) return
       void window.tidecodeRuns.getRunProjection(run.runId)
         .then((projection) => {
           if (projection) applyProjection(projection)
@@ -403,7 +404,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
         .catch((caughtError) => console.error('Unable to load shared Tidecode run projection.', caughtError))
     }
 
-    const reconcileSharedRuns = (runs: SharedRunSnapshot[]) => {
+    const reconcileSharedRuns = (runs: SharedRunSnapshot[], forceProjectionRefresh = false) => {
       if (disposed) return
       const runsByConversationId = new Map(runs.map((run) => [run.conversationId, run]))
       sharedRunsByConversationIdRef.current = runsByConversationId
@@ -450,17 +451,53 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
 
         return hasChanges ? nextValue : currentValue
       })
-      for (const run of runs) loadProjection(run)
+      for (const run of runs) loadProjection(run, forceProjectionRefresh)
     }
 
     const refreshSharedRuns = () => {
+      const version = ++refreshVersion
       void window.tidecodeRuns.listActiveRuns()
-        .then(reconcileSharedRuns)
+        .then(async (runs) => {
+          if (disposed || version !== refreshVersion) return
+          const endedConversationIds = [...sharedRunsByConversationIdRef.current.keys()]
+            .filter((id) => !runs.some((run) => run.conversationId === id))
+          const completedConversations = await Promise.all(endedConversationIds.map((id) =>
+            window.tidecodeHistory.getConversation(id).catch(() => null),
+          ))
+          if (disposed || version !== refreshVersion) return
+          reconcileSharedRuns(runs, true)
+          for (const conversation of completedConversations) {
+            if (!conversation) continue
+            setConversationSummaries((current) => upsertConversationSummary(current, conversation))
+            setConversationRuntimeStates((current) => {
+              const state = current[conversation.id]
+              if (!state || runs.some((run) => run.conversationId === conversation.id)) return current
+              return {
+                ...current,
+                [conversation.id]: {
+                  ...createConversationRuntimeState(conversation, state),
+                  activeStreamId: null,
+                  isSending: false,
+                  sharedRunId: null,
+                  isStreamingTextActive: false,
+                  streamingAssistantMessageId: null,
+                  streamingWaitingIndicatorVariant: null,
+                },
+              }
+            })
+          }
+        })
         .catch((caughtError) => console.error('Unable to load shared Tidecode runs.', caughtError))
     }
 
     refreshSharedRuns()
     const reconciliationIntervalId = window.setInterval(refreshSharedRuns, 10_000)
+    const refreshWhenActive = () => {
+      if (document.visibilityState === 'visible') refreshSharedRuns()
+    }
+    document.addEventListener('visibilitychange', refreshWhenActive)
+    window.addEventListener('focus', refreshWhenActive)
+    window.addEventListener('tidecode:remote-reconnected', refreshSharedRuns)
 
     const unsubscribe = window.tidecodeRuns.onEvent((event) => {
       if (event.type === 'run_state') {
@@ -596,7 +633,11 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
 
     return () => {
       disposed = true
+      refreshVersion += 1
       window.clearInterval(reconciliationIntervalId)
+      document.removeEventListener('visibilitychange', refreshWhenActive)
+      window.removeEventListener('focus', refreshWhenActive)
+      window.removeEventListener('tidecode:remote-reconnected', refreshSharedRuns)
       unsubscribe()
     }
   }, [])

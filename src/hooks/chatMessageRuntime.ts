@@ -9,6 +9,7 @@ import type {
 } from '../types/chat'
 import type { ContextCompactionSettings } from '../lib/contextCompactionSettings'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
+import { isRemoteBrowserRuntime } from '../remote/webBridge'
 import {
   hasMeaningfulAssistantContent,
   normalizeAssistantMessageContent,
@@ -117,6 +118,29 @@ export async function streamAssistantResponse(
 
   return new Promise<StreamAssistantResponseOutput>((resolve, reject) => {
     const queuedEvents: Parameters<Parameters<typeof window.tidecodeChat.onStreamEvent>[0]>[0][] = []
+    let settled = false
+    let recoveryInFlight = false
+    const cleanup = () => {
+      settled = true
+      unsubscribe()
+      window.removeEventListener('tidecode:remote-reconnected', recoverMissedCompletion)
+      window.removeEventListener('focus', recoverMissedCompletion)
+      document.removeEventListener('visibilitychange', recoverMissedCompletion)
+    }
+    const recoverMissedCompletion = () => {
+      if (!isRemoteBrowserRuntime() || input.processStreamEvents !== false
+        || !streamId || settled || recoveryInFlight || document.visibilityState !== 'visible') return
+      recoveryInFlight = true
+      void window.tidecodeRuns.listActiveRuns()
+        .then((runs) => {
+          if (settled || !streamId) return
+          if (runs.some((run) => run.streamId === streamId)) return
+          cleanup()
+          resolve({ hadMeaningfulOutput: true, wasAborted: false })
+        })
+        .catch((error) => console.error('Unable to reconcile remote stream completion.', error))
+        .finally(() => { recoveryInFlight = false })
+    }
 
     const handleStreamEvent = (event: Parameters<Parameters<typeof window.tidecodeChat.onStreamEvent>[0]>[0]) => {
       if (event.type === 'content_delta') {
@@ -216,19 +240,19 @@ export async function streamAssistantResponse(
       }
 
       if (event.type === 'completed') {
-        unsubscribe()
+        cleanup()
         resolve({ hadMeaningfulOutput, wasAborted: false })
         return
       }
 
       if (event.type === 'aborted') {
-        unsubscribe()
+        cleanup()
         resolve({ hadMeaningfulOutput, wasAborted: true })
         return
       }
 
       if (event.type === 'error') {
-        unsubscribe()
+        cleanup()
         reject(new Error(event.errorMessage))
       }
     }
@@ -245,6 +269,11 @@ export async function streamAssistantResponse(
 
       handleStreamEvent(event)
     })
+    if (isRemoteBrowserRuntime() && input.processStreamEvents === false) {
+      window.addEventListener('tidecode:remote-reconnected', recoverMissedCompletion)
+      window.addEventListener('focus', recoverMissedCompletion)
+      document.addEventListener('visibilitychange', recoverMissedCompletion)
+    }
 
     void window.tidecodeChat
       .startStream({
@@ -274,7 +303,7 @@ export async function streamAssistantResponse(
         queuedEvents.length = 0
       })
       .catch((error) => {
-        unsubscribe()
+        cleanup()
         reject(error)
       })
   })

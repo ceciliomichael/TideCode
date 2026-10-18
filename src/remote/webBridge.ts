@@ -20,6 +20,7 @@ class RemoteConnection {
   private socket: WebSocket | null = null
   private connectPromise: Promise<void> | null = null
   private reconnectTimer: number | null = null
+  private hasConnected = false
   private readonly pending = new Map<string, {
     reject: (error: Error) => void
     resolve: (value: unknown) => void
@@ -59,6 +60,10 @@ class RemoteConnection {
               if (!settled) {
                 settled = true
                 this.connectPromise = null
+                if (this.hasConnected) {
+                  window.dispatchEvent(new Event('tidecode:remote-reconnected'))
+                }
+                this.hasConnected = true
                 resolve()
               }
               return

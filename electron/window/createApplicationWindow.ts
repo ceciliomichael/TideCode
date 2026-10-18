@@ -120,6 +120,14 @@ interface BrowserGuestDevToolsViewEntry {
 }
 
 const browserGuestDevToolsViews = new Map<number, BrowserGuestDevToolsViewEntry>()
+const browserGuestFloatingDevTools = new Map<number, BrowserWindow>()
+
+function destroyBrowserGuestFloatingDevTools(guestWebContentsId: number) {
+  const floatingWindow = browserGuestFloatingDevTools.get(guestWebContentsId)
+  if (!floatingWindow) return
+  browserGuestFloatingDevTools.delete(guestWebContentsId)
+  if (!floatingWindow.isDestroyed()) floatingWindow.destroy()
+}
 
 function normalizeBrowserDevToolsBounds(bounds: Rectangle): Rectangle {
   return {
@@ -198,7 +206,30 @@ export async function openBrowserGuestDevTools(
       } else if (guestWebContents.isDevToolsOpened() && previousMode !== mode) {
         await closeDevToolsForTransition(guestWebContents)
       }
-      guestWebContents.openDevTools({ mode: 'undocked', activate: true })
+      let floatingWindow = browserGuestFloatingDevTools.get(guestWebContents.id)
+      if (!floatingWindow || floatingWindow.isDestroyed()) {
+        floatingWindow = new BrowserWindow({
+          width: 960,
+          height: 680,
+          minWidth: 420,
+          minHeight: 320,
+          title: 'Browser DevTools',
+          parent: ownerWindow,
+          webPreferences: { sandbox: true },
+        })
+        const devToolsWindow = floatingWindow
+        browserGuestFloatingDevTools.set(guestWebContents.id, devToolsWindow)
+        devToolsWindow.on('closed', () => {
+          if (browserGuestFloatingDevTools.get(guestWebContents.id) === devToolsWindow) {
+            browserGuestFloatingDevTools.delete(guestWebContents.id)
+            if (guestWebContents.isDevToolsOpened()) guestWebContents.closeDevTools()
+          }
+        })
+        guestWebContents.setDevToolsWebContents(devToolsWindow.webContents)
+        guestWebContents.openDevTools({ mode: 'detach', activate: true })
+      }
+      floatingWindow.show()
+      floatingWindow.focus()
       return
     }
 
@@ -213,6 +244,7 @@ export async function openBrowserGuestDevTools(
       if (guestWebContents.isDevToolsOpened()) {
         await closeDevToolsForTransition(guestWebContents)
       }
+      destroyBrowserGuestFloatingDevTools(guestWebContents.id)
       destroyBrowserGuestDevToolsView(guestWebContents.id)
 
       const view = new WebContentsView({
@@ -414,6 +446,7 @@ export async function createApplicationWindow(input: {
       browserGuestDevToolsModes.delete(guestWebContents.id)
       browserGuestDevToolsTransitions.delete(guestWebContents.id)
       destroyBrowserGuestDevToolsView(guestWebContents.id)
+      destroyBrowserGuestFloatingDevTools(guestWebContents.id)
     })
     guestWebContents.on('devtools-closed', () => {
       if (browserGuestDevToolsTransitions.has(guestWebContents.id)) {
@@ -425,6 +458,7 @@ export async function createApplicationWindow(input: {
         entry.view.setVisible(false)
       }
       destroyBrowserGuestDevToolsView(guestWebContents.id)
+      destroyBrowserGuestFloatingDevTools(guestWebContents.id)
       if (!win.isDestroyed()) {
         win.webContents.send('browser:devToolsClosed', guestWebContents.id)
       }
