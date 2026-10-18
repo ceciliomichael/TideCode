@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   AppTerminalExecutionMode,
   ChatMode,
@@ -62,25 +62,47 @@ export function useChatContextUsage({
   agentContextRootPath,
   chatMode,
   conversationId,
-  contextCompaction,
+  contextCompaction: contextCompactionInput,
   messages,
   modelId,
   providerId,
   refreshSignal = 0,
   terminalExecutionMode,
 }: UseChatContextUsageInput) {
-  const [usage, setUsage] = useState<ContextUsageEstimate>(EMPTY_CONTEXT_USAGE)
+  const { contextWindowTokens, retainedContextTokens, triggerPercent } = contextCompactionInput
+  const contextCompaction = useMemo(() => ({
+    contextWindowTokens,
+    retainedContextTokens,
+    triggerPercent,
+  }), [contextWindowTokens, retainedContextTokens, triggerPercent])
+
+  // A new selection owns its queue so an old chat's request cannot delay it.
+  const refreshQueue = useMemo(createContextUsageRefresh, [
+    agentContextRootPath,
+    chatMode,
+    contextCompaction,
+    conversationId,
+    modelId,
+    providerId,
+    terminalExecutionMode,
+  ])
+  const [usageState, setUsageState] = useState({
+    owner: refreshQueue,
+    usage: EMPTY_CONTEXT_USAGE,
+  })
   const messagesRef = useRef(messages)
   const fetchUsageRef = useRef<(() => void) | null>(null)
   const requestSequenceRef = useRef(0)
-  const [refreshQueue] = useState(createContextUsageRefresh)
   messagesRef.current = messages
 
   useEffect(() => {
-    setUsage(EMPTY_CONTEXT_USAGE)
+    const setUsage = (usage: ContextUsageEstimate) => {
+      setUsageState({ owner: refreshQueue, usage })
+    }
 
     if (!providerId) {
       requestSequenceRef.current += 1
+      setUsage(EMPTY_CONTEXT_USAGE)
       fetchUsageRef.current = null
       return
     }
@@ -91,11 +113,13 @@ export function useChatContextUsage({
 
     const fetchUsage = (force = false) => {
       if (liveStreamId && !force) return
-      const requestSequence = ++requestSequenceRef.current
       refreshQueue.request(async () => {
         if (isCancelled || (liveStreamId && !force)) {
           return
         }
+        // Queuing another refresh must not discard a usable in-flight result.
+        // Advance the sequence only when the next estimate actually starts.
+        const requestSequence = ++requestSequenceRef.current
         await window.tidecodeChat
           .estimateContextUsage({
             agentContextRootPath,
@@ -157,20 +181,22 @@ export function useChatContextUsage({
       fetchUsage(true)
     })
 
+    // Estimate immediately; active-run discovery may supply a newer live value.
+    fetchUsage()
     void window.tidecodeRuns.listActiveRuns()
       .then((runs) => {
         if (isCancelled || liveStreamId || !conversationId) return
         const activeRun = runs.find((run) => run.conversationId === conversationId)
         if (activeRun?.streamId && activeRun.contextUsage) {
           liveStreamId = activeRun.streamId
+          refreshQueue.cancelPending()
           requestSequenceRef.current += 1
           setUsage(activeRun.contextUsage)
           return
         }
-        fetchUsage()
       })
-      .catch(() => {
-        if (!isCancelled) fetchUsage()
+      .catch((error) => {
+        console.error('Failed to restore live chat context usage', error)
       })
 
     let unsubscribeExplorer: (() => void) | null = null
@@ -225,5 +251,7 @@ export function useChatContextUsage({
     return () => window.clearTimeout(timeoutId)
   }, [messages, providerId, refreshSignal])
 
-  return usage
+  // Hide the previous selection's numbers during the render that switches chats,
+  // rather than waiting for an effect or an asynchronous estimate to reset them.
+  return providerId && usageState.owner === refreshQueue ? usageState.usage : EMPTY_CONTEXT_USAGE
 }

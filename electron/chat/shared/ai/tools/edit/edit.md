@@ -1,0 +1,3 @@
+# tools.edit
+
+Preferred for exact replacements in existing text files. Supply `changes: [{ path, oldText, newText, replace_all? }]`. Changes apply sequentially in array order, including multiple changes in the same file. `oldText` must be non-empty and occur exactly once by default; set `replace_all: true` to replace all occurrences. Missing or ambiguous matches reject the entire operation before any file writes. All affected files are committed through the same mutation queue, checkpoint handling and rollback logic as patches. For complex contextual hunks use `tools.patch`; to create a new file use `tools.write`. Read current file contents before editing. Use `payloads` to preserve exact multiline strings.

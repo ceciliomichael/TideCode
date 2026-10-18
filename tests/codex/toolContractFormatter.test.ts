@@ -37,6 +37,30 @@ test('MCP tool contract preserves nested types and enum and array constraints', 
 
 test('unrepresentable JSON schema conditions survive in a JSON fallback', () => {
   const result = contract({ type: 'object', allOf: [{ required: ['x'] }], properties: { x: { type: 'string' } } })
-  assert.match(result, /Additional schema constraints:/u)
+  assert.match(result, /Complete input schema/u)
   assert.match(result, /"allOf"/u)
+  assert.doesNotMatch(result, /## Parameters/u)
+})
+
+test('MCP referenced schemas retain exact constraints without duplicate parameter notes', () => {
+  const result = contract({
+    type: 'object',
+    required: ['issue'],
+    properties: { issue: { $ref: '#/$defs/Issue', description: 'Issue payload' } },
+    $defs: { Issue: { type: 'object', required: ['title'], properties: { title: { type: 'string', minLength: 3 } } } },
+  }, 'mcp')
+  assert.match(result, /"issue": Issue/u)
+  assert.match(result, /"\$ref": "#\/\$defs\/Issue"/u)
+  assert.match(result, /"minLength": 3/u)
+  assert.doesNotMatch(result, /## Parameters/u)
+  assert.equal((result.match(/Issue payload/gu) ?? []).length, 1)
+})
+
+test('MCP simple schemas retain readable parameter notes without raw schema duplication', () => {
+  const result = contract({ type: 'object', properties: {
+    query: { type: 'string', description: 'Search phrase', minLength: 1 },
+  } }, 'mcp')
+  assert.match(result, /## Parameters/u)
+  assert.match(result, /Search phrase/u)
+  assert.doesNotMatch(result, /## Complete input schema/u)
 })

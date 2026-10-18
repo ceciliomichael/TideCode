@@ -1,5 +1,13 @@
 # Design
 
+## File editing
+
+Discovery refinement (2026-10-19): both native and MCP tools use consistent one-line descriptions and namespace selection. `available.list` pages namespaces or tools; `available.search` ranks names and descriptions within an optional namespace with a ten-result maximum. Invalid search parameters produce an explicit error rather than silent correction.
+
+Current discovery behavior (2026-10-19): `tools.available.list()` starts at a namespace index, not the native-tool page. Selecting `native` or an MCP server namespace lists that namespace's tools in pages of ten with short descriptions. MCP tools do not require an extra `mcp` namespace selection. Search remains names-only, and get returns full contracts.
+
+Prefer `tools.edit` for exact replacements and `replace_all: true` when every occurrence should change. A missing match or ambiguous non-global match rejects the whole operation before writes. Multiple replacements are applied in order, across files, with the same visible diff presentation as `tools.patch`. Keep patch for complex contextual edits and write for whole-file creation.
+
 ## Per-chat durable memory
 
 Implemented storage choice (2026-10-18): keep durable Markdown in the conversation's canonical compaction history, not in a separate project DURABLE.md file. Chats in the same project have independent durable state. Successful compaction saves both the reconciled long-term memory and a separate short-term continuation summary; reopening injects a short instruction to read the current chat's memory using `tools.read({ path: '@chat/DURABLE.md' })`. Optional shared workspace MEMORY.md remains a distinct existing feature, controlled separately in Settings.

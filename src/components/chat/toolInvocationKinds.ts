@@ -1,5 +1,5 @@
 const FILE_WRITE_TOOL_NAMES = new Set(['write'])
-const FILE_EDIT_TOOL_NAMES = new Set(['patch'])
+const FILE_EDIT_TOOL_NAMES = new Set(['patch', 'edit'])
 
 export function isFileWriteTool(toolName: string) {
   return FILE_WRITE_TOOL_NAMES.has(toolName)

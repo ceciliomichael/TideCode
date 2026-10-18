@@ -138,9 +138,27 @@ class McpWorkspaceSession {
   private configsById = new Map<string, McpServerConfig>()
   private configErrorMessage: string | null = null
   private loadPromise: Promise<void> | null = null
+  private pendingConnections = new Set<Promise<void>>()
   private runtimesById = new Map<string, ManagedRuntime>()
 
-  constructor(private readonly workspacePath: string | null) {}
+  constructor(
+    private readonly workspacePath: string | null,
+    private readonly onStateChange: (state: McpState) => void,
+  ) {}
+
+  private startConnectRuntime(serverId: string, config: McpServerConfig) {
+    const pendingConnection = this.connectRuntime(serverId, config)
+      .catch(() => undefined)
+      .then(() => this.onStateChange(this.buildState()))
+      .finally(() => this.pendingConnections.delete(pendingConnection))
+    this.pendingConnections.add(pendingConnection)
+  }
+
+  private async waitForPendingConnections() {
+    while (this.pendingConnections.size > 0) {
+      await Promise.all(Array.from(this.pendingConnections))
+    }
+  }
 
   private async syncFromDisk() {
     try {
@@ -185,7 +203,7 @@ class McpWorkspaceSession {
           })
 
           if (config.enabled && config.autoConnect) {
-            await this.connectRuntime(config.id, config)
+            this.startConnectRuntime(config.id, config)
           }
           continue
         }
@@ -203,16 +221,17 @@ class McpWorkspaceSession {
 
         const signatureChanged = runtime.connectionSignature !== connectionSignature
         const shouldReconnect = config.autoConnect && signatureChanged && runtime.status.status === 'connected'
-        const shouldConnect = config.autoConnect && runtime.status.status !== 'connected'
+        const shouldConnect =
+          config.autoConnect && runtime.status.status !== 'connected' && runtime.status.status !== 'connecting'
 
         if (shouldReconnect) {
           await this.disconnectRuntime(config.id, runtime, false)
-          await this.connectRuntime(config.id, config)
+          this.startConnectRuntime(config.id, config)
           continue
         }
 
         if (shouldConnect) {
-          await this.connectRuntime(config.id, config)
+          this.startConnectRuntime(config.id, config)
           continue
         }
 
@@ -240,7 +259,7 @@ class McpWorkspaceSession {
 
   private async connectRuntime(serverId: string, config: McpServerConfig) {
     const currentRuntime = this.runtimesById.get(serverId)
-    if (currentRuntime?.status.status === 'connected') {
+    if (currentRuntime?.status.status === 'connected' || currentRuntime?.status.status === 'connecting') {
       return currentRuntime
     }
 
@@ -385,7 +404,7 @@ class McpWorkspaceSession {
     })
 
     if (shouldReconnect && nextConfig.enabled && nextConfig.autoConnect) {
-      await this.connectRuntime(nextConfig.id, nextConfig)
+      this.startConnectRuntime(nextConfig.id, nextConfig)
     }
 
     return this.reload()
@@ -410,7 +429,7 @@ class McpWorkspaceSession {
       autoConnect: true,
     }
     this.configsById.set(serverId, nextConfig)
-    await this.connectRuntime(serverId, nextConfig)
+    this.startConnectRuntime(serverId, nextConfig)
     return this.buildState()
   }
 
@@ -526,6 +545,7 @@ class McpWorkspaceSession {
 
   async getToolSet(): Promise<ToolSet> {
     await this.ensureLoaded()
+    await this.waitForPendingConnections()
     const toolSet: ToolSet = {}
 
     for (const runtime of this.runtimesById.values()) {
@@ -550,6 +570,7 @@ class McpWorkspaceSession {
 
   private async getDynamicToolCatalog(): Promise<McpToolCatalogEntry[]> {
     await this.ensureLoaded()
+    await this.waitForPendingConnections()
     const catalogEntries: McpToolCatalogEntry[] = []
     const catalogIds = new Set<string>()
 
@@ -622,7 +643,13 @@ export class McpServerManager {
     const key = this.getSessionKey(workspacePath)
     let session = this.workspaceSessions.get(key)
     if (!session) {
-      session = new McpWorkspaceSession(normalizeWorkspacePath(workspacePath))
+      const normalizedWorkspacePath = normalizeWorkspacePath(workspacePath)
+      session = new McpWorkspaceSession(normalizedWorkspacePath, (state) => {
+        this.emitter.emit('state', {
+          state,
+          workspacePath: normalizedWorkspacePath,
+        })
+      })
       this.workspaceSessions.set(key, session)
     }
 

@@ -30,7 +30,7 @@ const HIDDEN_MODEL_SEMANTIC_KEYS = new Set([
   'wait_seconds',
 ])
 
-const MUTATING_FILE_TOOLS = new Set(['patch', 'write'])
+const MUTATING_FILE_TOOLS = new Set(['edit', 'patch', 'write'])
 const RESERVED_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor'])
 
 class AsyncSemaphore {
@@ -317,15 +317,22 @@ export class ToolRuntime {
 
   private search(input: unknown, node: AstNode): string {
     const raw = input === undefined ? Object.create(null) : copyBoundaryValue(input, 'Code Mode search input', node)
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)
+      || Object.keys(raw).some((key) => !['query', 'namespace', 'limit', 'offset'].includes(key))) {
       throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.search expects an object.', node)
     }
 
     const value = raw as ToolSearchInput
+    if ((value.query !== undefined && typeof value.query !== 'string')
+      || (value.namespace !== undefined && (typeof value.namespace !== 'string' || !value.namespace.trim()))
+      || (value.limit !== undefined && (!Number.isSafeInteger(value.limit) || Number(value.limit) < 1 || Number(value.limit) > 10))
+      || (value.offset !== undefined && (!Number.isSafeInteger(value.offset) || Number(value.offset) < 0))) {
+      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.search requires string query/namespace, limit from 1 to 10, and nonnegative integer offset.', node)
+    }
     const query = typeof value.query === 'string' ? value.query.trim().toLowerCase() : ''
     const namespace = typeof value.namespace === 'string' ? value.namespace.trim().toLowerCase() : undefined
-    const limit = Number.isInteger(value.limit) ? Math.max(1, Math.min(50, Number(value.limit))) : undefined
-    const offset = Number.isInteger(value.offset) ? Math.max(0, Number(value.offset)) : 0
+    const limit = value.limit === undefined ? undefined : Number(value.limit)
+    const offset = value.offset === undefined ? 0 : Number(value.offset)
     const result = searchAvailableApis([...this.projectedByPath.values()].map((tool) => ({
       path: tool.expression,
       description: tool.entry.description,
@@ -352,7 +359,7 @@ export class ToolRuntime {
     if (namespaceValue !== undefined && (typeof namespaceValue !== 'string' || !namespaceValue.trim())) {
       throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.list namespace must be a non-empty string.', node)
     }
-    const namespace = typeof namespaceValue === 'string' ? namespaceValue.trim().toLowerCase() : 'native'
+    const namespace = typeof namespaceValue === 'string' ? namespaceValue.trim().toLowerCase() : 'root'
     const result = listAvailableApis([...this.projectedByPath.values()]
       .map((tool) => ({ name: tool.expression, namespace: tool.entry.namespace, description: tool.entry.description })), Number(page), namespace)
     for (const item of result.items) {
@@ -382,7 +389,7 @@ export class ToolRuntime {
     if (!MUTATING_FILE_TOOLS.has(tool.entry.name)) return []
     // A patch can touch multiple files, so serialize all native mutations
     // through one queue rather than racing an independent whole-file write.
-    if (tool.entry.name === 'patch' || tool.entry.name === 'write') return ['__workspace_mutation__']
+    if (tool.entry.name === 'edit' || tool.entry.name === 'patch' || tool.entry.name === 'write') return ['__workspace_mutation__']
     if (!input || typeof input !== 'object' || Array.isArray(input)) return ['__workspace_mutation__']
     const rawPath = (input as Record<string, unknown>).path
     if (typeof rawPath !== 'string' || rawPath.trim().length === 0) return ['__workspace_mutation__']

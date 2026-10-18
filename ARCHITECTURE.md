@@ -1,5 +1,13 @@
 # Architecture
 
+## Structured file editing
+
+Discovery audit update (2026-10-19): `available.list` and `available.search` share native/MCP namespace identification and short-description normalization in `ai/tools/available/discoveryCatalog.ts`. Search ranks exact name-token hits over incidental description hits, caps pages at ten, and rejects invalid runtime arguments. `available.get` continues to require discovery before MCP access.
+
+Tool discovery update (2026-10-19): `tools.available.list()` now returns a paginated index of `native` and connected MCP server namespaces, up to ten per page. Specifying a namespace returns its authorized tools with brief descriptions, also ten per page. The separate `mcp` grouping is no longer supported. Full argument contracts remain behind `tools.available.get`.
+
+The preferred native editing API is `tools.edit({ changes })`, with ordered exact text replacements, optional per-replacement `replace_all`, and multi-file prevalidation. It uses the same workspace mutation queue, checkpoint capture, staged atomic file writes and recoverable rollback as `tools.patch`. Both render through the shared file-diff presentation. Plan Mode limits edits to the active plan. `tools.patch` remains available for complex contextual edits; `tools.write` handles complete file creation/replacement.
+
 ## Durable memory and compaction
 
 Current implementation (updated 2026-10-18): compaction reconciles each conversation's existing `ConversationMemory` Markdown with evicted messages, then separately generates its short continuation handoff. Both outputs are persisted together on the conversation's canonical `compaction_committed` event. Runtime replay injects a short instruction to read `@chat/DURABLE.md` instead of the memory contents. `tools.read` resolves that read-only alias exclusively through the current conversation ID and the latest valid memory on its active branch. Canonical history lives under the user's home `.tidecode/history/canonical-history/<conversationId>.json`, outside the project.
@@ -80,7 +88,7 @@ Idle reconciliation is event-first. Context usage refreshes on message, stream, 
 
 The shared run-service is demand-started. Read-only startup reconciliation probes for an already-running service so the desktop UI can attach to CLI or remote work, but a quiet desktop launch does not spawn the detached run-service process until a chat run, terminal, compaction, shared-runtime update, or another run-service mutation requires it.
 
-Chat runtime retention protects the selected conversation and every sending or shared running conversation. It retains at most three other recent transcripts within a 16 MiB estimated string budget; evicted conversations reload from persisted history when selected. Context estimation uses one active request and one replaceable pending refresh across hook effect changes, so file watcher and compaction events cannot overlap full transcript estimates.
+Chat runtime retention protects the selected conversation and every sending or shared running conversation. It retains at most three other recent transcripts within a 16 MiB estimated string budget; evicted conversations reload from persisted history when selected. Context estimation uses one active request and one replaceable pending refresh across hook effect changes, so file watcher and compaction events cannot overlap full transcript estimates. Its estimator builds provider-visible tool schemas without constructing a `CodeModeExecutor`, caches schema token counts per provider, and runs independent workspace, model image-support, and canonical-history lookups concurrently.
 
 PDF previews own reference-counted document leases. Active previews pin their document; unreferenced workers expire after one second and are also bounded by three documents and a 32 MiB source-string budget. Clearing the cache retires active documents until their owners release them. Pages render only within 400 pixels of the viewport, cap their canvas at four million pixels, cancel render tasks during cleanup, and release offscreen canvas storage. There is no second bitmap cache.
 

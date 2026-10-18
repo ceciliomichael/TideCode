@@ -46,6 +46,8 @@ The shared runtime is responsible for:
 - Emitting stream lifecycle events to the renderer.
 - Terminating background terminal sessions created for the turn.
 
+Context usage estimation builds the same provider-visible tool schemas without constructing a `CodeModeExecutor`, caches their token counts per provider, and runs independent workspace, model image-support, and canonical-history lookups concurrently.
+
 ### Conversation history
 
 `electron/history/` stores saved conversations, folders, draft agent context, and conversation-level workspace roots. The visible conversation document and canonical event history are separate representations. The canonical history is used for replay fidelity, context epochs, compaction, usage, branches, and freshness tracking.

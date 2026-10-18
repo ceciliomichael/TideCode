@@ -3,7 +3,7 @@ import type { ChatMode, ChatProviderId } from '../../../../src/types/chat'
 import type { SkillSummary } from '../../../../src/types/skills'
 import type { AgentToolContext } from '../toolTypes'
 import { CodeModeExecutor } from '../codeMode/executor'
-import { createExecTool } from '../ai/exec/exec'
+import { createExecTool, createExecToolSchema } from '../ai/exec/exec'
 import { documentNativeApi } from '../ai/registry/documentation'
 import { createToolDiscoveryState } from '../ai/registry/sessionDiscovery'
 import { createReadApi } from '../ai/tools/read/read'
@@ -11,6 +11,7 @@ import { createListApi } from '../ai/tools/list/list'
 import { createGlobApi } from '../ai/tools/glob/glob'
 import { createGrepApi } from '../ai/tools/grep/grep'
 import { createPatchApi } from '../ai/tools/patch/patch'
+import { createEditTool } from './editTool'
 import { createWriteApi } from '../ai/tools/write/write'
 import { createPlanCreateApi } from '../ai/tools/plan/create/create'
 import { createSkillListApi } from '../ai/tools/skill/list/list'
@@ -39,6 +40,17 @@ export interface AgentToolBundle {
   nativeTools: ToolSet
   registry: AgentToolRegistry
   tools: ToolSet
+}
+
+function createAgentToolSet(execTool: ToolSet[string], providerId?: ChatProviderId): ToolSet {
+  const tools: ToolSet = { exec: execTool }
+  const nativeWeb = createProviderWebTool(providerId)
+  if (nativeWeb) tools[nativeWeb.name] = nativeWeb.tool
+  return tools
+}
+
+export function createAgentToolSchemaSet(providerId?: ChatProviderId): ToolSet {
+  return createAgentToolSet(createExecToolSchema(), providerId)
 }
 
 /** Code Mode is the sole TideCode provider execution boundary. */
@@ -70,6 +82,7 @@ export async function createAgentToolBundle(
   if (planMode) {
     register('plan.create', createPlanCreateApi(context, state))
     register('patch', createPatchApi(context, state))
+    register('edit', createEditTool(context, state))
   } else {
     const terminal = createTerminalToolSet({
       ...context,
@@ -81,6 +94,7 @@ export async function createAgentToolBundle(
     register('terminal.interact', createTerminalInteractApi(terminal))
     register('terminal.terminate', createTerminalTerminateApi(terminal))
     register('patch', createPatchApi(context, state))
+    register('edit', createEditTool(context, state))
     register('write', createWriteApi(context))
   }
 
@@ -96,12 +110,7 @@ export async function createAgentToolBundle(
       input.terminalExecutionMode ?? 'sandbox',
     ),
   })
-  const tools: ToolSet = {
-    exec: createExecTool(executor),
-  }
-
-  const nativeWeb = createProviderWebTool(options.providerId)
-  if (nativeWeb) tools[nativeWeb.name] = nativeWeb.tool
+  const tools = createAgentToolSet(createExecTool(executor), options.providerId)
 
   return { codeModeExecutor: executor, nativeTools: entries, registry, tools }
 }

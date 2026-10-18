@@ -9,7 +9,7 @@ import { createAgentToolBundle } from '../../electron/chat/shared/tools'
 import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
 import type { AgentToolRegistry, AgentToolRegistryEntry } from '../../electron/chat/shared/tools/registry'
 import { getApiInstructions } from '../../electron/chat/shared/ai/registry/documentation'
-import { searchAvailableApis } from '../../electron/chat/shared/ai/tools/available/search/search'
+import { formatAvailableApiSearch, searchAvailableApis } from '../../electron/chat/shared/ai/tools/available/search/search'
 import { listAvailableApis } from '../../electron/chat/shared/ai/tools/available/list/list'
 
 async function withWorkspace(run: (workspaceRootPath: string) => Promise<void>) {
@@ -27,15 +27,15 @@ async function execute(bundle: Awaited<ReturnType<typeof createAgentToolBundle>>
 
 test('native tool pagination is lexically stable, bounded, and names-only', () => {
   const names = Array.from({ length: 13 }, (_, index) => ({ name: `tools.tool${String(index).padStart(2, '0')}`, namespace: 'filesystem', description: 'test' })).reverse()
-  const first = listAvailableApis(names, 1)
-  const second = listAvailableApis(names, 2)
+  const first = listAvailableApis(names, 1, 'native')
+  const second = listAvailableApis(names, 2, 'native')
   assert.equal(first.items.length, 10)
   assert.equal(first.hasMore, true)
   assert.deepEqual(first.items.map((item) => item.name), names.map((item) => item.name).sort().slice(0, 10))
   assert.equal(second.items.length, 3)
   assert.equal(second.hasMore, false)
-  assert.deepEqual(Object.keys(first.items[0] ?? {}), ['name'])
-  assert.deepEqual(listAvailableApis(names, 3).items, [])
+  assert.deepEqual(Object.keys(first.items[0] ?? {}), ['name', 'description'])
+  assert.deepEqual(listAvailableApis(names, 3, 'native').items, [])
 })
 
 test('listing namespaces pages independently', () => {
@@ -44,16 +44,33 @@ test('listing namespaces pages independently', () => {
     { name: 'tools.mcp.github_first', namespace: 'mcp', description: '[User MCP server "github"; original tool "first"]' },
     { name: 'tools.mcp.github_second', namespace: 'mcp', description: '[User MCP server "github"; original tool "second"]' },
     { name: 'tools.mcp.other_first', namespace: 'mcp', description: '[User MCP server "other"; original tool "first"]' }]
-  assert.deepEqual(listAvailableApis(names, 1).items.map(({ name }) => name), natives.slice(0, 10))
-  assert.deepEqual(listAvailableApis(names, 2).items.map(({ name }) => name), natives.slice(10))
-  assert.equal(listAvailableApis(names, 2).hasMore, false)
-  assert.deepEqual(listAvailableApis(names, 1, 'mcp').items.map(({ name }) => name), ['github', 'other'])
+  assert.deepEqual(listAvailableApis(names, 1).items.map(({ name }) => name), ['github', 'native', 'other'])
+  assert.deepEqual(listAvailableApis(names, 1, 'native').items.map(({ name }) => name), natives.slice(0, 10))
+  assert.deepEqual(listAvailableApis(names, 2, 'native').items.map(({ name }) => name), natives.slice(10))
+  assert.equal(listAvailableApis(names, 2, 'native').hasMore, false)
+  assert.deepEqual(listAvailableApis(names, 1, 'mcp').items, [])
   assert.deepEqual(listAvailableApis(names, 1, 'github').items.map(({ name }) => name), ['tools.mcp.github_first', 'tools.mcp.github_second'])
   assert.deepEqual(listAvailableApis(names, 1, 'other').items.map(({ name }) => name), ['tools.mcp.other_first'])
   const renamed = [{ name: 'tools.mcp.github_enterprise_get', namespace: 'mcp', description: '[User MCP server "GitHub Enterprise"; original tool "get"; namespace "github_enterprise"] Read issue' }]
-  assert.deepEqual(listAvailableApis(renamed, 1, 'mcp').items.map(({ name }) => name), ['github_enterprise'])
+  assert.deepEqual(listAvailableApis(renamed, 1).items.map(({ name }) => name), ['github_enterprise'])
   assert.deepEqual(listAvailableApis(renamed, 1, 'github_enterprise').items.map(({ name }) => name), ['tools.mcp.github_enterprise_get'])
+  assert.equal(listAvailableApis(renamed, 1, 'github_enterprise').items[0]?.description, 'Read issue')
+  assert.equal(listAvailableApis([{ name: 'tools.edit', namespace: 'filesystem', description: 'full API contract' }], 1, 'native').items[0]?.description, 'Preferred for exact text replacements across files.')
   assert.equal(searchAvailableApis(renamed.map(({ name, namespace, description }) => ({ path: name, namespace, description, signature: 'mock' })), { namespace: 'github_enterprise', query: 'issue' }).items.length, 1)
+})
+
+test('root namespace index stays capped at 10 per page', () => {
+  const servers = Array.from({ length: 14 }, (_, index) => ({
+    name: `tools.mcp.server${String(index).padStart(2, '0')}_action`,
+    namespace: 'mcp',
+    description: `[User MCP server "server${String(index).padStart(2, '0')}"; original tool "action"] Perform action`,
+  }))
+  servers.push({ name: 'tools.read', namespace: 'filesystem', description: 'Read file' })
+  assert.equal(listAvailableApis(servers, 1).items.length, 10)
+  assert.equal(listAvailableApis(servers, 1).hasMore, true)
+  assert.equal(listAvailableApis(servers, 2).items.length, 5)
+  assert.deepEqual(listAvailableApis(servers, 1, 'server12').items.map((item) => item.name), ['tools.mcp.server12_action'])
+  assert.deepEqual(listAvailableApis(servers, 1, 'mcp').items, [])
 })
 
 test('searching an MCP server name discovers all its authorized tools without mixing servers', () => {
@@ -63,11 +80,15 @@ test('searching an MCP server name discovers all its authorized tools without mi
     namespace: 'mcp', signature: 'mock',
   }))
   entries.push({ path: 'tools.mcp.other_tool', description: '[User MCP server "Other"; original tool "tool"] Example capability', namespace: 'mcp', signature: 'mock' })
-  const found = searchAvailableApis(entries, { query: 'Acme Tools', namespace: 'mcp' })
+  const found = searchAvailableApis(entries, { query: 'Acme Tools' })
   assert.equal(found.items.length, 10)
   assert.equal(found.remaining, 2)
   assert.ok(found.items.every(({ name }) => name.startsWith('tools.mcp.acme_')))
-  const limited = searchAvailableApis(entries, { query: 'Acme Tools', namespace: 'mcp', limit: 5 })
+  assert.ok(found.items.every(({ description }) => description === 'Example capability'))
+  const displayed = formatAvailableApiSearch(found, { query: 'Acme Tools' })
+  assert.match(displayed, /`tools\.mcp\.acme_tool_0` - Example capability/u)
+  assert.doesNotMatch(displayed, /original tool|inputSchema|## Call/u)
+  const limited = searchAvailableApis(entries, { query: 'Acme Tools', limit: 5 })
   assert.equal(limited.items.length, 5)
   assert.deepEqual(limited.next, { offset: 5 })
   const scoped = searchAvailableApis(entries, { query: 'capability', namespace: 'acme tools' })
@@ -75,14 +96,36 @@ test('searching an MCP server name discovers all its authorized tools without mi
   assert.equal(scoped.remaining, 2)
 })
 
+test('search prioritizes exact tool-name tokens over incidental description matches', () => {
+  const entries = [
+    { path: 'tools.mcp.routes_create', description: '[User MCP server "routes"; original tool "create"] Create a route', namespace: 'mcp', signature: '' },
+    { path: 'tools.mcp.routes_list', description: '[User MCP server "routes"; original tool "list"] List existing routes; create operations are not supported', namespace: 'mcp', signature: '' },
+  ]
+  const found = searchAvailableApis(entries, { query: 'create route' })
+  assert.equal(found.items[0]?.name, 'tools.mcp.routes_create')
+  assert.equal(searchAvailableApis(entries, { query: 'route', limit: 50 }).items.length, 2)
+})
+
+test('search rejects invalid arguments instead of silently falling back to defaults', async () => withWorkspace(async (workspaceRootPath) => {
+  const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
+  for (const input of [
+    '{ limit: 11 }', '{ offset: -1 }', '{ query: 123 }',
+    '{ namespace: "" }', '{ surprise: true }',
+  ]) {
+    const outcome = await execute(bundle, `return await tools.available.search(${input});`)
+    assert.equal(outcome.status, 'error', input)
+  }
+  await bundle.codeModeExecutor.dispose()
+}))
+
 test('only exec is TideCode provider-facing and native APIs have exact paths', async () => withWorkspace(async (workspaceRootPath) => {
   const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent', providerId: 'custom:test-provider' })
   assert.deepEqual(Object.keys(bundle.tools), ['exec'])
-  for (const name of ['read', 'list', 'glob', 'grep', 'terminal.execute', 'terminal.read', 'terminal.interact', 'terminal.terminate', 'patch', 'write']) {
+  for (const name of ['read', 'list', 'glob', 'grep', 'terminal.execute', 'terminal.read', 'terminal.interact', 'terminal.terminate', 'edit', 'patch', 'write']) {
     assert.ok(bundle.registry.get(name), name)
     assert.ok(getApiInstructions(name).length > 0)
   }
-  for (const obsolete of ['execute_terminal', 'apply_patch', 'edit', 'plan_create', 'skill', 'mcp_tool_search']) {
+  for (const obsolete of ['execute_terminal', 'apply_patch', 'plan_create', 'skill', 'mcp_tool_search']) {
     assert.equal(bundle.registry.get(obsolete), undefined)
   }
   await bundle.codeModeExecutor.dispose()
@@ -104,8 +147,8 @@ test('exec exposes only discovery APIs and has stable metadata across modes', as
 test('native list is paged, names-only and mode-aware', async () => withWorkspace(async (workspaceRootPath) => {
   const agent = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
   const plan = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'plan' })
-  const agentList = await execute(agent, 'return await tools.available.list({ page: 1 });')
-  const planList = await execute(plan, 'return await tools.available.list({ page: 1 });')
+  const agentList = await execute(agent, 'return await tools.available.list({ namespace: "native", page: 1 });')
+  const planList = await execute(plan, 'return await tools.available.list({ namespace: "native", page: 1 });')
   assert.equal(agentList.status, 'success', agentList.body)
   assert.equal(planList.status, 'success', planList.body)
   assert.match(agentList.body ?? '', /tools\.terminal\.execute/u)
@@ -118,7 +161,10 @@ test('native list is paged, names-only and mode-aware', async () => withWorkspac
   assert.doesNotMatch(agentList.body ?? '', /"items"|"hasMore"/u)
   const invalid = await execute(agent, 'return await tools.available.list({ page: 0 });')
   assert.equal(invalid.status, 'error')
-  const later = await execute(agent, 'return await tools.available.list({ page: 2 });')
+  const rootList = await execute(agent, 'return await tools.available.list();')
+  assert.match(rootList.body ?? '', /# Available tool namespaces \(page 1\)/u)
+  assert.match(rootList.body ?? '', /- `native`/u)
+  const later = await execute(agent, 'return await tools.available.list({ namespace: "native", page: 2 });')
   assert.equal(later.status, 'success', later.body)
   await agent.codeModeExecutor.dispose()
   await plan.codeModeExecutor.dispose()
@@ -136,9 +182,10 @@ test('search returns names only; exact get exposes documentation and schema', as
   assert.match(body, /# tools\.read/u)
   assert.match(body, /await tools\.read\(input:/u)
   assert.doesNotMatch(body, /"inputSchema"/u)
-  assert.match(body, /Read one existing file or directory/u)
+  assert.match(body, /Read the contents of one existing text file or image/u)
   const searchOnly = await execute(bundle, 'return await tools.available.search({ query: "tools.read", namespace: "native" });')
-  assert.doesNotMatch(searchOnly.body ?? '', /Read one existing file or directory/u)
+  assert.match(searchOnly.body ?? '', /Read file or image contents\./u)
+  assert.doesNotMatch(searchOnly.body ?? '', /## Call|## Parameters/u)
   assert.match(searchOnly.body ?? '', /# Tool search: tools\.read/u)
   assert.match(searchOnly.body ?? '', /- `tools\.read`/u)
   assert.doesNotMatch(searchOnly.body ?? '', /"items"|"remaining"|"next"/u)
@@ -215,7 +262,7 @@ test('MCP requires search then exact get; search exposes names only', async () =
   const unknown = await executor.run('return await tools.available.get({ name: "tools.mcp.search_repositories" });')
   assert.equal(unknown.status, 'error')
   assert.match(unknown.error ?? '', /Discover MCP API/u)
-  const found = await executor.run('return await tools.available.search({ query: "GitHub repositories", namespace: "mcp" });')
+  const found = await executor.run('return await tools.available.search({ query: "GitHub repositories", namespace: "github" });')
   assert.equal(found.status, 'success', found.error)
   assert.match(found.output as string, /- `tools\.mcp\.search_repositories`/u)
   const denied = await executor.run('return await tools.mcp.search_repositories({ query: "test" });')
@@ -229,7 +276,7 @@ test('MCP requires search then exact get; search exposes names only', async () =
   assert.equal(executed.status, 'success', executed.error)
   assert.equal(executions, 1)
   const listedExecutor = new CodeModeExecutor(registry, undefined, { workspaceRootPath })
-  const namespaces = await listedExecutor.run('return await tools.available.list({ namespace: "mcp" });')
+  const namespaces = await listedExecutor.run('return await tools.available.list();')
   assert.match(namespaces.output as string, /- `github`/u)
   const listed = await listedExecutor.run('return await tools.available.list({ namespace: "github", page: 1 });')
   assert.equal(listed.status, 'success')

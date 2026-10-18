@@ -59,16 +59,34 @@ test('equivalent workspace paths reuse one MCP runtime and release reconnects cl
       'utf8',
     )
 
+    const manager = getMcpServerManager()
+    const initialState = await manager.getState(workspacePath)
+    assert.equal(initialState.statuses['mcp-lifecycle-test']?.status, 'connecting')
+
     const firstPid = await readServerPid(workspacePath)
     const equivalentPid = await readServerPid(equivalentWorkspacePath)
     assert.equal(equivalentPid, firstPid)
 
-    const manager = getMcpServerManager()
+    await manager.disconnectServer('mcp-lifecycle-test', workspacePath)
+    const connectingState = await manager.connectServer('mcp-lifecycle-test', workspacePath)
+    assert.equal(connectingState.statuses['mcp-lifecycle-test']?.status, 'connecting')
+    const manuallyReconnectedPid = await readServerPid(workspacePath)
+    assert.notEqual(manuallyReconnectedPid, firstPid)
+
+    await manager.updateServer('mcp-lifecycle-test', {
+      args: [fixturePath],
+      command: process.execPath,
+      serverName: 'lifecycle',
+      type: 'stdio',
+    }, workspacePath)
+    const updatedPid = await readServerPid(workspacePath)
+    assert.notEqual(updatedPid, manuallyReconnectedPid)
+
     await manager.releaseWorkspace(workspacePath)
     await manager.releaseWorkspace(workspacePath)
 
     const reconnectedPid = await readServerPid(workspacePath)
-    assert.notEqual(reconnectedPid, firstPid)
+    assert.notEqual(reconnectedPid, updatedPid)
   } finally {
     await resetMcpServerManager()
     electronApp.getPath = originalGetPath

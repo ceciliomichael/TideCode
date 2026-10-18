@@ -218,7 +218,7 @@ async function restoreFileSnapshot(snapshot: FileSnapshot) {
   await writeTextFileAtomically(snapshot.absolutePath, snapshot.content)
 }
 
-async function commitStagedFiles(stagedFiles: Map<string, StagedFileState>) {
+export async function commitStagedFiles(stagedFiles: Map<string, StagedFileState>) {
   const snapshots = await Promise.all(
     [...stagedFiles.keys()].map((absolutePath) => readFileSnapshot(absolutePath)),
   )

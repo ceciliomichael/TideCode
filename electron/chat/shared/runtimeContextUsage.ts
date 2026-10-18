@@ -10,7 +10,6 @@ import {
   estimateModelMessageContextUsage,
 } from '../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings } from '../../../src/lib/contextCompactionSettings'
-import { listEnabledSkills } from '../../skills/service'
 import { describeTools, stableStringify } from '../cache/canonicalization'
 import { applyPromptCacheBreakpoints } from '../cache/providerPolicies'
 import { readCanonicalHistory } from '../history/eventStore'
@@ -20,9 +19,11 @@ import { selectContextUsageMessages } from './contextUsageProjection'
 import { buildChatPrompt, stripImageAttachmentsFromModelMessages } from './messages'
 import { applyWorkspaceInstructionsContext } from './prompts/workspaceInstructions'
 import { resolveModelImageInputSupport } from './modelImageSupport'
-import { createAgentToolBundle } from './tools'
+import { createAgentToolSchemaSet } from './tools'
 import { sortToolSet } from './runtimeToolSet'
 import { assertWorkspaceDirectory, normalizeWorkspacePath } from '../../workspace/paths'
+
+const toolSchemaTokenCounts = new Map<string, number>()
 
 function isMissingWorkspacePathError(error: unknown) {
   return error instanceof Error && error.message.startsWith('Workspace path does not exist:')
@@ -45,6 +46,21 @@ async function resolveAvailableWorkspaceRootPath(workspaceRootPath: string | nul
   }
 }
 
+function estimateToolSchemaTokens(providerId: StartChatStreamInput['providerId']) {
+  const cachedTokenCount = toolSchemaTokenCounts.get(providerId)
+  if (cachedTokenCount !== undefined) {
+    return cachedTokenCount
+  }
+
+  const tools = applyPromptCacheBreakpoints(
+    sortToolSet(createAgentToolSchemaSet(providerId)),
+    providerId,
+  )
+  const tokenCount = approximateTokenCount(stableStringify(describeTools(tools)))
+  toolSchemaTokenCounts.set(providerId, tokenCount)
+  return tokenCount
+}
+
 export async function estimateToolEnabledContextUsage(input: {
   agentContextRootPath: string | null
   chatMode: StartChatStreamInput['chatMode']
@@ -57,14 +73,19 @@ export async function estimateToolEnabledContextUsage(input: {
   webContents?: WebContents | ChatStreamEventTarget | null
 }): Promise<ContextUsageEstimate> {
   const contextCompaction = normalizeContextCompactionSettings(input.contextCompaction)
-  const normalizedWorkspaceRootPath = await resolveAvailableWorkspaceRootPath(input.agentContextRootPath)
+  const conversationId = input.conversationId?.trim()
+  const modelId = input.modelId?.trim()
+  const [normalizedWorkspaceRootPath, includeImageAttachments, canonicalHistory] = await Promise.all([
+    resolveAvailableWorkspaceRootPath(input.agentContextRootPath),
+    resolveModelImageInputSupport(input.providerId, input.modelId ?? ''),
+    conversationId && modelId
+      ? readCanonicalHistory(conversationId)
+      : Promise.resolve(null),
+  ])
   const workspaceRootPath = normalizedWorkspaceRootPath ?? 'No workspace selected'
-  const enabledSkills = normalizedWorkspaceRootPath
-    ? await listEnabledSkills(normalizedWorkspaceRootPath)
-    : []
   const promptOptions = {
     includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
-    includeImageAttachments: await resolveModelImageInputSupport(input.providerId, input.modelId ?? ''),
+    includeImageAttachments,
     terminalExecutionMode: input.terminalExecutionMode,
   }
   const prompt = buildChatPrompt({
@@ -74,13 +95,12 @@ export async function estimateToolEnabledContextUsage(input: {
     workspaceRootPath,
   })
   let modelMessages = prompt.messages
-  if (input.conversationId?.trim() && input.modelId?.trim()) {
-    const canonicalHistory = await readCanonicalHistory(input.conversationId.trim())
+  if (canonicalHistory && conversationId && modelId) {
     const replay = projectCanonicalReplay({
       document: canonicalHistory,
       fallbackMessages: prompt.messages,
       messages: input.messages,
-      modelId: input.modelId.trim(),
+      modelId,
       options: promptOptions,
       providerId: input.providerId,
     })
@@ -96,35 +116,9 @@ export async function estimateToolEnabledContextUsage(input: {
   modelMessages = applyWorkspaceInstructionsContext(modelMessages, normalizedWorkspaceRootPath)
   const systemPrompt = prompt.system
   const messageUsage = estimateModelMessageContextUsage(modelMessages)
-  let toolSchemaTokens = 0
-  if (normalizedWorkspaceRootPath) {
-    try {
-      const toolBundle = await createAgentToolBundle(
-        {
-          checkpointId: null,
-          conversationId: null,
-          workspaceRootPath: normalizedWorkspaceRootPath,
-          terminalExecutionMode: input.terminalExecutionMode,
-          webContents: input.webContents,
-        },
-        {
-          chatMode: input.chatMode,
-          enabledSkills,
-          providerId: input.providerId,
-        },
-      )
-      try {
-        const cacheAwareTools = applyPromptCacheBreakpoints(sortToolSet(toolBundle.tools), input.providerId)
-        toolSchemaTokens = approximateTokenCount(stableStringify(describeTools(cacheAwareTools)))
-      } finally {
-        await toolBundle.codeModeExecutor?.dispose()
-      }
-    } catch (error) {
-      if (!isMissingWorkspacePathError(error)) {
-        throw error
-      }
-    }
-  }
+  const toolSchemaTokens = normalizedWorkspaceRootPath
+    ? estimateToolSchemaTokens(input.providerId)
+    : 0
   const systemPromptTokens = approximateTokenCount(systemPrompt)
 
   return {

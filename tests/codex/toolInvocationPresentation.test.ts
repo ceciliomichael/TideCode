@@ -149,7 +149,7 @@ function buildFileChangeInvocation(
 }
 
 function buildMultiFileWriteInvocation(
-  toolName: 'write' | 'patch' | 'patch',
+  toolName: 'write' | 'patch' | 'edit',
   state: ToolInvocationTrace['state'],
   changes: Array<{
     fileName: string
@@ -550,6 +550,21 @@ test('patch groups same-file hunks into one display block', () => {
     buildToolInvocationGroupSummary(displayEntries.map((entry) => entry.invocation), 'Edited'),
     'Edited 1 file',
   )
+})
+
+test('structured edit reuses patch diff presentation for multiple files', () => {
+  const invocation = buildMultiFileWriteInvocation('edit', 'completed', [
+    { fileName: 'src/first.ts', kind: 'update', oldContent: 'before\n', newContent: 'after\n' },
+    { fileName: 'src/second.ts', kind: 'update', oldContent: 'old\n', newContent: 'new\n' },
+  ])
+  const entries = getToolInvocationDisplayEntries(invocation)
+  assert.equal(entries.length, 2)
+  assert.deepEqual(
+    entries.map((entry) => getToolInvocationHeaderLabel(entry.invocation, undefined, WORKSPACE_ROOT_PATH)),
+    ['Edited first.ts', 'Edited second.ts'],
+  )
+  assert.ok(entries.every((entry) => entry.invocation.resultPresentation?.kind === 'change_diff'))
+  assert.equal(buildToolInvocationGroupSummary(entries.map((entry) => entry.invocation)), 'Edited 2 files')
 })
 
 test('patch reuses edit presentation for mixed multi-file changes', () => {

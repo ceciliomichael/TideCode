@@ -1,3 +1,3 @@
 # tools.available.list
 
-List authorized tools by namespace, ten names per page, with Markdown continuation instructions. `namespace: "native"` (default) lists TideCode tools; `namespace: "mcp"` lists connected MCP server namespaces; `namespace: "github"` lists GitHub server tools. `page` is 1-based within the namespace. Listing an MCP tool authorizes retrieval of its contract through `tools.available.get`. Only mode-authorized tools appear.
+List authorized namespaces and tools, ten entries per page. With no namespace, show `native` and each connected MCP server namespace. `namespace: "native"` lists TideCode tools and a specific MCP server namespace lists that server's tools. Tool entries have brief purpose descriptions rather than API signatures or parameter schemas. `page` is 1-based within each view. Listing an MCP tool permits subsequent full-contract retrieval with `tools.available.get({ name })`. Follow the returned page continuation when needed.

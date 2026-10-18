@@ -1,4 +1,4 @@
-export { createAgentToolBundle } from './factory'
+export { createAgentToolBundle, createAgentToolSchemaSet } from './factory'
 export type { AgentToolBundle, CreateAgentToolsOptions } from './factory'
 export { createAgentToolRegistry } from './registry'
 export type { AgentToolRegistry, AgentToolRegistryEntry, AgentToolSearchMatch } from './registry'

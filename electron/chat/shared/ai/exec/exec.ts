@@ -30,6 +30,13 @@ interface ExecInput {
 
 const MAX_NESTED_DISPLAY_BODY_CHARS = 64_000
 
+function createExecToolDefinition() {
+  return {
+    description: buildExecDescription(),
+    inputSchema: jsonSchema<ExecInput>(EXEC_INPUT_SCHEMA as unknown as Parameters<typeof jsonSchema>[0]),
+  }
+}
+
 function displayReceipt(body: string | undefined) {
   if (typeof body !== 'string') return {}
   if (body.length <= MAX_NESTED_DISPLAY_BODY_CHARS) return { body }
@@ -59,12 +66,15 @@ export function buildExecDescription() {
   ].join('\n\n')
 }
 
+export function createExecToolSchema() {
+  return tool(createExecToolDefinition())
+}
+
 export function createExecTool(
   executor: CodeModeExecutor,
 ) {
   return tool({
-    description: buildExecDescription(),
-    inputSchema: jsonSchema<ExecInput>(EXEC_INPUT_SCHEMA as unknown as Parameters<typeof jsonSchema>[0]),
+    ...createExecToolDefinition(),
     execute: async (input, executionOptions): Promise<AgentToolExecutionResult> => {
       const code = input.code
       if (typeof code !== 'string' || code.trim().length === 0) {

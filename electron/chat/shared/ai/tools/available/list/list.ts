@@ -1,18 +1,20 @@
-export interface AvailableListEntry { name: string; namespace: string; description: string }
+import { availableNamespaces, discoveryToolDescription, inNamespace, type DiscoveryEntry } from '../discoveryCatalog'
 
-export function mcpServerNamespace(description: string): string | null {
-  const authoritative = /; namespace "([^"]+)"\]/u.exec(description)?.[1]
-  if (authoritative) return authoritative
-  return /^\[[^\]]+ MCP server "([^"]+)"; original tool "/u.exec(description)?.[1] ?? null
-}
+export type AvailableListEntry = DiscoveryEntry
 
-export function listAvailableApis(entries: readonly AvailableListEntry[], page: number, namespace = 'native') {
-  const servers = [...new Set(entries.filter((entry) => entry.namespace === 'mcp').map((entry) => mcpServerNamespace(entry.description)).filter((name): name is string => name !== null))]
-  const names = namespace === 'mcp' ? servers : entries.filter((entry) => namespace === 'native' ? entry.namespace !== 'mcp' : entry.namespace === 'mcp' && mcpServerNamespace(entry.description)?.toLowerCase() === namespace.toLowerCase()).map((entry) => entry.name)
-  const sorted = [...new Set(names)].sort()
+export function listAvailableApis(entries: readonly AvailableListEntry[], page: number, namespace = 'root') {
+  const servers = availableNamespaces(entries)
+  const matching = namespace === 'root'
+    ? servers.map((name) => ({ name, description: name === 'native' ? 'TideCode native tools.' : 'Connected MCP server namespace.' }))
+    : entries.filter((entry) => inNamespace(entry, namespace))
+      .map((entry) => ({
+        name: entry.name,
+        description: discoveryToolDescription(entry.name, entry.namespace, entry.description),
+      }))
+  const sorted = [...new Map(matching.sort((a, b) => a.name.localeCompare(b.name)).map((entry) => [entry.name, entry])).values()]
   const offset = (page - 1) * 10
   return {
-    items: sorted.slice(offset, offset + 10).map((name) => ({ name })),
+    items: sorted.slice(offset, offset + 10),
     page,
     namespace,
     hasMore: offset + 10 < sorted.length,
@@ -20,16 +22,15 @@ export function listAvailableApis(entries: readonly AvailableListEntry[], page: 
 }
 
 export function formatAvailableApiList(result: ReturnType<typeof listAvailableApis>): string {
-  const names = result.items.map(({ name }) => `- \`${name}\``)
+  const names = result.items.map(({ name, description }) => `- \`${name}\` - ${description}`)
   return [
-    `# Available ${result.namespace === 'mcp' ? 'MCP server namespaces' : `${result.namespace} tools`} (page ${result.page})`,
+    `# Available ${result.namespace === 'root' ? 'tool namespaces' : `${result.namespace} tools`} (page ${result.page})`,
     '',
     ...(names.length ? names : ['No tools on this page.']),
     '',
+    ...(result.namespace === 'root' ? ['Select a namespace with `tools.available.list({ namespace: "native" })` or `tools.available.list({ namespace: "server-name" })`.', ''] : []),
     result.hasMore
       ? `More entries available. Continue with \`tools.available.list({ namespace: ${JSON.stringify(result.namespace)}, page: ${result.page + 1} })\`.`
       : 'End of available tool list.',
   ].join('\n')
 }
-
-

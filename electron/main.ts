@@ -356,6 +356,9 @@ app.whenReady().then(async () => {
   })
 
   await createWindow(parseTideCodeLaunchRequest(process.argv))
+  void mcpServerManager.getState().catch((error) => {
+    console.error('Failed to initialize MCP server connections.', error)
+  })
   void startProjectPathWatcher((event) => {
     const currentWindow = win
     if (!currentWindow || currentWindow.isDestroyed()) {

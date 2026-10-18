@@ -5,6 +5,7 @@ type Schema = Record<string, unknown>
 function describeType(raw: unknown, depth = 0): string {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'unknown'
   const schema = raw as Schema
+  if (typeof schema.$ref === 'string') return schema.$ref.split('/').at(-1) || 'unknown'
   if (Array.isArray(schema.enum)) return schema.enum.map((item) => JSON.stringify(item)).join(' | ')
   if (schema.const !== undefined) return JSON.stringify(schema.const)
   for (const key of ['oneOf', 'anyOf'] as const) {
@@ -56,7 +57,9 @@ export function getAvailableApi(tool: AgentToolRegistryEntry, name: string): str
     if (['allOf', 'not', 'if', 'then', 'else', '$ref', '$defs', 'definitions', 'dependentRequired', 'dependentSchemas', 'propertyNames', 'patternProperties', 'contains', 'unevaluatedProperties', 'minProperties', 'maxProperties', 'uniqueItems', 'prefixItems'].some((key) => object[key] !== undefined)) return true
     return Object.values(object).some((part) => needsFallback(part, depth + 1))
   }
-  const fallback = needsFallback(schema)
-    ? `\n\nAdditional schema constraints:\n\n\`\`\`json\n${JSON.stringify(schema, null, 2)}\n\`\`\`` : ''
-  return `${header}\n\n## Call\n\n\`\`\`ts\nawait ${name}(input: ${describeType(schema)}): Promise<${returnType}>\n\`\`\`${notes.length ? `\n\n## Parameters\n\n${notes.join('\n')}` : ''}${fallback}`
+  const complexSchema = needsFallback(schema)
+  const fallback = complexSchema
+    ? `\n\n## Complete input schema\n\nThis JSON Schema is authoritative for required fields, alternatives, references, and validation constraints.\n\n\`\`\`json\n${JSON.stringify(schema, null, 2)}\n\`\`\`` : ''
+  const simpleNotes = !complexSchema && notes.length ? `\n\n## Parameters\n\n${notes.join('\n')}` : ''
+  return `${header}\n\n## Call\n\n\`\`\`ts\nawait ${name}(input: ${describeType(schema)}): Promise<${returnType}>\n\`\`\`${simpleNotes}${fallback}`
 }
