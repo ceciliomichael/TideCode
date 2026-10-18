@@ -197,9 +197,9 @@ function DiffRow({
         >
           <span className="inline-flex min-h-4 min-w-0 flex-1 items-center gap-2.5">
             <FileIcon size={14} style={{ color: iconConfig.color }} className="shrink-0" />
-            <span className="relative top-px inline-flex min-w-0 items-center gap-1.5">
+            <span className="inline-flex min-w-0 items-baseline gap-1.5">
               <PathLabel path={normalizedPath} className="min-w-0 leading-[1] text-foreground" />
-              <span title={diff.originalFileName ? `Renamed from ${diff.originalFileName}` : diff.changeStatus} className={`shrink-0 text-[10px] font-bold ${statusColor}`}>{statusLabel}</span>
+              <span title={diff.originalFileName ? `Renamed from ${diff.originalFileName}` : diff.changeStatus} className={`shrink-0 text-[10px] font-bold leading-[1] ${statusColor}`}>{statusLabel}</span>
             </span>
           </span>
         </button>
@@ -257,9 +257,9 @@ function DeletedDiffRow({
       >
         <FileIcon size={14} style={{ color: iconConfig.color }} className="shrink-0" />
         <Tooltip content={normalizedPath} side="left" noWrap triggerClassName="min-w-0 flex-1">
-          <div className="relative top-px inline-flex min-w-0 flex-1 items-center gap-1.5">
+          <div className="inline-flex min-w-0 flex-1 items-baseline gap-1.5">
             <span className="min-w-0 truncate text-left text-foreground decoration-white decoration-[1.5px] line-through">{fileName}</span>
-            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-git-removed">D</span>
+            <span className="shrink-0 text-[10px] font-bold uppercase leading-[1] tracking-wider text-git-removed">D</span>
           </div>
         </Tooltip>
       </button>

@@ -30,6 +30,21 @@ const DEFAULT_WINDOW_HEIGHT = 900
 const WINDOW_SCREEN_MARGIN = 32
 const browserGuestDevToolsModes = new Map<number, BrowserDevToolsDockMode>()
 const browserGuestDevToolsTransitions = new Set<number>()
+const EMBEDDED_BROWSER_TEXT_RESPONSE_COLORS_SCRIPT = `
+(() => {
+  // Chromium's native JSON/plain-text viewer can inherit the app's dark text
+  // preference while keeping its default white page background.
+  const contentType = document.contentType.toLowerCase()
+  if (contentType !== 'text/plain' && !contentType.endsWith('/json') && !contentType.endsWith('+json')) return
+
+  const pre = document.body?.querySelector(':scope > pre')
+  if (!pre) return
+
+  document.documentElement.style.colorScheme = 'light'
+  document.body.style.color = '#202221'
+  pre.style.setProperty('color', '#202221', 'important')
+})()
+`
 const EMBEDDED_BROWSER_POINTER_FOCUS_SCRIPT = `
 (() => {
   const root = document.documentElement
@@ -205,6 +220,7 @@ export async function openBrowserGuestDevTools(
           sandbox: true,
         },
       })
+      const viewWebContents = view.webContents
       view.setBackgroundColor(ownerWindow.getBackgroundColor())
       view.setVisible(false)
       ownerWindow.contentView.addChildView(view)
@@ -225,17 +241,17 @@ export async function openBrowserGuestDevTools(
         readyNotification = setTimeout(() => notifyBrowserGuestDevToolsReady(guestWebContents.id), 32)
       }
       readyFallback = setTimeout(handleReady, 1000)
-      view.webContents.once('did-finish-load', handleReady)
-      view.webContents.once('destroyed', () => {
+      viewWebContents.once('did-finish-load', handleReady)
+      viewWebContents.once('destroyed', () => {
         if (readyFallback) {
           clearTimeout(readyFallback)
         }
         if (readyNotification) {
           clearTimeout(readyNotification)
         }
-        view.webContents.off('did-finish-load', handleReady)
+        viewWebContents.off('did-finish-load', handleReady)
       })
-      guestWebContents.setDevToolsWebContents(view.webContents)
+      guestWebContents.setDevToolsWebContents(viewWebContents)
       guestWebContents.openDevTools({ mode: 'detach', activate: true })
     } else {
       if (!guestWebContents.isDevToolsOpened()) {
@@ -390,22 +406,27 @@ export async function createApplicationWindow(input: {
     }
 
     guestWebContents.on('dom-ready', applyEmbeddedBrowserFocusBehavior)
+    guestWebContents.on('dom-ready', () => {
+      void guestWebContents.executeJavaScript(EMBEDDED_BROWSER_TEXT_RESPONSE_COLORS_SCRIPT, false)
+        .catch(() => undefined)
+    })
     guestWebContents.once('destroyed', () => {
       browserGuestDevToolsModes.delete(guestWebContents.id)
       browserGuestDevToolsTransitions.delete(guestWebContents.id)
       destroyBrowserGuestDevToolsView(guestWebContents.id)
     })
     guestWebContents.on('devtools-closed', () => {
+      if (browserGuestDevToolsTransitions.has(guestWebContents.id)) {
+        return
+      }
       const entry = browserGuestDevToolsViews.get(guestWebContents.id)
       if (entry) {
         entry.visible = false
         entry.view.setVisible(false)
       }
-      if (!browserGuestDevToolsTransitions.has(guestWebContents.id)) {
-        destroyBrowserGuestDevToolsView(guestWebContents.id)
-        if (!win.isDestroyed()) {
-          win.webContents.send('browser:devToolsClosed', guestWebContents.id)
-        }
+      destroyBrowserGuestDevToolsView(guestWebContents.id)
+      if (!win.isDestroyed()) {
+        win.webContents.send('browser:devToolsClosed', guestWebContents.id)
       }
     })
     guestWebContents.on('before-input-event', (event, inputEvent) => {

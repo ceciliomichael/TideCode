@@ -17,5 +17,7 @@ test('source control file rows show Git status letters without line-count summar
   assert.match(source, /diff\.changeStatus === 'renamed' \? 'text-git-renamed'/)
   assert.match(source, /Tooltip content=\{normalizedPath\} side="left" noWrap triggerClassName="min-w-0 flex-1"/)
   assert.match(source, /text-git-removed">D<\/span>/)
+  assert.match(source, /inline-flex min-w-0 items-baseline gap-1.5/)
+  assert.ok(source.includes('shrink-0 text-[10px] font-bold leading-[1] ${statusColor}'))
   assert.doesNotMatch(source, /DiffLineSummary|addedLineCount|removedLineCount/)
 })

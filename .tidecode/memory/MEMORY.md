@@ -4,7 +4,7 @@ Workspace memory index. Detailed entries live under `details/`. Treat entries as
 
 ## details/architecture
 - [TideCode IPC and Capability Contracts](details/architecture/ipc-capability-contracts.md) - updated 2026-10-11T19:22:58.436Z
-- [TideCode System Overview](details/architecture/system-overview.md) - updated 2026-10-11T19:22:58.437Z
+- [TideCode System Overview](details/architecture/system-overview.md) - updated 2026-10-18T06:12:26.673Z
 
 ## details/chat
 - [TideCode Chat Runtime and Long-Running Work](details/chat/runtime-and-history.md) - updated 2026-10-16T03:28:20.285Z

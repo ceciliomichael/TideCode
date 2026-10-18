@@ -78,6 +78,7 @@ function BrowserTabSession({
   const pendingNavigationRef = useRef<{ started: boolean; url: string } | null>(null)
   const devToolsMenuButtonRef = useRef<HTMLButtonElement | null>(null)
   const devToolsHostRef = useRef<HTMLDivElement | null>(null)
+  const devToolsModeTransitionRef = useRef(false)
   const isElectron = useMemo(() => navigator.userAgent.toLowerCase().includes('electron'), [])
   const embeddedBrowserUserAgent = useMemo(
     () => normalizeEmbeddedBrowserUserAgent(navigator.userAgent),
@@ -145,7 +146,7 @@ function BrowserTabSession({
 
     const handleClosed = (webContentsId: number) => {
       try {
-        if (webviewRef.current?.getWebContentsId?.() === webContentsId) {
+        if (!devToolsModeTransitionRef.current && webviewRef.current?.getWebContentsId?.() === webContentsId) {
           setDevToolsOpen(false)
         }
       } catch {
@@ -209,6 +210,9 @@ function BrowserTabSession({
 
     if (devToolsMode === 'undocked') {
       void window.tidecodeBrowserDevTools.open({ mode: 'undocked', webContentsId })
+        .finally(() => {
+          devToolsModeTransitionRef.current = false
+        })
       return
     }
 
@@ -245,6 +249,8 @@ function BrowserTabSession({
       },
       mode: devToolsMode,
       webContentsId,
+    }).finally(() => {
+      devToolsModeTransitionRef.current = false
     })
     void window.tidecodeBrowserDevTools.setVisible({ visible: true, webContentsId })
 
@@ -498,6 +504,10 @@ function BrowserTabSession({
   }
 
   const handleSelectDevToolsMode = (mode: BrowserDevToolsDockMode) => {
+    if (mode === devToolsMode) return
+    if (devToolsOpen) {
+      devToolsModeTransitionRef.current = true
+    }
     onDevToolsModeChange(mode)
   }
 
