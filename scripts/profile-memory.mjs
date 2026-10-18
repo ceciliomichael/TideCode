@@ -559,7 +559,7 @@ if (!process.versions.electron) {
   const code = await new Promise((resolve) => child.on('exit', resolve))
   clearInterval(driverTimer)
   const reportPath = path.join(fixture, 'report.json')
-  let scenarioFailed = false
+  let scenarioFailed
   try {
     const report = JSON.parse(await readFile(reportPath, 'utf8'))
     scenarioFailed = report.failures.length > 0

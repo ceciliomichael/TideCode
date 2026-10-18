@@ -264,7 +264,8 @@ test('durable memory is reconciled before the short handoff and stays separate i
   assert.match(handoffPrompt, /Preserve feature branches after merge/u)
   assert.doesNotMatch(result.packet.continuationMarkdown, /Preserve feature branches after merge/u)
   assert.match(String(result.projectedMessages[0]?.content ?? ''), /Durable conversation memory/u)
-  assert.match(String(result.projectedMessages[0]?.content ?? ''), /Preserve feature branches after merge/u)
+  assert.match(String(result.projectedMessages[0]?.content ?? ''), /@chat\/DURABLE\.md/u)
+  assert.doesNotMatch(String(result.projectedMessages[0]?.content ?? ''), /Preserve feature branches after merge/u)
   assert.equal(result.projectedMessages[1]?.content, result.packet.continuationMarkdown)
 })
 
@@ -291,7 +292,8 @@ test('workspace compaction retains chat memory without writing DURABLE.md', asyn
     assert.ok(result)
     await assert.rejects(fs.stat(path.join(workspaceRootPath, '.tidecode', 'memory', 'DURABLE.md')), { code: 'ENOENT' })
     assert.match(result.durableMemory.markdown, /This chat keeps its own memory/u)
-    assert.match(String(result.projectedMessages[0]?.content), /This chat keeps its own memory/u)
+    assert.match(String(result.projectedMessages[0]?.content), /@chat\/DURABLE\.md/u)
+    assert.doesNotMatch(String(result.projectedMessages[0]?.content), /This chat keeps its own memory/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

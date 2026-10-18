@@ -46,11 +46,11 @@ export function findVenvPath(cwd: string, workspaceRootPath: string | null): str
           if (statSync(candidate).isDirectory() && hasPyvenvCfg(candidate)) {
             return candidate
           }
-        } catch (_) {
+        } catch {
           // skip entries we can't stat
         }
       }
-    } catch (_) {
+    } catch {
       // Permission errors on currentDir — skip
     }
 

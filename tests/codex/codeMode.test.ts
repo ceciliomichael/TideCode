@@ -1577,6 +1577,7 @@ test('Code Mode capability search runs inside Code Mode while local tools remain
         toolCallId: 'test-code-mode',
       })
 
+// eslint-disable-next-line no-unreachable
 test('Code Mode capability search does not expose injected plan APIs while direct calls remain available', async () => {
   const entries = [
     {

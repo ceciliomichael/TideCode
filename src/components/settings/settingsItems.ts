@@ -27,7 +27,7 @@ description: 'Choose shared model availability per provider.',
   {
     id: 'settings-item6',
     label: 'Configuration',
-description: 'Set client chat defaults and shared task models.',
+    description: 'Configure models, memory, and other assistant settings.',
   },
   {
     id: 'settings-item8',

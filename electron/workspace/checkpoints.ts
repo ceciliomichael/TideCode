@@ -310,7 +310,7 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
           try {
             await fs.chmod(absolutePath, 0o666).catch(() => undefined)
             await fs.writeFile(absolutePath, snapshotBuffer)
-          } catch (error) {
+          } catch {
             try {
               await fs.unlink(absolutePath).catch(() => undefined)
               await fs.writeFile(absolutePath, snapshotBuffer)

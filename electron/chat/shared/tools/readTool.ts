@@ -1,4 +1,6 @@
 import { jsonSchema, tool } from 'ai'
+import { readLatestConversationMemory } from '../../history/eventStore'
+import { CHAT_DURABLE_MEMORY_PATH } from '../compaction/durableMemory'
 import { classifyWorkspaceMemoryPath, MEMORY_INDEX_PATH, migrateLegacyWorkspaceMemory } from '../../../memory/service'
 import {
   createReadToolResult,
@@ -45,7 +47,7 @@ function createMissingWorkspaceMemoryReadResult(
 
 export function createReadTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Read the contents of one existing text file or image. Use tools.list to inspect directories and the workspace root. Text reads stay within safe model-output budgets. Use next_offset for later lines and pass next_cursor back exactly when an oversized single line is returned in fragments.',
+    description: 'Read one existing text file, image, or the active chat\'s durable memory at @chat/DURABLE.md. Use tools.list to inspect workspace directories. Text reads stay within safe model-output budgets.',
     inputSchema: jsonSchema({
       additionalProperties: true,
       properties: {
@@ -67,6 +69,26 @@ export function createReadTool(context: WorkspaceToolContext) {
           throw new Error('File path ("path") is required.')
         }
         let targetPath = input.path === '' ? '.' : input.path
+        if (targetPath === CHAT_DURABLE_MEMORY_PATH) {
+          if (!context.conversationId) {
+            throw new Error('Chat durable memory requires an active conversation.')
+          }
+          const memory = await readLatestConversationMemory(context.conversationId)
+          if (!memory) {
+            return createSuccessResult({
+              body: 'This chat has no saved durable memory yet.',
+              semantics: { memory_state: 'empty' },
+              subject: { kind: 'file', path: CHAT_DURABLE_MEMORY_PATH },
+              summary: 'No chat durable memory yet.',
+            })
+          }
+          return createSuccessResult({
+            body: memory.markdown,
+            semantics: { memory_state: 'available', source_digest: memory.sourceDigest },
+            subject: { kind: 'file', path: CHAT_DURABLE_MEMORY_PATH },
+            summary: 'Read active chat durable memory.',
+          })
+        }
         const normalizedTargetPath = targetPath.replace(/\\/gu, '/')
         if (normalizedTargetPath.includes('.tidecode/memory/folders/')) {
           await migrateLegacyWorkspaceMemory(context.workspaceRootPath)

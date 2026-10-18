@@ -120,6 +120,8 @@ test('a failed cached icon switches back to the website initial', () => {
     onNavigate: () => {},
     visitedSites: [{ label: 'cached.example', url: 'https://cached.example/', faviconDataUrl: 'data:image/png;base64,iVBORw0KGgo=' }],
   }))
+  // This test traverses raw React element internals from the hook harness.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function findIcon(element: any): any {
     if (Array.isArray(element)) {
       return element.map(findIcon).find(Boolean)

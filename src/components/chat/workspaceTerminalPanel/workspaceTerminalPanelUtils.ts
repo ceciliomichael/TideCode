@@ -192,6 +192,10 @@ export function nextTerminalTabGeneration(generations: Map<string, number>, tabK
   return generation;
 }
 
+export function isTerminalTransportDisconnected(message: string) {
+  return /connect ENOENT|run service disconnected|run service is not connected|ECONNRESET|EPIPE/i.test(message);
+}
+
 export function isCurrentTerminalTabGeneration(
   generations: Map<string, number>,
   tabKey: string,

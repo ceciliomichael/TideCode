@@ -458,7 +458,8 @@ function escapeRegularExpression(value: string) {
 }
 
 export function readOsc133CompletionCode(value: string): number | null {
-  const match = /\x1b\]133;D(?:;(-?\d+))?(?:\x07|\x1b\\)/u.exec(value);
+  // eslint-disable-next-line no-control-regex
+  const match = new RegExp('\\x1b\\]133;D(?:;(-?\\d+))?(?:\\x07|\\x1b\\\\)', 'u').exec(value);
   if (match) {
     return match[1] !== undefined ? Number.parseInt(match[1], 10) : 0;
   }
@@ -1088,9 +1089,9 @@ export async function terminateAllBackgroundSessions(
     for (const session of store.sessions.values()) {
       try {
         if (terminateSession) {
-          terminateSession(webContents as any, session.globalSessionId, workspaceRootPath);
-        } else if (webContents && dependencies) {
-          dependencies.terminateSession(webContents as any, session.globalSessionId, workspaceRootPath);
+          terminateSession(webContents, session.globalSessionId, workspaceRootPath);
+        } else if (webContents && 'isDestroyed' in webContents && dependencies) {
+          dependencies.terminateSession(webContents as WebContents, session.globalSessionId, workspaceRootPath);
         }
       } catch {
         // Continue terminating the remaining sessions.
@@ -1130,9 +1131,9 @@ export async function terminateAllBackgroundSessionsForTurn(
       for (const session of store.sessions.values()) {
         try {
           if (customTerminateSession) {
-            customTerminateSession(webContents as any, session.globalSessionId, workspaceRootPath);
-          } else if (webContents && dependencies) {
-            dependencies.terminateSession(webContents as any, session.globalSessionId, workspaceRootPath);
+            customTerminateSession(webContents, session.globalSessionId, workspaceRootPath);
+          } else if (webContents && 'isDestroyed' in webContents && dependencies) {
+            dependencies.terminateSession(webContents as WebContents, session.globalSessionId, workspaceRootPath);
           }
         } catch {
           // Continue terminating the remaining sessions in this turn.
@@ -1142,8 +1143,8 @@ export async function terminateAllBackgroundSessionsForTurn(
       }
     }
 
-    if (webContents && dependencies) {
-      dependencies.terminateSessionsForTurn(webContents as any, normalizedTurnId, workspaceRootPath);
+    if (webContents && 'isDestroyed' in webContents && dependencies) {
+      dependencies.terminateSessionsForTurn(webContents as WebContents, normalizedTurnId, workspaceRootPath);
     }
   } finally {
     threadStores.delete(namespace);

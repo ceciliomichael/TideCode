@@ -4,7 +4,6 @@ import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import { PathLabel } from './PathLabel'
 
 // Includes the stacked row's outer bottom border.
-// eslint-disable-next-line react-refresh/only-export-components
 export const CONVERSATION_DIFF_ROW_HEIGHT_PX = 53
 
 interface DiffFileHeaderProps {

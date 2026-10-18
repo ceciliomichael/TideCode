@@ -132,7 +132,7 @@ function findLatestCompactionProjection(input: {
         : null
       const recoveredMessages = sanitizeModelMessages([
         ...recoveredAnchor,
-        ...(recoveredMemory ? [buildDurableMemoryMessage(recoveredMemory)] : []),
+        ...(recoveredMemory ? [buildDurableMemoryMessage()] : []),
         buildCompactionMessage(repairedPacket),
       ])
       console.warn('Canonical compaction projection was unavailable; rebuilding it from the stored packet.')

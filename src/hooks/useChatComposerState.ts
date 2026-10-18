@@ -96,7 +96,7 @@ export function useChatComposerState(messages: Message[]) {
     }
 
     setMainComposerMentionPathMap(new Map())
-  }, [mainComposerMentionPathMap.size, mainComposerValue])
+  }, [mainComposerMentionPathMap.size, mainComposerValue, setMainComposerMentionPathMap])
 
   const restoreEditingSession = useCallback((session: EditComposerDraftSession | { messageId: string }) => {
     const targetMessage = messagesRef.current.find(
@@ -136,7 +136,7 @@ export function useChatComposerState(messages: Message[]) {
     setEditInitialValue('')
     setEditInitialAttachments([])
     setEditComposerMentionPathMap(new Map())
-  }, [])
+  }, [setMainComposerAttachments, setMainComposerMentionPathMap, setMainComposerValue])
 
   const startEditingMessage = useCallback((messageId: string) => {
     restoreEditingSession({ messageId })

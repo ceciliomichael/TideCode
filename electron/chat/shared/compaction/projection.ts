@@ -60,7 +60,7 @@ export interface CompactionProjectionInput {
 
 export function buildCompactionProjection(input: CompactionProjectionInput) {
   const durableMemoryMessage = input.includeDurableMemoryMessage === true
-    ? buildDurableMemoryMessage(input.durableMemory)
+    ? buildDurableMemoryMessage()
     : null
   const handoffMessage = buildContinuationMessage(input.packet.continuationMarkdown)
   const fixedMessages = durableMemoryMessage ? [durableMemoryMessage, handoffMessage] : [handoffMessage]

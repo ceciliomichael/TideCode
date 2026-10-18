@@ -1,4 +1,3 @@
-/* eslint-env node */
 import http from 'node:http'
 import WebSocket from 'ws'
 

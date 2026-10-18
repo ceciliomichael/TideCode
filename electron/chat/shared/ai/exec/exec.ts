@@ -2,7 +2,6 @@ import { jsonSchema, tool } from 'ai'
 import { formatExplicitCodeModeOutput, formatImplicitCodeModeToolResults } from '../../../../../src/lib/codeModeResultOutput'
 import type { AgentToolExecutionResult } from '../../toolTypes'
 import type { CodeModeExecutor } from '../../codeMode/executor'
-import type { AgentToolRegistry } from '../../tools/registry'
 import { getApiInstructions, getExecInstructions } from '../registry/documentation'
 
 const EXEC_INPUT_SCHEMA = {
@@ -41,7 +40,7 @@ function displayReceipt(body: string | undefined) {
   }
 }
 
-export function buildExecDescription(_registry: AgentToolRegistry) {
+export function buildExecDescription() {
   const authority = 'The host enforces current workspace and mode permissions. Sandbox restricts paths; Full Access may broaden authorized paths. Neither mode enables imports, Node globals or ambient host authority.'
   const listing = getApiInstructions('available.list')
   const discovery = getApiInstructions('available.search')
@@ -62,10 +61,9 @@ export function buildExecDescription(_registry: AgentToolRegistry) {
 
 export function createExecTool(
   executor: CodeModeExecutor,
-  registry: AgentToolRegistry,
 ) {
   return tool({
-    description: buildExecDescription(registry),
+    description: buildExecDescription(),
     inputSchema: jsonSchema<ExecInput>(EXEC_INPUT_SCHEMA as unknown as Parameters<typeof jsonSchema>[0]),
     execute: async (input, executionOptions): Promise<AgentToolExecutionResult> => {
       const code = input.code

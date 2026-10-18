@@ -439,10 +439,17 @@ export function TaskModelsSettingsPanel({
           })}
         </div>
 
+        <header className="flex flex-col gap-1 px-1 pt-1">
+          <h2 className={SETTINGS_SECTION_TITLE_CLASS_NAME}>Memory</h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            Manage shared workspace memory across chats.
+          </p>
+        </header>
+
         <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
           <SettingsRow
             title="Memory"
-            description="Enable workspace MEMORY.md and linked memory/details entries across chats. DURABLE.md remains enabled regardless of this setting."
+            description="Allow workspace memory to save and reuse project knowledge across chats through MEMORY.md and linked detail files. Turn off to disable shared workspace memory."
           >
             <SegmentedField
               ariaLabel="Workspace memory"

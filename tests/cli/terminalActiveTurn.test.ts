@@ -156,7 +156,7 @@ test('committed turn contains response content without a response heading or use
 })
 
 test('long multiline tool labels are collapsed and truncated to one terminal row', () => {
-  const command = `powershell -NoProfile -Command \"${'Write-Output very-long-command; '.repeat(12)}\nWrite-Output finished\"`
+  const command = `powershell -NoProfile -Command "${'Write-Output very-long-command; '.repeat(12)}\nWrite-Output finished"`
   const rendered = renderTerminalToolRowText(`Started ${command}`, 'completed', undefined, 48)
   const plain = stripAnsi(rendered)
 

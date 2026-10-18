@@ -103,7 +103,7 @@ export class WorkspaceMentionIndexer {
 }
 
 export function parseMentions(input: string): ParsedMention[] {
-  const mentionRegex = /@([a-zA-Z0-9_\-\.\/]+)(?::(\d+)(?:-(\d+))?)?/g
+  const mentionRegex = /@([a-zA-Z0-9_./-]+)(?::(\d+)(?:-(\d+))?)?/g
   const mentions: ParsedMention[] = []
   let match: RegExpExecArray | null
 

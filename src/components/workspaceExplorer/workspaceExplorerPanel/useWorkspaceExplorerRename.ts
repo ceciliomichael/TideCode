@@ -190,7 +190,6 @@ export function useWorkspaceExplorerRename({
     selectionAnchorEntryPathRef.current = targetEntry.relativePath
   }, [
     closeContextMenu,
-    contextMenuState,
     isExplorerEditingRef,
     isSubmittingCreationRef,
     resetCreation,

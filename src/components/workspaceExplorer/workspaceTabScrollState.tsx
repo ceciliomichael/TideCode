@@ -32,6 +32,8 @@ export function WorkspaceTabScrollStateProvider({ children, tabKeys }: Workspace
   return <WorkspaceTabScrollStateContext.Provider value={value}>{children}</WorkspaceTabScrollStateContext.Provider>
 }
 
+// The hook shares its provider's private context and must remain in the same module.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useWorkspaceTabScrollPosition(tabKey: string, restorationKey?: unknown) {
   const context = useContext(WorkspaceTabScrollStateContext)
   const viewportRef = useRef<HTMLDivElement | null>(null)

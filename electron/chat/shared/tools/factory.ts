@@ -97,7 +97,7 @@ export async function createAgentToolBundle(
     ),
   })
   const tools: ToolSet = {
-    exec: createExecTool(executor, registry),
+    exec: createExecTool(executor),
   }
 
   const nativeWeb = createProviderWebTool(options.providerId)

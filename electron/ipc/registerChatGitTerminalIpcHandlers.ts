@@ -74,10 +74,12 @@ export function registerChatGitTerminalIpcHandlers(
   activeChatStreamProviders: Map<string, StartChatStreamInput['providerId']>,
 ) {
   const emittedTerminalExitSessionIds = new Set<string>()
-  let runServiceClientPromise: ReturnType<typeof ensureRunServiceClient> | null = null
   const getRunService = () => {
-    if (!runServiceClientPromise) {
-      runServiceClientPromise = ensureRunServiceClient().then((runService) => {
+    const current = ensureRunServiceClient()
+    // Subscribe once for each actual transport, including replacements.
+    return current.then((runService) => {
+      if (subscribedClients.has(runService)) return runService
+      subscribedClients.add(runService)
       runService.onEvent((runEvent) => {
         if (runEvent.type === 'chat_event') {
           if (
@@ -146,15 +148,10 @@ export function registerChatGitTerminalIpcHandlers(
           )
         }
       })
-        return runService
-      }).catch((error: unknown) => {
-        runServiceClientPromise = null
-        throw error
-      })
-    }
-
-    return runServiceClientPromise
+      return runService
+    })
   }
+  const subscribedClients = new WeakSet<Awaited<ReturnType<typeof ensureRunServiceClient>>>()
 
   ipcMain.handle('runs:getCompactionState', async (_event, conversationId: string) => {
     const runService = await connectRunServiceClientIfAvailable()

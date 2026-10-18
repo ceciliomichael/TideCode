@@ -1,6 +1,8 @@
 import type readline from 'node:readline'
 
+// eslint-disable-next-line no-control-regex
 const WIN32_INPUT_RECORD_REGEX = /^\x1b\[(\d+);(\d+);(\d+);([01]);(\d+);(\d+)_/u
+// eslint-disable-next-line no-control-regex
 const WIN32_INPUT_RECORD_PREFIX_REGEX = /^\x1b\[\d*(?:;\d*){0,5}$/u
 
 const WIN32_CONTROL_STATE = {
@@ -65,9 +67,11 @@ export type TerminalInputAction =
 function isModifiedEnterSequence(input: string): boolean {
   if (input === '\n' || input === '\x1b\r') return true
 
+  // eslint-disable-next-line no-control-regex
   const kittyMatch = /^\x1b\[13;(\d+)u$/u.exec(input)
   if (kittyMatch) return Number(kittyMatch[1]) > 1
 
+  // eslint-disable-next-line no-control-regex
   const modifyOtherKeysMatch = /^\x1b\[27;(\d+);13~$/u.exec(input)
   return modifyOtherKeysMatch ? Number(modifyOtherKeysMatch[1]) > 1 : false
 }

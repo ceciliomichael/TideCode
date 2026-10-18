@@ -86,7 +86,7 @@ export const WorkspaceImagePreviewView = memo(function WorkspaceImagePreviewView
     resetZoom()
     viewportRef.current?.scrollTo({ left: 0, top: 0 })
     queueMicrotask(updateLoadedImageSize)
-  }, [previewDataUrl, resetZoom, updateLoadedImageSize])
+  }, [previewDataUrl, resetZoom, updateLoadedImageSize, viewportRef])
 
   useEffect(() => {
     const viewport = viewportRef.current

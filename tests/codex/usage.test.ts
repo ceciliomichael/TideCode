@@ -95,7 +95,7 @@ test('getCodexProviderStatus returns hydrated status and retains cached usage wh
   const homeDirectory = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-codex-test-'))
 
   const { getCodexProviderStatus } = await import('../../electron/providers/codex/service')
-  const { writeStoredCodexAuthData, StoredCodexAuthData } = await import('../../electron/providers/codex/store')
+  const { writeStoredCodexAuthData } = await import('../../electron/providers/codex/store')
   const { upsertStoredCodexAccount } = await import('../../electron/providers/codex/accounts')
 
   const originalFetch = globalThis.fetch
@@ -111,7 +111,7 @@ test('getCodexProviderStatus returns hydrated status and retains cached usage wh
       },
     })) as typeof fetch
 
-  const authData: InstanceType<typeof StoredCodexAuthData> | Record<string, unknown> = {
+  const authData = {
     auth_mode: 'chatgpt',
     expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
     last_refresh: new Date().toISOString(),
@@ -125,8 +125,8 @@ test('getCodexProviderStatus returns hydrated status and retains cached usage wh
   }
 
   try {
-    await writeStoredCodexAuthData(authData as any, { homeDirectory })
-    await upsertStoredCodexAccount(authData as any, 'Test Account', { homeDirectory })
+    await writeStoredCodexAuthData(authData, { homeDirectory })
+    await upsertStoredCodexAccount(authData, 'Test Account', { homeDirectory })
 
     // Hydrated call populates usage
     const hydratedStatus = await getCodexProviderStatus(true, { homeDirectory })

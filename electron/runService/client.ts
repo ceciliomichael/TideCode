@@ -79,6 +79,10 @@ export class TideCodeRunServiceClient {
     return this.serviceProcessId
   }
 
+  get isConnected() {
+    return this.socket !== null && !this.socket.destroyed && this.serviceProcessId !== null
+  }
+
   async connect() {
     if (this.connectPromise) return this.connectPromise
     if (this.socket && !this.socket.destroyed) return

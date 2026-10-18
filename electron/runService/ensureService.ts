@@ -191,17 +191,34 @@ async function launchAndConnectService() {
   throw lastError instanceof Error ? lastError : new Error('Unable to start the Tidecode run service.')
 }
 
-export function ensureRunServiceClient() {
+export function ensureRunServiceClient(): Promise<TideCodeRunServiceClient> {
   if (runServiceShutdownRequested) {
     return Promise.reject(new Error('TideCode run service is shutting down.'))
   }
   if (!sharedClientPromise) {
-    sharedClientPromise = launchAndConnectService().catch((error) => {
-      sharedClientPromise = null
+    const pending = launchAndConnectService()
+    const guarded = pending.catch((error) => {
+      if (sharedClientPromise === guarded) sharedClientPromise = null
       throw error
     })
+    sharedClientPromise = guarded
   }
-  return sharedClientPromise
+  const observed = sharedClientPromise
+  return observed.then(async (client) => {
+    if (client.isConnected || runServiceShutdownRequested) return client
+    if (sharedClientPromise !== observed) return sharedClientPromise!
+    const stale = sharedClientPromise
+    if (stale) {
+      const replacement = launchAndConnectService()
+      const guarded = replacement.catch((error) => {
+        if (sharedClientPromise === guarded) sharedClientPromise = null
+        throw error
+      })
+      if (sharedClientPromise === stale) sharedClientPromise = guarded
+      return sharedClientPromise
+    }
+    return ensureRunServiceClient()
+  })
 }
 
 export async function connectRunServiceClientIfAvailable() {

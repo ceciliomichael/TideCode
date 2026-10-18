@@ -30,7 +30,7 @@ function main() {
   const refName = String(process.env.GITHUB_REF_NAME || "").trim();
   const refFull = String(process.env.GITHUB_REF || "").trim();
 
-  let resolved = "";
+  let resolved;
 
   if (input) {
     const normalizedInput = normalizeTagToVersion(input);

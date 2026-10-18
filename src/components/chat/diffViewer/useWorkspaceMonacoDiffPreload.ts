@@ -4,10 +4,6 @@ import { preloadWorkspaceMonacoDiffView, preloadWorkspaceMonacoRuntime } from '.
 import { resolveWorkspaceMonacoLanguage } from '../../workspaceExplorer/workspaceFileEditor/workspaceMonacoConfig'
 import { ensureWorkspaceMonacoDiffModels } from './workspaceMonacoDiffModelCache'
 
-interface UseWorkspaceMonacoDiffPreloadOptions {
-}
-
-
 function createDiffModelRequest(diff: ConversationFileDiff) {
   return {
     contentSignature: diff.contentSignature,
@@ -18,7 +14,7 @@ function createDiffModelRequest(diff: ConversationFileDiff) {
   }
 }
 
-export function useWorkspaceMonacoDiffPreload(_: UseWorkspaceMonacoDiffPreloadOptions = {}) {
+export function useWorkspaceMonacoDiffPreload() {
   const runtimePromiseRef = useRef<ReturnType<typeof preloadWorkspaceMonacoRuntime> | null>(null)
   const diffViewPromiseRef = useRef<ReturnType<typeof preloadWorkspaceMonacoDiffView> | null>(null)
   const preloadedDiffKeySetRef = useRef(new Set<string>())

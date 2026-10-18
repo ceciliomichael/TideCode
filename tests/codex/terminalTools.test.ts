@@ -952,7 +952,7 @@ test("daemon server signatures are detected and set status to daemon_listening",
   assert.equal(result.semantics?.state, "running");
   assert.equal(result.semantics?.status, "daemon_listening");
   assert.match(result.body ?? "", /daemon_listening/u);
-  assert.match(result.body ?? "", /Local:   http:\/\/localhost:5173\//u);
+  assert.match(result.body ?? "", /Local: {3}http:\/\/localhost:5173\//u);
 });
 
 test("interact_terminal returns recent_output_tail on quiet reads", async () => {

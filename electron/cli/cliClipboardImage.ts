@@ -327,7 +327,7 @@ function getWindowsClipboardDaemon(): WindowsClipboardDaemon {
 
 function tryReadElectronClipboard(): ChatImageAttachment | null {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const electron = require('electron')
     if (electron?.clipboard?.readImage) {
       const nativeImg = electron.clipboard.readImage()

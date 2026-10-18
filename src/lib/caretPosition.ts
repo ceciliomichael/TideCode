@@ -91,7 +91,8 @@ export function getCaretBoundingRect(element: HTMLTextAreaElement, position: num
         style.lineHeight = computed.height
       }
     } else {
-      style[prop as any] = computed[prop as any]
+      (style as unknown as Record<string, string>)[prop] =
+        (computed as unknown as Record<string, string>)[prop]
     }
   })
 

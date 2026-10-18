@@ -32,9 +32,10 @@ test('per-chat durable context never carries memory from a different chat', () =
   const initial = [{ role: 'user' as const, content: 'Continue.' }]
   const first = applyConversationMemoryContext(initial, chatOne)
   const second = applyConversationMemoryContext(first, chatTwo)
-  assert.match(String(first[0]?.content), /Only chat one knows/u)
+  assert.match(String(first[0]?.content), /@chat\/DURABLE\.md/u)
+  assert.doesNotMatch(JSON.stringify(first), /Only chat one knows/u)
   assert.doesNotMatch(JSON.stringify(second), /Only chat one knows/u)
-  assert.match(String(second[0]?.content), /Chat two makes/u)
+  assert.doesNotMatch(JSON.stringify(second), /Chat two makes/u)
   assert.equal(second.filter((message) => String(message.content).startsWith('## Durable conversation memory')).length, 1)
   assert.deepEqual(applyConversationMemoryContext(second, null), initial)
 })

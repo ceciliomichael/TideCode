@@ -380,7 +380,6 @@ export function useWorkspaceExplorerSelection({
       clearEntrySelection,
       directoryEntriesByPath,
       expandedDirectories,
-      focusSelectedEntry,
       onOpenFile,
       requestDeleteEntries,
       requestCopyOrCutEntries,

@@ -11,6 +11,7 @@ import {
   getNativeSelectionTextWithinHost,
   getSessionDimensions,
   getTerminalTheme,
+  isTerminalTransportDisconnected,
 } from "./workspaceTerminalPanelUtils";
 
 export interface TabTerminalInstance {
@@ -199,6 +200,15 @@ export function createTerminalInstance({
         workspaceRootPath: getWorkspaceRootPath(tabKey),
       }).catch((error: unknown) => {
         const errorMessage = getErrorMessage(error);
+        if (isTerminalTransportDisconnected(errorMessage)) {
+          // The service may have restarted. Do not replay the input because
+          // we cannot know whether the previous service received it.
+          const current = terminalTabsRef.current.find((candidate) => candidate.key === tabKey);
+          if (current?.sessionId === sessionId && current.status === "ready") {
+            restartTab(tabKey);
+          }
+          return;
+        }
         const sessionEnded = errorMessage.includes("Unknown terminal session id") ||
           errorMessage.includes("already exited") || errorMessage.includes("does not belong");
         if (!sessionEnded) {

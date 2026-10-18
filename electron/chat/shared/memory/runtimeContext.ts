@@ -104,7 +104,7 @@ export function applyConversationMemoryContext(
     && message.content.startsWith('## Durable conversation memory\n')
   ))
   return memory
-    ? [buildDurableMemoryMessage(memory), ...withoutPriorMemory]
+    ? [buildDurableMemoryMessage(), ...withoutPriorMemory]
     : withoutPriorMemory
 }
 

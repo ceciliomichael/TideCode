@@ -4,6 +4,7 @@ import {
   createTerminalTabKey,
   getWorkspaceKeyFromTerminalTabKey,
   isCurrentTerminalTabGeneration,
+  isTerminalTransportDisconnected,
   nextTerminalTabGeneration,
 } from "../../src/components/chat/workspaceTerminalPanel/workspaceTerminalPanelUtils";
 
@@ -19,6 +20,15 @@ test("stale terminal creation and restart responses are rejected by generation",
 
   nextTerminalTabGeneration(generations, tab); // Closing the tab invalidates pending work.
   assert.equal(isCurrentTerminalTabGeneration(generations, tab, restarted), false);
+});
+
+test("run-service pipe failures are distinguished from terminal command errors", () => {
+  assert.equal(isTerminalTransportDisconnected(
+    "Error invoking remote method: connect ENOENT \\\\.\\pipe\\tidecode-run-service-v14",
+  ), true);
+  assert.equal(isTerminalTransportDisconnected("Tidecode run service disconnected."), true);
+  assert.equal(isTerminalTransportDisconnected("write EPIPE"), true);
+  assert.equal(isTerminalTransportDisconnected("Unknown terminal session id"), false);
 });
 
 test("terminal generations are independent across tabs and workspace keys are decoded", () => {

@@ -2,7 +2,7 @@
 
 ## Durable memory and compaction
 
-Current implementation (updated 2026-10-18): compaction reconciles each conversation's existing `ConversationMemory` Markdown with evicted messages, then separately generates its short continuation handoff. Both outputs are persisted together on the conversation's canonical `compaction_committed` event. `readLatestConversationMemory` loads the latest valid snapshot on the active branch and runtime replay injects only that chat's memory, removing stale duplicate memory messages. Canonical history lives under the user's home `.tidecode/history/canonical-history/<conversationId>.json`, outside the project.
+Current implementation (updated 2026-10-18): compaction reconciles each conversation's existing `ConversationMemory` Markdown with evicted messages, then separately generates its short continuation handoff. Both outputs are persisted together on the conversation's canonical `compaction_committed` event. Runtime replay injects a short instruction to read `@chat/DURABLE.md` instead of the memory contents. `tools.read` resolves that read-only alias exclusively through the current conversation ID and the latest valid memory on its active branch. Canonical history lives under the user's home `.tidecode/history/canonical-history/<conversationId>.json`, outside the project.
 
 Automatic compaction no longer reads or writes project `.tidecode/memory/DURABLE.md`; preexisting files at that path are ignored. The optional shared workspace `MEMORY.md` and linked detail entries remain an independent, settings-controlled feature. In-flight compaction deduplication is scoped by conversation ID when one is available.
 

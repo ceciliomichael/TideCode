@@ -2,7 +2,7 @@
 
 ## Per-chat durable memory
 
-Implemented storage choice (2026-10-18): keep durable Markdown in the conversation's canonical compaction history, not in a separate project DURABLE.md file. Chats in the same project have independent durable state. Successful compaction saves both the reconciled long-term memory and a separate short-term continuation summary; reopening the chat restores its memory from the active branch's committed compaction history. Optional shared workspace MEMORY.md remains a distinct existing feature.
+Implemented storage choice (2026-10-18): keep durable Markdown in the conversation's canonical compaction history, not in a separate project DURABLE.md file. Chats in the same project have independent durable state. Successful compaction saves both the reconciled long-term memory and a separate short-term continuation summary; reopening injects a short instruction to read the current chat's memory using `tools.read({ path: '@chat/DURABLE.md' })`. Optional shared workspace MEMORY.md remains a distinct existing feature, controlled separately in Settings.
 
 ## AI tool invocation presentation
 
