@@ -74,6 +74,10 @@ The shared runtime is responsible for:
 
 `electron/terminal/` owns native PTY sessions through `node-pty`. Sessions are associated with the owning renderer window and workspace, enforce ownership checks, clamp dimensions and polling, validate working directories, support virtual-environment activation, stream output and exit events, and clean up AI-created sessions after a turn.
 
+### Native titlebar theme background
+
+`electron/window/theme.ts` uses a transparent (`#00000000`) titlebar-overlay background in both themes. `AppWorkspaceShell.tsx` already paints the full-width CSS titlebar beneath the native buttons; transparency avoids a separately colored native background during theme switches. Native symbol colors and the opaque initial window background remain theme-specific. Visual timing still needs checking in the running Windows app.
+
 ## Design principles to preserve
 
 - Keep the user’s goal visible and the work reviewable.

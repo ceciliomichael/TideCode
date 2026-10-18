@@ -13,16 +13,17 @@ const TITLE_BAR_OVERLAY_HEIGHT = 36
 
 // Keep these native window colors aligned with the shell/titlebar surface tokens in src/index.css.
 // Electron cannot read the renderer CSS variables before the window is painted.
+// Let the CSS titlebar show through the native controls so its background changes in one paint.
 
 const LIGHT_WINDOW_THEME: WindowThemePalette = {
   backgroundColor: '#eef1ef',
-  overlayColor: '#eef1ef',
+  overlayColor: '#00000000',
   symbolColor: '#202221',
 }
 
 const DARK_WINDOW_THEME: WindowThemePalette = {
   backgroundColor: '#131314',
-  overlayColor: '#131314',
+  overlayColor: '#00000000',
   symbolColor: '#e9e9ea',
 }
 

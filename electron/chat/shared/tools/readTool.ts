@@ -45,7 +45,7 @@ function createMissingWorkspaceMemoryReadResult(
 
 export function createReadTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads stay within safe model-output budgets. Use next_offset for later lines and pass next_cursor back exactly when an oversized single line is returned in fragments.',
+    description: 'Read the contents of one existing text file or image. Use tools.list to inspect directories and the workspace root. Text reads stay within safe model-output budgets. Use next_offset for later lines and pass next_cursor back exactly when an oversized single line is returned in fragments.',
     inputSchema: jsonSchema({
       additionalProperties: true,
       properties: {

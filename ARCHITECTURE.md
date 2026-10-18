@@ -24,6 +24,8 @@ Normal React UI consumes Tailwind utilities generated from those semantic variab
 
 Pre-render or non-React surfaces cannot depend on renderer CSS. `index.html`, `electron/window/theme.ts`, `electron/window/trayPopup.ts`, and `electron/remote/webAuth.ts` therefore mirror only the minimal palette necessary for first paint, native chrome, tray UI, and unauthenticated Remote login. Tests guard these mirrored values and core contrast relationships. The Remote login page reads the same local appearance key and system color-scheme preference before painting.
 
+The native window-controls overlay uses a transparent background in both themes so the renderer's existing CSS titlebar paints the whole surface together. Native button symbols still use the resolved window theme; the initial window background remains opaque.
+
 ## Windows tray popup
 
 `electron/window/trayPopup.ts` reuses the loaded custom popup with the original opacity-based toggle: opening enables mouse input, restores opacity, and raises and focuses the window; closing disables mouse input, sets opacity to zero, and stops the outside-click hook. Taking focus allows outside-click dismissal through blur even when the native hook is unavailable. The tray right-click callback owns tray toggling, while outside-click and focus-loss handlers exclude the saved tray click area to avoid reopening on the same click. That area includes the reported rectangle plus a 10-pixel margin around the opening click, covering zero-sized and incomplete overflow rectangles. Native hook positions are converted to Electron's DIP coordinates before hit testing. Pending openings are cancelled on dismissal. The existing markup and palette are unchanged.
