@@ -77,9 +77,10 @@ export function useChatContextUsage({
   messagesRef.current = messages
 
   useEffect(() => {
+    setUsage(EMPTY_CONTEXT_USAGE)
+
     if (!providerId) {
       requestSequenceRef.current += 1
-      setUsage(EMPTY_CONTEXT_USAGE)
       fetchUsageRef.current = null
       return
     }
