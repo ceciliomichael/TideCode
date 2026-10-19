@@ -121,18 +121,21 @@ export function WorkspaceTerminalPanelView({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1 border-l border-border px-2">
-          {activeTerminalTab && activeTerminalTab.status !== "connecting" ? (
-            <Tooltip content="Restart active terminal" side="bottom" noWrap>
-              <button
-                type="button"
-                onClick={() => void panelState.restartTerminalTab(activeTerminalTab.key)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
-                aria-label="Restart active terminal"
-              >
-                <RotateCw size={14} />
-              </button>
-            </Tooltip>
-          ) : null}
+          <Tooltip content="Restart active terminal" side="bottom" noWrap>
+            <button
+              type="button"
+              disabled={!activeTerminalTab || activeTerminalTab.status === "connecting"}
+              onClick={() => {
+                if (activeTerminalTab) {
+                  void panelState.restartTerminalTab(activeTerminalTab.key);
+                }
+              }}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Restart active terminal"
+            >
+              <RotateCw size={14} />
+            </button>
+          </Tooltip>
           <Tooltip content="New terminal tab" side="bottom" noWrap>
             <button
               type="button"

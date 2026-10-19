@@ -46,6 +46,8 @@ Literal colors remain appropriate where the color is part of the content or anot
 
 Browser opens as a resizable right sidebar. Browser, Diff, Source Control, and Explorer replace one another in that side-panel area. Browser and Diff can expand across the workspace and return to their sidebar width. Browser's new-tab and fullscreen actions and Diff's fullscreen action use the terminal's 28-pixel icon-button treatment; Browser's action row stays vertically centered and its new-tab action uses the shared Tooltip.
 
+The terminal header always reserves and shows its restart action. It is disabled while the active session connects or when no tab is selected, so the neighboring actions do not shift between terminal states.
+
 Desktop panel resizing stops before the chat composer loses its 512-pixel panel minimum. Visible editor and side-panel widths participate in the available-space budget; dragging and releasing handles must preserve control alignment and avoid layout jumps. Remote/mobile chat retains its responsive width behavior.
 
 Browser startup, new tabs, and Home show a local TideCode page with a search/URL field. The address starts empty and receives focus when the new tab becomes active. Searches from either field use Google; URLs open directly. Empty submissions do nothing. The idle view has no loading indicator or page DevTools, and Reload is disabled until navigation. Home starts a fresh page session and resets navigation history.
