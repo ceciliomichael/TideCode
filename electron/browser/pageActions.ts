@@ -3,14 +3,19 @@ import {
   clipboard,
   nativeImage,
   shell,
-  session,
   webContents,
   type BrowserWindow,
   type IpcMainInvokeEvent,
 } from 'electron'
 import { readFile } from 'node:fs/promises'
-import { BROWSER_SESSION_PARTITION } from '../../src/types/browser'
 import { resolveBrowserScreenshot, saveBrowserScreenshot } from './screenshots'
+import {
+  createIncognitoTab,
+  isNormalBrowserSession,
+  ownsBrowserSession,
+  releaseIncognitoTab,
+  resolveBrowserSession,
+} from './sessions'
 
 export function registerBrowserPageActions(
   getWindow: () => BrowserWindow | null,
@@ -40,14 +45,25 @@ export function registerBrowserPageActions(
       guest.isDestroyed() ||
       guest.getType() !== 'webview' ||
       guest.hostWebContents?.id !== event.sender.id ||
-      guest.session !== session.fromPartition(BROWSER_SESSION_PARTITION)
+      !ownsBrowserSession(event.sender.id, guest.session)
     ) {
       throw new Error('The browser page is no longer available.')
     }
     return guest
   }
+  ipcMain.handle('browser:createIncognitoTab', (event, input) => {
+    requireOwner(event)
+    return createIncognitoTab(event.sender, input?.projectKey)
+  })
+  ipcMain.handle('browser:releaseIncognitoTab', async (event, input) => {
+    requireOwner(event)
+    await releaseIncognitoTab(event.sender.id, input?.tabId)
+  })
   ipcMain.handle('browser:captureScreenshot', async (event, input) => {
     const guest = requireGuest(event, input)
+    if (!isNormalBrowserSession(guest.session)) {
+      throw new Error('Screenshots are not saved in incognito tabs.')
+    }
     const url = guest.getURL()
     const owner = getWindow()!
     const image = await guest.capturePage()
@@ -95,14 +111,17 @@ export function registerBrowserPageActions(
     // Chromium can report the previous factor until the navigating frame commits.
     return input.percent
   })
-  ipcMain.handle('browser:clearCookies', async (event) => {
+  ipcMain.handle('browser:clearCookies', async (event, input) => {
     requireOwner(event)
-    const browserSession = session.fromPartition(BROWSER_SESSION_PARTITION)
+    const browserSession = resolveBrowserSession(
+      event.sender.id,
+      input?.partition,
+    )
     await browserSession.clearStorageData({ storages: ['cookies'] })
     await browserSession.cookies.flushStore()
   })
-  ipcMain.handle('browser:clearCache', async (event) => {
+  ipcMain.handle('browser:clearCache', async (event, input) => {
     requireOwner(event)
-    await session.fromPartition(BROWSER_SESSION_PARTITION).clearCache()
+    await resolveBrowserSession(event.sender.id, input?.partition).clearCache()
   })
 }

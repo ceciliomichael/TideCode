@@ -6,6 +6,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from '../../../lib/diffPanelSizing'
 import { getMinWorkspaceExplorerWidth, getMaxWorkspaceExplorerWidth } from '../../../lib/workspaceExplorerSizing'
 import { clampWorkspacePanelWidth } from '../../../lib/workspacePanelSizing'
 
@@ -13,6 +14,7 @@ interface UseWorkspaceExplorerResizeOptions {
   isOpen: boolean
   onWidthChange: (nextWidth: number) => void
   onWidthCommit: (nextWidth: number) => void
+  presentation: 'desktop' | 'mobile'
   width: number
 }
 
@@ -26,6 +28,7 @@ export function useWorkspaceExplorerResize({
   isOpen,
   onWidthChange,
   onWidthCommit,
+  presentation,
   width,
 }: UseWorkspaceExplorerResizeOptions) {
   const panelRef = useRef<HTMLElement | null>(null)
@@ -42,7 +45,13 @@ export function useWorkspaceExplorerResize({
       return nextWidth
     }
     const parentWidth = panel.parentElement?.clientWidth ?? window.innerWidth
-    return clampWorkspacePanelWidth(panel, nextWidth, getMinWorkspaceExplorerWidth(parentWidth), getMaxWorkspaceExplorerWidth(parentWidth))
+    const minimumWidth = presentation === 'mobile'
+      ? getMinWorkspaceExplorerWidth(parentWidth)
+      : getMinDiffPanelWidth(parentWidth)
+    const maximumWidth = presentation === 'mobile'
+      ? getMaxWorkspaceExplorerWidth(parentWidth)
+      : getMaxDiffPanelWidth(parentWidth)
+    return clampWorkspacePanelWidth(panel, nextWidth, minimumWidth, maximumWidth)
   }
 
   useEffect(() => {
@@ -85,7 +94,7 @@ export function useWorkspaceExplorerResize({
       observer.disconnect()
       window.removeEventListener('resize', handleWindowResize)
     }
-  }, [isOpen, isResizing, onWidthChange, renderedWidth])
+  }, [isOpen, isResizing, onWidthChange, presentation, renderedWidth])
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
@@ -132,7 +141,7 @@ export function useWorkspaceExplorerResize({
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
-  }, [])
+  }, [presentation])
 
   const handleResizePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {

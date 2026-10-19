@@ -421,12 +421,14 @@ const browserDevToolsApi: TideCodeBrowserDevToolsApi = {
 }
 
 const browserPageActionsApi: TideCodeBrowserPageActionsApi = {
+  createIncognitoTab: (input) => ipcRenderer.invoke('browser:createIncognitoTab', input),
+  releaseIncognitoTab: (input) => ipcRenderer.invoke('browser:releaseIncognitoTab', input),
   screenshotAction: (input) => ipcRenderer.invoke('browser:screenshotAction', input),
   captureScreenshot: (input) => ipcRenderer.invoke('browser:captureScreenshot', input),
   getZoom: (input) => ipcRenderer.invoke('browser:getZoom', input),
   setZoom: (input) => ipcRenderer.invoke('browser:setZoom', input),
-  clearCookies: () => ipcRenderer.invoke('browser:clearCookies'),
-  clearCache: () => ipcRenderer.invoke('browser:clearCache'),
+  clearCookies: (input) => ipcRenderer.invoke('browser:clearCookies', input),
+  clearCache: (input) => ipcRenderer.invoke('browser:clearCache', input),
 }
 
 const browserFaviconsApi: TideCodeBrowserFaviconsApi = {

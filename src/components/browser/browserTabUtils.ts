@@ -1,6 +1,12 @@
 import { createClientId } from '../../lib/clientId'
+import {
+  BROWSER_SESSION_PARTITION,
+  type BrowserPrivateTab,
+} from '../../types/browser'
 
 export interface BrowserTab {
+  incognito: boolean
+  partition: string
   faviconUrl: string
   id: string
   title: string
@@ -99,11 +105,13 @@ export function normalizeBrowserInput(value: string) {
   return `${SEARCH_URL}${encodeURIComponent(input)}`
 }
 
-export function createBrowserTab(): BrowserTab {
+export function createBrowserTab(privateTab?: BrowserPrivateTab): BrowserTab {
   return {
+    incognito: Boolean(privateTab),
+    partition: privateTab?.partition ?? BROWSER_SESSION_PARTITION,
     faviconUrl: '',
-    id: createClientId(),
-    title: 'New Tab',
+    id: privateTab?.tabId ?? createClientId(),
+    title: privateTab ? 'New Incognito Tab' : 'New Tab',
   }
 }
 
@@ -114,7 +122,9 @@ export function resolveBrowserTabTitle(title: string, url: string) {
   try {
     const parsed = new URL(url)
     if (parsed.protocol === 'file:') {
-      const fileName = decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop() ?? '')
+      const fileName = decodeURIComponent(
+        parsed.pathname.split('/').filter(Boolean).pop() ?? '',
+      )
       return fileName || 'Local File'
     }
     return parsed.hostname || 'New Tab'

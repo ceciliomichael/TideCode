@@ -167,7 +167,7 @@ test('Browser starts with an empty local new tab in Electron and web runtimes', 
   }
 })
 
-test('closing a non-last tab keeps Browser open; closing its last tab closes the panel', () => {
+test('closing a non-last tab keeps Browser open; closing its last tab closes the panel', async () => {
   const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
   let panelClosures = 0
   Object.defineProperty(globalThis, 'window', {
@@ -185,7 +185,7 @@ test('closing a non-last tab keeps Browser open; closing its last tab closes the
     }))
     const tabsBar = (panel: ReturnType<typeof renderPanel>) => panel.props.children[0].props
     let bar = tabsBar(renderPanel())
-    bar.onCreateTab()
+    await bar.onCreateTab(false)
     bar = tabsBar(renderPanel())
     assert.equal(bar.tabs.length, 2)
     const firstTabId = bar.tabs[0].id

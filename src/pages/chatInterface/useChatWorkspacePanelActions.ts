@@ -13,7 +13,6 @@ interface SidebarPanelRestoreState {
 }
 
 interface UseChatWorkspacePanelActionsInput {
-  activeWorkspacePanelWidth: number | null;
   isExplorerOpen: boolean;
   isRightPanelOpen: boolean;
   isSidebarOpen: boolean;
@@ -30,7 +29,6 @@ interface UseChatWorkspacePanelActionsInput {
   setIsTerminalFullScreen: Dispatch<SetStateAction<boolean>>;
   setIsTerminalOpen: Dispatch<SetStateAction<boolean>>;
   setIsWorkspaceTabsPanelVisible: Dispatch<SetStateAction<boolean>>;
-  setSourceControlPanelWidth: Dispatch<SetStateAction<number>>;
   setWorkspaceExplorerWidth: Dispatch<SetStateAction<number>>;
   settings: UseChatWorkspaceUiStateInput["settings"];
   sidebarPanelRestoreRef: MutableRefObject<SidebarPanelRestoreState | null>;
@@ -38,7 +36,6 @@ interface UseChatWorkspacePanelActionsInput {
 }
 
 export function useChatWorkspacePanelActions({
-  activeWorkspacePanelWidth,
   isExplorerOpen,
   isRightPanelOpen,
   isSidebarOpen,
@@ -55,7 +52,6 @@ export function useChatWorkspacePanelActions({
   setIsTerminalFullScreen,
   setIsTerminalOpen,
   setIsWorkspaceTabsPanelVisible,
-  setSourceControlPanelWidth,
   setWorkspaceExplorerWidth,
   settings,
   sidebarPanelRestoreRef,
@@ -102,29 +98,12 @@ export function useChatWorkspacePanelActions({
       setIsTerminalFullScreen(nextFullScreen);
     }, [setIsTerminalFullScreen]);
   
-    const handleSourceControlPanelWidthChange = useCallback(
-      (nextWidth: number) => {
-        setSourceControlPanelWidth(nextWidth);
-      },
-      [setSourceControlPanelWidth],
-    );
-  
-    const handleSourceControlPanelWidthCommit = useCallback(
-      (nextWidth: number) => {
-        setSourceControlPanelWidth(nextWidth);
-      },
-      [setSourceControlPanelWidth],
-    );
-  
     const handleOpenSourceControlPanel = useCallback(() => {
       setIsExplorerOpen(false);
       if (isSidebarOpen) {
         setIsWorkspaceTabsPanelVisible(false);
       } else if (workspaceFileTabCount > 0) {
         setIsWorkspaceTabsPanelVisible(true);
-      }
-      if (activeWorkspacePanelWidth !== null) {
-        setSourceControlPanelWidth(activeWorkspacePanelWidth);
       }
       if (isRightPanelOpen && rightPanelTab === "source-control") {
         onRightPanelOpenChange(false);
@@ -134,7 +113,6 @@ export function useChatWorkspacePanelActions({
       onRightPanelTabChange("source-control");
       onRightPanelOpenChange(true);
     }, [
-      activeWorkspacePanelWidth,
       isRightPanelOpen,
       isSidebarOpen,
       onRightPanelOpenChange,
@@ -142,7 +120,6 @@ export function useChatWorkspacePanelActions({
       rightPanelTab,
       setIsExplorerOpen,
       setIsWorkspaceTabsPanelVisible,
-      setSourceControlPanelWidth,
       workspaceFileTabCount,
     ]);
   
@@ -153,9 +130,6 @@ export function useChatWorkspacePanelActions({
       } else if (workspaceFileTabCount > 0) {
         setIsWorkspaceTabsPanelVisible(true);
       }
-      if (activeWorkspacePanelWidth !== null) {
-        setConversationDiffPanelWidth(activeWorkspacePanelWidth);
-      }
       if (isRightPanelOpen && rightPanelTab === "diff") {
         onRightPanelOpenChange(false);
         return;
@@ -164,13 +138,11 @@ export function useChatWorkspacePanelActions({
       onRightPanelTabChange("diff");
       onRightPanelOpenChange(true);
     }, [
-      activeWorkspacePanelWidth,
       isRightPanelOpen,
       isSidebarOpen,
       onRightPanelOpenChange,
       onRightPanelTabChange,
       rightPanelTab,
-      setConversationDiffPanelWidth,
       setIsExplorerOpen,
       setIsWorkspaceTabsPanelVisible,
       workspaceFileTabCount,
@@ -187,9 +159,6 @@ export function useChatWorkspacePanelActions({
         }
   
         if (nextValue) {
-          if (activeWorkspacePanelWidth !== null) {
-            setWorkspaceExplorerWidth(activeWorkspacePanelWidth);
-          }
           if (isSidebarOpen) {
             sidebarPanelRestoreRef.current = null;
             setIsSidebarOpen(false);
@@ -205,14 +174,12 @@ export function useChatWorkspacePanelActions({
         return nextValue;
       });
     }, [
-      activeWorkspacePanelWidth,
       isSidebarOpen,
       onRightPanelOpenChange,
       sidebarPanelRestoreRef,
       setIsExplorerOpen,
       setIsSidebarOpen,
       setIsWorkspaceTabsPanelVisible,
-      setWorkspaceExplorerWidth,
       workspaceFileTabCount,
     ]);
   
@@ -283,8 +250,6 @@ export function useChatWorkspacePanelActions({
     handleOpenDiffPanel,
     handleOpenSourceControlPanel,
     handleSidebarOpenChange,
-    handleSourceControlPanelWidthChange,
-    handleSourceControlPanelWidthCommit,
     handleTerminalFullScreenChange,
     handleTerminalOpenChange,
     handleToggleExplorerPanel,

@@ -15,6 +15,7 @@ import type {
 } from './useBrowserPageActions'
 
 interface BrowserMenuProps {
+  partition: string
   pageState: BrowserPageState
   onOpenDevTools: BrowserPageControls['openDevTools']
   onChangeZoom: BrowserPageControls['changeZoom']
@@ -26,6 +27,7 @@ const zoomButtonClass =
   'inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50'
 
 export function BrowserMenu({
+  partition,
   pageState,
   onOpenDevTools,
   onChangeZoom,
@@ -187,7 +189,8 @@ export function BrowserMenu({
           disabled={pending}
           onClick={() =>
             void runAction(
-              () => window.tidecodeBrowserPageActions.clearCookies(),
+              () =>
+                window.tidecodeBrowserPageActions.clearCookies({ partition }),
               'Cookies cleared.',
             )
           }
@@ -200,7 +203,7 @@ export function BrowserMenu({
           disabled={pending}
           onClick={() =>
             void runAction(
-              () => window.tidecodeBrowserPageActions.clearCache(),
+              () => window.tidecodeBrowserPageActions.clearCache({ partition }),
               'Cache cleared.',
             )
           }

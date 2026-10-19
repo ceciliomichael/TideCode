@@ -41,8 +41,10 @@ test(
         screenshotAction: input => ipcRenderer.invoke('browser:screenshotAction', input),
         getZoom: input => ipcRenderer.invoke('browser:getZoom', input),
         setZoom: input => ipcRenderer.invoke('browser:setZoom', input),
-        clearCookies: () => ipcRenderer.invoke('browser:clearCookies'),
-        clearCache: () => ipcRenderer.invoke('browser:clearCache'),
+        clearCookies: input => ipcRenderer.invoke('browser:clearCookies', input),
+        clearCache: input => ipcRenderer.invoke('browser:clearCache', input),
+        createIncognitoTab: input => ipcRenderer.invoke('browser:createIncognitoTab', input),
+        releaseIncognitoTab: input => ipcRenderer.invoke('browser:releaseIncognitoTab', input),
       }
       function Fixture() {
         const [full, setFull] = useState(false)
@@ -64,9 +66,10 @@ test(
         define: { 'import.meta.env.BASE_URL': '"/"' },
       })
       await build({
-        entryPoints: [
-          path.join(projectRoot, 'electron/browser/pageActions.ts'),
-        ],
+        stdin: {
+          contents: `export { registerBrowserPageActions } from './electron/browser/pageActions'; export { trackPrivateBrowserGuest } from './electron/browser/sessions'`,
+          resolveDir: projectRoot,
+        },
         outfile: path.join(directory, 'pageActions.cjs'),
         bundle: true,
         platform: 'node',
@@ -156,7 +159,8 @@ test(
         const url = 'http://127.0.0.1:' + server.address().port
         const window = new BrowserWindow({ show: false, width: 1200, height: 800, webPreferences: { nodeIntegration: true, contextIsolation: false, webviewTag: true, offscreen: true, backgroundThrottling: false } })
         window.webContents.on('console-message', event => { if (event.level === 'error') console.error(event.message) })
-        require('./pageActions.cjs').registerBrowserPageActions(() => window)
+        const browserActions = require('./pageActions.cjs')
+        browserActions.registerBrowserPageActions(() => window)
         let copiedScreenshot
         let copiedPath
         let revealedPath
@@ -165,7 +169,7 @@ test(
         clipboard.writeImage = image => { copiedScreenshot = image.toPNG() }
         let guest
         let guestDomReady = false
-        window.webContents.on('did-attach-webview', (_event, attached) => { guest = attached; attached.on('dom-ready', () => { guestDomReady = true }) })
+        window.webContents.on('did-attach-webview', (_event, attached) => { guest = attached; browserActions.trackPrivateBrowserGuest(attached); attached.on('dom-ready', () => { guestDomReady = true }) })
         ipcMain.handle('open-devtools', async (event, input) => {
           assert.equal(event.sender, window.webContents)
           assert.equal(input.webContentsId, guest.id)
@@ -347,6 +351,7 @@ test(
           floatingModule.exports.closeBrowserGuestDevTools(guest)
           for (let index = 0; index < 9; index += 1) {
             await click('[aria-label="New browser tab"]')
+            await click('[aria-label="New browser tab options"] button')
           }
           const seam = await run('const viewport=document.querySelector(".workspace-tabs-scroll-viewport"); viewport.scrollLeft=viewport.scrollWidth; const actions=document.querySelector("[aria-label=\\\\"New browser tab\\\\"]").closest("div"); JSON.stringify({border:getComputedStyle(actions).borderLeftWidth, overlap:viewport.getBoundingClientRect().right-actions.getBoundingClientRect().left, aboveTabs:getComputedStyle(actions).zIndex})')
           assert.deepEqual(JSON.parse(seam), {border:'1px',overlap:1,aboveTabs:'10'}, 'overflowing tabs and actions share one border')
@@ -368,6 +373,65 @@ test(
           await run('document.body.dispatchEvent(new MouseEvent("mousedown", {bubbles:true}))')
           await pause()
           assert(await run('!document.querySelector("[aria-label=\\\\"Browser actions\\\\"]")'))
+
+          const normalSession = session.fromPartition('persist:tidecode-browser')
+          await normalSession.cookies.set({url, name:'normal-login', value:'keep'})
+          const historyBeforePrivate = await run('JSON.stringify(Object.fromEntries(Object.keys(localStorage).filter(key=>key.startsWith("tidecode.browser.recentSites:")).map(key=>[key,localStorage.getItem(key)])))')
+          const privateTabIds = () => run('Array.from(document.querySelectorAll(' + JSON.stringify('[aria-label="Incognito tab"]') + ')).map(icon=>icon.closest(".group").querySelector("button").textContent.trim())')
+          const newPrivateTab = async () => {
+            await click('[aria-label="New browser tab"]')
+            await run('Array.from(document.querySelectorAll(' + JSON.stringify('[aria-label="New browser tab options"] button') + ')).find(button=>button.textContent.trim()==="New incognito tab").click()')
+            await wait(() => run('!document.querySelector(' + JSON.stringify('[aria-label="New browser tab options"]') + ')'), 'incognito menu closes after creation')
+          }
+          const navigateVisibleTab = async suffix => {
+            await run('(() => { const input=Array.from(document.querySelectorAll(' + JSON.stringify('[aria-label="Search or enter address"]') + ')).find(input=>input.getClientRects().length); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,' + JSON.stringify(url + suffix) + '); input.dispatchEvent(new Event("input",{bubbles:true})) })()')
+            await pause()
+            await run('Array.from(document.querySelectorAll("form")).find(form=>form.getClientRects().length).requestSubmit()')
+            await wait(() => guest && !guest.isDestroyed() && guest.getURL()===url+suffix && !guest.isLoading(), 'private page loaded')
+          }
+          await click('[aria-label="New browser tab"]')
+          await run('document.querySelector(' + JSON.stringify('[aria-label="New browser tab options"]') + ').dispatchEvent(new KeyboardEvent("keydown", {key:"ArrowDown",bubbles:true}))')
+          assert.equal(await run('document.activeElement.textContent.trim()'), 'New incognito tab')
+          await run('document.dispatchEvent(new KeyboardEvent("keydown", {key:"Escape",bubbles:true}))')
+          await newPrivateTab()
+          assert.equal((await privateTabIds()).length, 1)
+          assert(await run('!Array.from(document.querySelectorAll(' + JSON.stringify('[aria-label="New tab"]') + ')).find(page=>page.getClientRects().length).textContent.includes("Recently visited")'), 'incognito new tab does not expose recent sites')
+          await navigateVisibleTab('/private')
+          const privateGuest = guest
+          const privateSession = privateGuest.session
+          const privatePartition = await run('Array.from(document.querySelectorAll("webview")).find(view=>view.getClientRects().length).getAttribute("partition")')
+          assert(!privateSession.isPersistent())
+          assert.equal(privateSession.storagePath, null)
+          assert.equal((await privateSession.cookies.get({url,name:'normal-login'})).length, 0, 'incognito does not inherit normal login')
+          assert((await privateSession.cookies.get({url})).length > 0)
+          assert(await run('Array.from(document.querySelectorAll(' + JSON.stringify('[aria-label="Screenshot"]') + ')).find(button=>button.getClientRects().length).disabled'), 'incognito disables screenshot files')
+          await assert.rejects(() => run('window.tidecodeBrowserPageActions.captureScreenshot(' + JSON.stringify({webContentsId:privateGuest.id,projectPath:__dirname}) + ')'), /incognito/)
+          await privateGuest.executeJavaScript('localStorage.setItem("incognito-only","private")')
+          await click('[aria-label="Browser menu"]')
+          await clickText('Clear cookies')
+          await wait(async () => (await privateSession.cookies.get({url})).length===0, 'private cookies cleared')
+          assert.equal((await normalSession.cookies.get({url,name:'normal-login'}))[0].value, 'keep', 'clearing private cookies keeps normal login')
+          await run('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))')
+          await privateSession.cookies.set({url,name:'private-lifetime',value:'present'})
+          await newPrivateTab()
+          await navigateVisibleTab('/private-two')
+          assert.equal(guest.session, privateSession, 'incognito tabs in the project share one private session')
+          assert.equal(await guest.executeJavaScript('localStorage.getItem("incognito-only")'), 'private')
+          await run('document.querySelectorAll(' + JSON.stringify('[aria-label="Incognito tab"]') + ')[0].closest(".group").querySelector(' + JSON.stringify('button[aria-label^="Close "]') + ').click()')
+          await wait(() => privateGuest.isDestroyed(), 'first private guest destroyed')
+          assert.equal((await privateSession.cookies.get({url,name:'private-lifetime'})).length, 1, 'closing one tab keeps the shared private session')
+          await run('document.querySelector(' + JSON.stringify('[aria-label="Incognito tab"]') + ').closest(".group").querySelector(' + JSON.stringify('button[aria-label^="Close "]') + ').click()')
+          await wait(async () => (await privateSession.cookies.get({url})).length===0, 'last private tab clears its session')
+          await newPrivateTab()
+          await navigateVisibleTab('/fresh-private')
+          const freshPartition = await run('Array.from(document.querySelectorAll("webview")).find(view=>view.getClientRects().length).getAttribute("partition")')
+          assert.notEqual(freshPartition, privatePartition)
+          assert.equal(await guest.executeJavaScript('localStorage.getItem("incognito-only")'), null, 'new private session has no previous local storage')
+          const historyAfterPrivate = await run('JSON.stringify(Object.fromEntries(Object.keys(localStorage).filter(key=>key.startsWith("tidecode.browser.recentSites:")).map(key=>[key,localStorage.getItem(key)])))')
+          assert.equal(historyAfterPrivate, historyBeforePrivate, 'private navigation never writes normal history')
+          const finalPrivateSession = guest.session
+          await run('document.querySelector(' + JSON.stringify('[aria-label="Incognito tab"]') + ').closest(".group").querySelector(' + JSON.stringify('button[aria-label^="Close "]') + ').click()')
+          await wait(async () => (await finalPrivateSession.cookies.get({url})).length===0, 'final private guest and storage released')
           console.log('BROWSER_MENU_OK')
           window.destroy()
           server.close()

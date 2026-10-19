@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { BrowserPanel } from './BrowserPanel'
-import { MAX_DIFF_PANEL_WIDTH, MIN_DIFF_PANEL_WIDTH } from '../../lib/diffPanelSizing'
+import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from '../../lib/diffPanelSizing'
 import { clampWorkspacePanelWidth } from '../../lib/workspacePanelSizing'
 
 interface BrowserWorkspacePanelProps {
@@ -44,7 +44,13 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, width, onWi
       return
     }
     const clampWidth = () => {
-      const nextWidth = clampWorkspacePanelWidth(panel, widthRef.current, MIN_DIFF_PANEL_WIDTH, MAX_DIFF_PANEL_WIDTH)
+      const parentWidth = parent.clientWidth
+      const nextWidth = clampWorkspacePanelWidth(
+        panel,
+        widthRef.current,
+        getMinDiffPanelWidth(parentWidth),
+        getMaxDiffPanelWidth(parentWidth),
+      )
       panel.style.width = `${nextWidth}px`
       if (nextWidth !== widthRef.current) {
         widthRef.current = nextWidth
@@ -68,7 +74,13 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, width, onWi
       if (!drag || !panel || event.pointerId !== drag.pointerId) {
         return
       }
-      const nextWidth = clampWorkspacePanelWidth(panel, drag.startWidth + drag.startX - event.clientX, MIN_DIFF_PANEL_WIDTH, MAX_DIFF_PANEL_WIDTH)
+      const parentWidth = panel.parentElement?.clientWidth ?? window.innerWidth
+      const nextWidth = clampWorkspacePanelWidth(
+        panel,
+        drag.startWidth + drag.startX - event.clientX,
+        getMinDiffPanelWidth(parentWidth),
+        getMaxDiffPanelWidth(parentWidth),
+      )
       widthRef.current = nextWidth
       panel.style.width = `${nextWidth}px`
       callbacksRef.current.onWidthChange(nextWidth)

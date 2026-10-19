@@ -1,7 +1,6 @@
 import { BrowserScreenshotButton } from './BrowserScreenshotButton'
 import { createElement, FormEvent, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { ArrowLeft, ArrowRight, Globe2, Home, LoaderCircle, RefreshCw, Search, X } from 'lucide-react'
-import { BROWSER_SESSION_PARTITION } from '../../types/browser'
+import { ArrowLeft, ArrowRight, Globe2, Home, LoaderCircle, RefreshCw, Search, VenetianMask, X } from 'lucide-react'
 import { useBrowserPageActions, type BrowserPageControls, type BrowserPageState } from './useBrowserPageActions'
 import { BrowserTabsBar } from './BrowserTabsBar'
 import { BrowserNewTabPage } from './BrowserNewTabPage'
@@ -45,6 +44,8 @@ interface BrowserPanelProps {
 }
 
 interface BrowserTabSessionProps {
+  incognito: boolean
+  partition: string
   projectPath: string
   active: boolean
   controlsRef: RefObject<BrowserPageControls | null> | null
@@ -58,6 +59,8 @@ interface BrowserTabSessionProps {
 }
 
 function BrowserTabSession({
+  incognito,
+  partition,
   projectPath,
   active,
   controlsRef,
@@ -96,8 +99,9 @@ function BrowserTabSession({
   }, [])
 
   const updateTitle = useCallback((title: string, url: string) => {
-    onTitleChange(tabId, resolveBrowserTabTitle(title, url))
-  }, [onTitleChange, tabId])
+    const nextTitle = incognito && !url ? 'New Incognito Tab' : resolveBrowserTabTitle(title, url)
+    onTitleChange(tabId, nextTitle)
+  }, [incognito, onTitleChange, tabId])
 
   const handleWebviewRef = useCallback((node: TidecodeWebview | null) => {
     if (webviewRef.current !== node) {
@@ -207,7 +211,7 @@ function BrowserTabSession({
       }
       syncNavigationState(navigationEvent.url)
       const visitedUrl = navigationEvent.url || webview.getURL?.()
-      if (visitedUrl) {
+      if (visitedUrl && !incognito) {
         onVisit(visitedUrl)
       }
     }
@@ -216,6 +220,9 @@ function BrowserTabSession({
       updateTitle(title, webview.getURL?.() || currentUrl)
     }
     const handleFavicon = (event: Event) => {
+      if (incognito) {
+        return
+      }
       const faviconEvent = event as Event & { favicons?: string[] }
       const faviconUrl = faviconEvent.favicons?.find((url) => typeof url === 'string' && url.trim())?.trim() ?? ''
       onFaviconChange(tabId, faviconUrl)
@@ -286,7 +293,7 @@ function BrowserTabSession({
       webview.removeEventListener('page-title-updated', handleTitle)
       webview.removeEventListener('render-process-gone', handleRenderProcessGone)
     }
-  }, [active, currentUrl, isElectron, onCacheFavicon, onFaviconChange, onVisit, syncNavigationState, tabId, updateTitle])
+  }, [active, currentUrl, incognito, isElectron, onCacheFavicon, onFaviconChange, onVisit, syncNavigationState, tabId, updateTitle])
 
   const navigate = useCallback(
     (rawValue: string) => {
@@ -415,7 +422,7 @@ function BrowserTabSession({
         </button>
 
         <form onSubmit={handleSubmit} className="relative ml-1 flex min-w-0 flex-1 items-center">
-          <Globe2 size={15} className="pointer-events-none absolute left-3 text-muted-foreground" />
+          {incognito ? <VenetianMask size={15} aria-label="Incognito" className="pointer-events-none absolute left-3 text-muted-foreground" /> : <Globe2 size={15} className="pointer-events-none absolute left-3 text-muted-foreground" />}
           <input
             ref={addressInputRef}
             value={address}
@@ -459,7 +466,7 @@ function BrowserTabSession({
         <BrowserScreenshotButton
           toastContainerRef={panelRef}
           active={active}
-          disabled={!isElectron || isNewTab || !canCapturePage || projectPath === '__no-workspace__'}
+          disabled={incognito || !isElectron || isNewTab || !canCapturePage || projectPath === '__no-workspace__'}
           onCapture={captureScreenshot}
         />
 
@@ -480,13 +487,13 @@ function BrowserTabSession({
           ) : null}
 
           {isNewTab ? (
-            <BrowserNewTabPage onNavigate={navigate} visitedSites={visitedSites} />
+            <BrowserNewTabPage onNavigate={navigate} visitedSites={incognito ? [] : visitedSites} />
           ) : isElectron
             ? createElement('webview', {
               ref: handleWebviewRef,
               src: currentUrl,
               useragent: embeddedBrowserUserAgent,
-              partition: BROWSER_SESSION_PARTITION,
+              partition,
               allowpopups: 'true',
               tabIndex: active ? 0 : -1,
               className: 'h-full w-full',
@@ -505,7 +512,9 @@ function BrowserTabSession({
                 className="h-full w-full border-0"
                 onLoad={() => {
                   setIsLoading(false)
-                  onVisit(iframeUrl)
+                  if (!incognito) {
+                    onVisit(iframeUrl)
+                  }
                 }}
                 sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
                 />
@@ -553,6 +562,19 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
   const [tabs, setTabs] = useState<BrowserTab[]>([initialTabRef.current])
   const [activeTabId, setActiveTabId] = useState(initialTabRef.current.id)
   const pageControlsRef = useRef<BrowserPageControls | null>(null)
+  const privateTabIdsRef = useRef(new Set<string>())
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    const privateTabIds = privateTabIdsRef.current
+    return () => {
+      mountedRef.current = false
+      for (const tabId of privateTabIds) {
+        void window.tidecodeBrowserPageActions.releaseIncognitoTab({ tabId }).catch(console.error)
+      }
+      privateTabIds.clear()
+    }
+  }, [])
   const [pageState, setPageState] = useState<BrowserPageState>({ isWebsite: false, canUsePage: false, zoomPercent: 100 })
   const { visitedSites, recordVisit, cacheFavicon } = useBrowserHistory(projectKey)
 
@@ -568,13 +590,27 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
     )))
   }, [])
 
-  const handleCreateTab = useCallback(() => {
-    const tab = createBrowserTab()
+  const handleCreateTab = useCallback(async (incognito: boolean) => {
+    let tab: BrowserTab
+    if (incognito) {
+      const privateTab = await window.tidecodeBrowserPageActions.createIncognitoTab({ projectKey })
+      if (!mountedRef.current) {
+        await window.tidecodeBrowserPageActions.releaseIncognitoTab({ tabId: privateTab.tabId })
+        return
+      }
+      privateTabIdsRef.current.add(privateTab.tabId)
+      tab = createBrowserTab(privateTab)
+    } else {
+      tab = createBrowserTab()
+    }
     setTabs((currentTabs) => [...currentTabs, tab])
     setActiveTabId(tab.id)
-  }, [])
+  }, [projectKey])
 
   const handleCloseTab = useCallback((tabId: string) => {
+    if (privateTabIdsRef.current.delete(tabId)) {
+      void window.tidecodeBrowserPageActions.releaseIncognitoTab({ tabId }).catch(console.error)
+    }
     if (tabs.length === 1) {
       onClose()
       return
@@ -612,6 +648,8 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
         {tabs.map((tab) => (
           <BrowserTabSession
             projectPath={projectKey}
+            incognito={tab.incognito}
+            partition={tab.partition}
             key={tab.id}
             active={active && tab.id === activeTabId}
             controlsRef={active && tab.id === activeTabId ? pageControlsRef : null}

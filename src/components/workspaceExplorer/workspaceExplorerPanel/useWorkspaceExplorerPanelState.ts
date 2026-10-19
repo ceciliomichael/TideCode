@@ -32,6 +32,7 @@ export function useWorkspaceExplorerPanelState({
   activeFilePath,
   clipboardEntry,
   isOpen,
+  presentation = 'desktop',
   onCopyEntry,
   onCreateEntry,
   onCutEntry,
@@ -102,6 +103,7 @@ export function useWorkspaceExplorerPanelState({
     isOpen,
     onWidthChange,
     onWidthCommit,
+    presentation,
     width,
   })
 

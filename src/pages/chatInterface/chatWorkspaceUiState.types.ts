@@ -83,8 +83,6 @@ export interface ChatWorkspaceUiState {
     nextRelativePath: string,
   ) => Promise<void>;
   handleSelectWorkspaceTab: (relativePath: string) => void;
-  handleSourceControlPanelWidthChange: (nextWidth: number) => void;
-  handleSourceControlPanelWidthCommit: (nextWidth: number) => void;
   handleSidebarOpenChange: (nextSidebarOpen: boolean) => void;
   handleTerminalFullScreenChange: (nextFullScreen: boolean) => void;
   handleTerminalOpenChange: (nextOpen: boolean) => void;
@@ -100,7 +98,6 @@ export interface ChatWorkspaceUiState {
   isTerminalOpen: boolean;
   isWorkspaceTabsPanelOpen: boolean;
   planCommentsByPath: PlanCommentsByPath;
-  sourceControlPanelWidth: number;
   terminalPanelHeight: number;
   workspaceClipboard: WorkspaceClipboardEntry | null;
   workspaceExplorerWidth: number;

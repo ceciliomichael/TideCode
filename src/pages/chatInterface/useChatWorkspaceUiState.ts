@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { DEFAULT_DIFF_PANEL_WIDTH } from "../../lib/diffPanelSizing";
 import { DEFAULT_TERMINAL_PANEL_HEIGHT } from "../../lib/terminalPanelSizing";
 import { clampWorkspaceExplorerWidth } from "../../lib/workspaceExplorerSizing";
 import type { WorkspaceTab } from "../../components/workspaceExplorer/types";
@@ -25,7 +24,6 @@ import {
   createWorkspaceEntryHandlers,
 } from "./chatWorkspaceUiStateEntries";
 import { shouldClearWorkspaceClipboardByPathPrefix } from "./chatWorkspaceClipboard";
-import { getActiveWorkspacePanelWidth } from "./chatWorkspaceUiStatePanels";
 import { useChatWorkspacePanelActions } from "./useChatWorkspacePanelActions";
 import { useWorkspaceTabSync } from "./useWorkspaceTabSync";
 import { useWorkspaceTabActions } from "./useWorkspaceTabActions";
@@ -69,8 +67,6 @@ export function useChatWorkspaceUiState({
   const [workspaceExplorerWidth, setWorkspaceExplorerWidth] = useState(
     settings.workspaceExplorerWidth,
   );
-  const [sourceControlPanelWidth, setSourceControlPanelWidth] =
-    useState(diffPanelWidth);
   const [conversationDiffPanelWidth, setConversationDiffPanelWidth] =
     useState(diffPanelWidth);
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
@@ -200,9 +196,6 @@ export function useChatWorkspaceUiState({
   }, []);
 
   useLayoutEffect(() => {
-    setSourceControlPanelWidth((currentWidth) =>
-      currentWidth === DEFAULT_DIFF_PANEL_WIDTH ? diffPanelWidth : currentWidth,
-    );
     setConversationDiffPanelWidth(diffPanelWidth);
   }, [diffPanelWidth]);
 
@@ -246,14 +239,6 @@ export function useChatWorkspaceUiState({
   const terminalPanelHeight =
     settings.terminalPanelHeightsByWorkspace[activeTerminalWorkspaceKey] ??
     DEFAULT_TERMINAL_PANEL_HEIGHT;
-  const activeWorkspacePanelWidth = getActiveWorkspacePanelWidth({
-    conversationDiffPanelWidth,
-    isExplorerOpen,
-    isRightPanelOpen,
-    rightPanelTab,
-    sourceControlPanelWidth,
-    workspaceExplorerWidth,
-  });
   const {
     closeWorkspaceTabsByPathPrefix,
     handleRefreshWorkspaceFileTabs,
@@ -277,15 +262,12 @@ export function useChatWorkspaceUiState({
     handleOpenDiffPanel,
     handleOpenSourceControlPanel,
     handleSidebarOpenChange,
-    handleSourceControlPanelWidthChange,
-    handleSourceControlPanelWidthCommit,
     handleTerminalFullScreenChange,
     handleTerminalOpenChange,
     handleToggleExplorerPanel,
     handleWorkspaceExplorerWidthChange,
     handleWorkspaceExplorerWidthCommit,
   } = useChatWorkspacePanelActions({
-    activeWorkspacePanelWidth,
     isExplorerOpen,
     isRightPanelOpen,
     isSidebarOpen,
@@ -302,7 +284,6 @@ export function useChatWorkspaceUiState({
     setIsTerminalFullScreen,
     setIsTerminalOpen,
     setIsWorkspaceTabsPanelVisible,
-    setSourceControlPanelWidth,
     setWorkspaceExplorerWidth,
     settings,
     sidebarPanelRestoreRef,
@@ -363,7 +344,6 @@ export function useChatWorkspaceUiState({
     handleOpenWorkspaceSvgPreview,
     handleSelectWorkspaceTab,
   } = useWorkspaceTabActions({
-    activeWorkspacePanelWidth,
     activeWorkspacePathRef,
     onRightPanelOpenChange,
     setActiveWorkspaceFilePath,
@@ -371,7 +351,6 @@ export function useChatWorkspaceUiState({
     setIsExplorerOpen,
     setIsSidebarOpen,
     setIsWorkspaceTabsPanelVisible,
-    setWorkspaceExplorerWidth,
     setWorkspaceFileTabs,
     workspaceAutosaveTimeoutsRef,
     workspaceFileTabs,
@@ -419,8 +398,6 @@ export function useChatWorkspaceUiState({
     handleRenameWorkspaceEntry,
     handleSelectWorkspaceTab,
     handleSidebarOpenChange,
-    handleSourceControlPanelWidthChange,
-    handleSourceControlPanelWidthCommit,
     handleTerminalFullScreenChange,
     handleTerminalOpenChange,
     handleToggleExplorerPanel,
@@ -432,7 +409,6 @@ export function useChatWorkspaceUiState({
     isTerminalOpen,
     isWorkspaceTabsPanelOpen,
     planCommentsByPath,
-    sourceControlPanelWidth,
     terminalPanelHeight,
     workspaceClipboard,
     workspaceExplorerWidth,

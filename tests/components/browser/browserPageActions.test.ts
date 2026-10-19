@@ -178,8 +178,12 @@ test('screenshots save only owned guests and restrict clipboard and reveal actio
 
 test('cookie and cache clearing use the browser partition and reject other frames or windows', async () => {
   const { handlers, calls, event } = fixture()
-  await handlers.get('browser:clearCookies')!(event)
-  await handlers.get('browser:clearCache')!(event)
+  await handlers.get('browser:clearCookies')!(event, {
+    partition: BROWSER_SESSION_PARTITION,
+  })
+  await handlers.get('browser:clearCache')!(event, {
+    partition: BROWSER_SESSION_PARTITION,
+  })
   assert.deepEqual(calls, [{ storages: ['cookies'] }, 'flush', 'cache'])
   assert.throws(
     () =>

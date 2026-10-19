@@ -1,4 +1,5 @@
-import { Globe2, Maximize, Minimize, Plus, X } from 'lucide-react'
+import { BrowserNewTabMenu } from './BrowserNewTabMenu'
+import { Globe2, Maximize, Minimize, VenetianMask, X } from 'lucide-react'
 import { useState } from 'react'
 import type { WheelEvent as ReactWheelEvent } from 'react'
 import { Tooltip } from '../Tooltip'
@@ -33,7 +34,7 @@ function BrowserTabFavicon({ faviconUrl }: { faviconUrl: string }) {
 interface BrowserTabsBarProps {
   activeTabId: string
   onCloseTab: (tabId: string) => void
-  onCreateTab: () => void
+  onCreateTab: (incognito: boolean) => Promise<void>
   isFullScreen: boolean
   onToggleFullScreen: () => void
   onSelectTab: (tabId: string) => void
@@ -97,7 +98,16 @@ export function BrowserTabsBar({
                     : 'border-t-2 border-t-transparent bg-background text-muted-foreground hover:bg-surface-muted hover:text-foreground',
                 ].join(' ')}
               >
-                <BrowserTabFavicon faviconUrl={tab.faviconUrl} />
+                <span
+                  className="flex shrink-0 items-center"
+                  aria-label={tab.incognito ? 'Incognito tab' : undefined}
+                >
+                  {tab.incognito ? (
+                    <VenetianMask size={14} />
+                  ) : (
+                    <BrowserTabFavicon faviconUrl={tab.faviconUrl} />
+                  )}
+                </span>
                 <span className="min-w-0 flex-1 truncate text-left">
                   {tab.title}
                 </span>
@@ -118,17 +128,11 @@ export function BrowserTabsBar({
         })}
       </div>
 
-      <div className="relative z-10 -ml-px flex shrink-0 items-center gap-1 border-l border-border bg-background px-2">
-        <Tooltip content="New browser tab" side="bottom" noWrap>
-          <button
-            type="button"
-            onClick={onCreateTab}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:rounded-xl hover:bg-surface-muted hover:text-foreground"
-            aria-label="New browser tab"
-          >
-            <Plus size={14} />
-          </button>
-        </Tooltip>
+      <div
+        data-browser-tab-actions
+        className="relative z-10 -ml-px flex shrink-0 items-center gap-1 border-l border-border bg-background px-2"
+      >
+        <BrowserNewTabMenu onCreateTab={onCreateTab} />
         <Tooltip
           content={
             isFullScreen ? 'Exit fullscreen browser' : 'Fullscreen browser'
@@ -149,6 +153,7 @@ export function BrowserTabsBar({
         </Tooltip>
         <BrowserMenu
           key={activeTabId}
+          partition={tabs.find((tab) => tab.id === activeTabId)!.partition}
           pageState={pageState}
           onOpenDevTools={onOpenDevTools}
           onChangeZoom={onChangeZoom}

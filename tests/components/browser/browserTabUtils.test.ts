@@ -73,6 +73,8 @@ test('browser input searches normal text with Google and leaves empty input idle
 test('new browser tabs start with a local title and no favicon', () => {
   const tab = createBrowserTab()
   assert.equal(tab.title, 'New Tab')
+  assert.equal(tab.incognito, false)
+  assert.equal(tab.partition, 'persist:tidecode-browser')
   assert.equal(tab.faviconUrl, '')
   assert.equal(resolveBrowserTabTitle('', ''), 'New Tab')
 })
@@ -91,4 +93,13 @@ test('embedded browser user agent removes Electron identity while preserving Chr
     ),
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/142.0.0.0 Safari/537.36',
   )
+})
+
+test('incognito tabs retain their native session identity and private title', () => {
+  const tab = createBrowserTab({ tabId: 'private-tab', partition: 'tidecode-browser-incognito-session' })
+  assert.equal(tab.id, 'private-tab')
+  assert.equal(tab.incognito, true)
+  assert.equal(tab.partition, 'tidecode-browser-incognito-session')
+  assert.equal(tab.title, 'New Incognito Tab')
+  assert.equal(tab.faviconUrl, '')
 })

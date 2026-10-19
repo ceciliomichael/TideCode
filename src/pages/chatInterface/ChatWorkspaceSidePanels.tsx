@@ -95,9 +95,9 @@ export function ChatWorkspaceSidePanels({
         onOpenFile={workspaceState.handleOpenWorkspaceFile}
         onPasteEntry={workspaceState.handlePasteWorkspaceEntry}
         onRenameEntry={workspaceState.handleRenameWorkspaceEntry}
-        onWidthChange={workspaceState.handleWorkspaceExplorerWidthChange}
-        onWidthCommit={workspaceState.handleWorkspaceExplorerWidthCommit}
-        width={workspaceState.workspaceExplorerWidth}
+        onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
+        onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
+        width={workspaceState.conversationDiffPanelWidth}
         workspaceRootPath={workspaceState.activeWorkspacePath}
       />
       <BrowserWorkspacePanel
@@ -154,11 +154,11 @@ export function ChatWorkspaceSidePanels({
           onUnstageFile={interfaceController.handleUnstageDiffFile}
           pendingFileActionPath={interfaceController.pendingFileActionPath}
           fileActionErrorMessage={interfaceController.fileActionErrorMessage}
-          onWidthCommit={workspaceState.handleSourceControlPanelWidthCommit}
-          onWidthChange={workspaceState.handleSourceControlPanelWidthChange}
+          onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
+          onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
           sectionOpen={settings.sourceControlSectionOpen}
           workspacePath={workspaceState.activeWorkspacePath}
-          width={workspaceState.sourceControlPanelWidth}
+          width={workspaceState.conversationDiffPanelWidth}
         />
       ) : null}
     </>

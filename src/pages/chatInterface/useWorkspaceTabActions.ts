@@ -16,7 +16,6 @@ import { readWorkspaceFileWithCache } from '../../lib/workspaceFilePreviewCache'
 import { preloadWorkspaceMonacoEditorView } from '../../lib/workspaceMonacoPreload'
 
 interface UseWorkspaceTabActionsInput {
-  activeWorkspacePanelWidth: number | null
   activeWorkspacePathRef: MutableRefObject<string | null>
   onRightPanelOpenChange: (nextValue: boolean) => void
   setActiveWorkspaceFilePath: Dispatch<SetStateAction<string | null>>
@@ -24,7 +23,6 @@ interface UseWorkspaceTabActionsInput {
   setIsExplorerOpen: Dispatch<SetStateAction<boolean>>
   setIsSidebarOpen: (nextValue: boolean) => void
   setIsWorkspaceTabsPanelVisible: Dispatch<SetStateAction<boolean>>
-  setWorkspaceExplorerWidth: Dispatch<SetStateAction<number>>
   setWorkspaceFileTabs: Dispatch<SetStateAction<WorkspaceTab[]>>
   workspaceAutosaveTimeoutsRef: MutableRefObject<Map<string, number>>
   workspaceFileTabs: WorkspaceTab[]
@@ -32,7 +30,6 @@ interface UseWorkspaceTabActionsInput {
 }
 
 export function useWorkspaceTabActions({
-  activeWorkspacePanelWidth,
   activeWorkspacePathRef,
   onRightPanelOpenChange,
   setActiveWorkspaceFilePath,
@@ -40,7 +37,6 @@ export function useWorkspaceTabActions({
   setIsExplorerOpen,
   setIsSidebarOpen,
   setIsWorkspaceTabsPanelVisible,
-  setWorkspaceExplorerWidth,
   setWorkspaceFileTabs,
   workspaceAutosaveTimeoutsRef,
   workspaceFileTabs,
@@ -59,9 +55,6 @@ export function useWorkspaceTabActions({
       }
 
       const tabKey = createPlanPreviewTabKey(normalizedRelativePath)
-      if (activeWorkspacePanelWidth !== null) {
-        setWorkspaceExplorerWidth(activeWorkspacePanelWidth)
-      }
       setIsSidebarOpen(false)
       setIsExplorerOpen(true)
       setIsWorkspaceTabsPanelVisible(true)
@@ -92,14 +85,12 @@ export function useWorkspaceTabActions({
       return { normalizedRelativePath, tabKey }
     },
     [
-      activeWorkspacePanelWidth,
       onRightPanelOpenChange,
       setActiveWorkspaceFilePath,
       setActiveWorkspaceTabKey,
       setIsExplorerOpen,
       setIsSidebarOpen,
       setIsWorkspaceTabsPanelVisible,
-      setWorkspaceExplorerWidth,
       setWorkspaceFileTabs,
     ],
   )
@@ -240,9 +231,6 @@ export function useWorkspaceTabActions({
         return
       }
 
-      if (activeWorkspacePanelWidth !== null) {
-        setWorkspaceExplorerWidth(activeWorkspacePanelWidth)
-      }
       setIsSidebarOpen(false)
       setIsExplorerOpen(true)
       setIsWorkspaceTabsPanelVisible(true)
@@ -334,7 +322,6 @@ export function useWorkspaceTabActions({
         })
     },
     [
-      activeWorkspacePanelWidth,
       activeWorkspacePathRef,
       handleOpenWorkspacePlanPreview,
       onRightPanelOpenChange,
@@ -343,7 +330,6 @@ export function useWorkspaceTabActions({
       setIsExplorerOpen,
       setIsSidebarOpen,
       setIsWorkspaceTabsPanelVisible,
-      setWorkspaceExplorerWidth,
       setWorkspaceFileTabs,
     ],
   )

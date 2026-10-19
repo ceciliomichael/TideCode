@@ -54,7 +54,7 @@ Context usage estimation builds the same provider-visible tool schemas without c
 
 ### Workspace and editor
 
-`electron/workspace/` provides safe path normalization, file and directory operations, Explorer watches, clipboard image import, refactor candidate discovery, and workspace checkpoints. Workspace-relative paths must remain inside the selected workspace root. Checkpoints snapshot file state and may include Kanban board state.
+`electron/workspace/` provides safe path normalization, file and directory operations, Explorer watches, clipboard image import, refactor candidate discovery, and workspace checkpoints. Workspace-relative paths must remain inside the selected workspace root. Checkpoints snapshot file state and may include Kanban board state. On desktop, Browser, Diff, Source Control, and Explorer share one panel width and common resize bounds; Explorer retains a separate saved width in its mobile presentation.
 
 ### Planning and Kanban
 
