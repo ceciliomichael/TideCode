@@ -1,9 +1,8 @@
-import { createElement, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Code2, EllipsisVertical, Globe2, Home, LoaderCircle, RefreshCw, Search, X } from 'lucide-react'
-import type { BrowserDevToolsDockMode } from '../../types/browser'
-import { useResolvedDocumentTheme } from '../../hooks/useResolvedDocumentTheme'
-import { readThemeColor } from '../../lib/themeColorTokens'
-import { Tooltip } from '../Tooltip'
+import { BrowserScreenshotButton } from './BrowserScreenshotButton'
+import { createElement, FormEvent, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { ArrowLeft, ArrowRight, Globe2, Home, LoaderCircle, RefreshCw, Search, X } from 'lucide-react'
+import { BROWSER_SESSION_PARTITION } from '../../types/browser'
+import { useBrowserPageActions, type BrowserPageControls, type BrowserPageState } from './useBrowserPageActions'
 import { BrowserTabsBar } from './BrowserTabsBar'
 import { BrowserNewTabPage } from './BrowserNewTabPage'
 import type { BrowserVisitedSite } from './browserHistory'
@@ -20,13 +19,10 @@ import {
 type TidecodeWebview = HTMLElement & {
   canGoBack?: () => boolean
   canGoForward?: () => boolean
-  closeDevTools?: () => void
   goBack?: () => void
   goForward?: () => void
   getWebContentsId?: () => number
-  isDevToolsOpened?: () => boolean
   loadURL?: (url: string) => Promise<void>
-  openDevTools?: () => void
   reload?: () => void
   stop?: () => void
   getTitle?: () => string
@@ -49,9 +45,10 @@ interface BrowserPanelProps {
 }
 
 interface BrowserTabSessionProps {
+  projectPath: string
   active: boolean
-  devToolsMode: BrowserDevToolsDockMode
-  onDevToolsModeChange: (mode: BrowserDevToolsDockMode) => void
+  controlsRef: RefObject<BrowserPageControls | null> | null
+  onPageStateChange: (state: BrowserPageState) => void
   onFaviconChange: (tabId: string, faviconUrl: string) => void
   onCacheFavicon: (url: string, faviconDataUrl: string) => void
   onTitleChange: (tabId: string, title: string) => void
@@ -61,9 +58,10 @@ interface BrowserTabSessionProps {
 }
 
 function BrowserTabSession({
+  projectPath,
   active,
-  devToolsMode,
-  onDevToolsModeChange,
+  controlsRef,
+  onPageStateChange,
   onFaviconChange,
   onCacheFavicon,
   onTitleChange,
@@ -71,16 +69,13 @@ function BrowserTabSession({
   visitedSites,
   tabId,
 }: BrowserTabSessionProps) {
-  const resolvedTheme = useResolvedDocumentTheme()
+  const panelRef = useRef<HTMLDivElement | null>(null)
   const webviewRef = useRef<TidecodeWebview | null>(null)
   const webviewReadyRef = useRef(false)
   const addressInputRef = useRef<HTMLInputElement | null>(null)
   const addressFocusedRef = useRef(false)
   const addressEditingRef = useRef(false)
   const pendingNavigationRef = useRef<{ started: boolean; url: string } | null>(null)
-  const devToolsMenuButtonRef = useRef<HTMLButtonElement | null>(null)
-  const devToolsHostRef = useRef<HTMLDivElement | null>(null)
-  const devToolsModeTransitionRef = useRef(false)
   const isElectron = useMemo(() => navigator.userAgent.toLowerCase().includes('electron'), [])
   const embeddedBrowserUserAgent = useMemo(
     () => normalizeEmbeddedBrowserUserAgent(navigator.userAgent),
@@ -93,18 +88,11 @@ function BrowserTabSession({
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
   const [loadFailure, setLoadFailure] = useState<BrowserLoadFailure | null>(null)
-  const [devToolsOpen, setDevToolsOpen] = useState(false)
   const isNewTab = !currentUrl
+  const { openDevTools, captureScreenshot, canCapturePage } = useBrowserPageActions({ projectPath, active, isElectron, isNewTab, webviewRef, controlsRef, onStateChange: onPageStateChange })
 
   const releaseAddressEditing = useCallback(() => {
     addressEditingRef.current = false
-  }, [])
-
-  const hideDockedDevToolsThenClose = useCallback((webContentsId: number) => {
-    void window.tidecodeBrowserDevTools
-      .setVisible({ visible: false, webContentsId })
-      .catch(() => false)
-      .then(() => setDevToolsOpen(false))
   }, [])
 
   const updateTitle = useCallback((title: string, url: string) => {
@@ -140,132 +128,6 @@ function BrowserTabSession({
       // The webview may detach between the readiness check and this call.
     }
   }, [active, isElectron])
-
-  useEffect(() => {
-    if (!isElectron) {
-      return
-    }
-
-    const handleClosed = (webContentsId: number) => {
-      try {
-        if (!devToolsModeTransitionRef.current && webviewRef.current?.getWebContentsId?.() === webContentsId) {
-          setDevToolsOpen(false)
-        }
-      } catch {
-        // The webview may already be detached.
-      }
-    }
-    const handleShortcut = (webContentsId: number) => {
-      try {
-        if (webviewRef.current?.getWebContentsId?.() !== webContentsId) {
-          return
-        }
-        if (devToolsOpen) {
-          if (devToolsMode === 'undocked') {
-            void window.tidecodeBrowserDevTools.close({ webContentsId })
-            setDevToolsOpen(false)
-          } else {
-            hideDockedDevToolsThenClose(webContentsId)
-          }
-        } else {
-          setDevToolsOpen(true)
-        }
-      } catch {
-        // The webview may already be detached.
-      }
-    }
-
-    const unsubscribeClosed = window.tidecodeBrowserDevTools.onClosed(handleClosed)
-    const unsubscribeShortcut = window.tidecodeBrowserDevTools.onShortcut(handleShortcut)
-    return () => {
-      unsubscribeClosed()
-      unsubscribeShortcut()
-    }
-  }, [devToolsMode, devToolsOpen, hideDockedDevToolsThenClose, isElectron])
-
-  useEffect(() => {
-    if (!isElectron || !devToolsOpen) {
-      return
-    }
-
-    const webview = webviewRef.current
-    if (!webview || !webview.isConnected) {
-      return
-    }
-
-    let webContentsId = 0
-    try {
-      webContentsId = webview.getWebContentsId?.() ?? 0
-    } catch {
-      return
-    }
-    if (!webContentsId) {
-      return
-    }
-
-    if (!active) {
-      if (devToolsMode !== 'undocked') {
-        void window.tidecodeBrowserDevTools.setVisible({ visible: false, webContentsId })
-      }
-      return
-    }
-
-    if (devToolsMode === 'undocked') {
-      void window.tidecodeBrowserDevTools.open({ mode: 'undocked', webContentsId })
-        .finally(() => {
-          devToolsModeTransitionRef.current = false
-        })
-      return
-    }
-
-    const host = devToolsHostRef.current
-    if (!host) {
-      return
-    }
-
-    const syncBounds = () => {
-      const rect = host.getBoundingClientRect()
-      if (rect.width < 1 || rect.height < 1) {
-        return
-      }
-      const bounds = {
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
-      }
-      void window.tidecodeBrowserDevTools.updateBounds({ bounds, webContentsId })
-    }
-
-    const initialRect = host.getBoundingClientRect()
-    if (initialRect.width < 1 || initialRect.height < 1) {
-      return
-    }
-
-    void window.tidecodeBrowserDevTools.open({
-      bounds: {
-        x: initialRect.left,
-        y: initialRect.top,
-        width: initialRect.width,
-        height: initialRect.height,
-      },
-      mode: devToolsMode,
-      webContentsId,
-    }).finally(() => {
-      devToolsModeTransitionRef.current = false
-    })
-    void window.tidecodeBrowserDevTools.setVisible({ visible: true, webContentsId })
-
-    const observer = new ResizeObserver(syncBounds)
-    observer.observe(host)
-    window.addEventListener('resize', syncBounds)
-
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('resize', syncBounds)
-      void window.tidecodeBrowserDevTools.setVisible({ visible: false, webContentsId })
-    }
-  }, [active, devToolsMode, devToolsOpen, isElectron])
 
   const syncNavigationState = useCallback((nextUrlOverride?: string) => {
     const webview = webviewRef.current
@@ -476,74 +338,9 @@ function BrowserTabSession({
     setCanGoBack(false)
     setCanGoForward(false)
     setLoadFailure(null)
-    setDevToolsOpen(false)
     onFaviconChange(tabId, '')
     updateTitle('', '')
   }
-  const handleToggleDevTools = () => {
-    const webview = webviewRef.current
-    if (!webview || !webview.isConnected) {
-      return
-    }
-    try {
-      const webContentsId = webview.getWebContentsId?.()
-      if (!webContentsId) {
-        return
-      }
-      if (devToolsOpen) {
-        if (devToolsMode === 'undocked') {
-          void window.tidecodeBrowserDevTools.close({ webContentsId })
-          setDevToolsOpen(false)
-        } else {
-          hideDockedDevToolsThenClose(webContentsId)
-        }
-      } else {
-        setDevToolsOpen(true)
-      }
-    } catch {
-      // The guest may detach between the connected check and the call.
-    }
-  }
-
-  const handleSelectDevToolsMode = (mode: BrowserDevToolsDockMode) => {
-    if (mode === devToolsMode) return
-    if (devToolsOpen) {
-      devToolsModeTransitionRef.current = true
-    }
-    onDevToolsModeChange(mode)
-  }
-
-  const handleShowDevToolsMenu = () => {
-    const menuButton = devToolsMenuButtonRef.current
-    if (!menuButton) {
-      return
-    }
-
-    const rect = menuButton.getBoundingClientRect()
-    void window.tidecodeBrowserDevTools.showDockMenu({
-      anchor: {
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
-      },
-      mode: devToolsMode,
-      theme: {
-        activeSurface: readThemeColor('--color-brand-soft', resolvedTheme),
-        background: readThemeColor('--color-surface-raised', resolvedTheme),
-        border: readThemeColor('--color-border', resolvedTheme),
-        brand: readThemeColor('--color-brand', resolvedTheme),
-        foreground: readThemeColor('--color-foreground', resolvedTheme),
-        hoverSurface: readThemeColor('--color-surface-hover', resolvedTheme),
-        mutedForeground: readThemeColor('--color-muted-foreground', resolvedTheme),
-      },
-    }).then((mode) => {
-      if (mode) {
-        handleSelectDevToolsMode(mode)
-      }
-    }).catch(() => undefined)
-  }
-
   const handleRetry = () => {
     const webview = webviewRef.current
     if (!webview || !isElectron) {
@@ -563,7 +360,7 @@ function BrowserTabSession({
   }
 
   return (
-    <div className={active ? 'flex min-h-0 flex-1 flex-col bg-background' : 'hidden'}>
+    <div ref={panelRef} className={active ? 'relative flex min-h-0 min-w-0 flex-1 flex-col bg-background' : 'hidden'}>
       <div
         className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border px-2"
         onPointerDownCapture={(event) => {
@@ -659,59 +456,21 @@ function BrowserTabSession({
             <Search size={14} />
           </button>
         </form>
-        {isElectron && !isNewTab ? (
-          <div className="relative flex h-8 shrink-0 items-stretch">
-            <Tooltip content={devToolsOpen ? 'Close page DevTools' : 'Open page DevTools (F12 / Ctrl+Shift+I)'} side="bottom" noWrap>
-              <button
-                type="button"
-                aria-label={devToolsOpen ? 'Close page DevTools' : 'Open page DevTools'}
-                onClick={handleToggleDevTools}
-                className="flex h-8 w-8 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <Code2 size={15} />
-              </button>
-            </Tooltip>
-            <Tooltip content="Choose DevTools position" side="bottom" noWrap>
-              <button
-                ref={devToolsMenuButtonRef}
-                type="button"
-                aria-label="Choose DevTools position"
-                onClick={handleShowDevToolsMenu}
-                className="flex h-8 w-5 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <EllipsisVertical size={14} />
-              </button>
-            </Tooltip>
-          </div>
-        ) : null}
+        <BrowserScreenshotButton
+          toastContainerRef={panelRef}
+          active={active}
+          disabled={!isElectron || isNewTab || !canCapturePage || projectPath === '__no-workspace__'}
+          onCapture={captureScreenshot}
+        />
+
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-hidden bg-background">
-        {isElectron && !isNewTab && devToolsMode !== 'undocked' ? (
-          <div
-            ref={devToolsHostRef}
-            aria-label="Browser DevTools"
-            className={[
-              'absolute overflow-hidden bg-background',
-              devToolsMode === 'right'
-                ? 'inset-y-0 right-0 w-[42%] max-w-[760px] border-l border-border'
-                : 'inset-x-0 bottom-0 h-[42%] max-h-[600px] border-t border-border',
-            ].join(' ')}
-          >
-          </div>
-        ) : null}
 
         <div
           className={`absolute left-0 top-0 min-h-0 min-w-0 ${isNewTab ? 'bg-background' : 'bg-white'}`}
           onPointerDownCapture={() => releaseAddressEditing()}
-          style={{
-            right: isElectron && devToolsOpen && devToolsMode === 'right'
-              ? 'min(42%, 760px)'
-              : '0px',
-            bottom: isElectron && devToolsOpen && devToolsMode === 'bottom'
-              ? 'min(42%, 600px)'
-              : '0px',
-          }}
+          style={{ right: 0, bottom: 0 }}
         >
           {isLoading ? (
             <div className="pointer-events-none absolute bottom-3 left-3 z-10 inline-flex h-7 items-center gap-2 rounded-md border border-border bg-surface-raised px-2.5 text-xs text-muted-foreground shadow-soft">
@@ -727,7 +486,7 @@ function BrowserTabSession({
               ref: handleWebviewRef,
               src: currentUrl,
               useragent: embeddedBrowserUserAgent,
-              partition: 'persist:tidecode-browser',
+              partition: BROWSER_SESSION_PARTITION,
               allowpopups: 'true',
               tabIndex: active ? 0 : -1,
               className: 'h-full w-full',
@@ -770,7 +529,7 @@ function BrowserTabSession({
                 </button>
                 <button
                   type="button"
-                  onClick={handleToggleDevTools}
+                  onClick={() => void openDevTools().catch(console.error)}
                   className="inline-flex h-8 items-center justify-center rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-surface-muted"
                 >
                   Open DevTools
@@ -793,7 +552,8 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
 
   const [tabs, setTabs] = useState<BrowserTab[]>([initialTabRef.current])
   const [activeTabId, setActiveTabId] = useState(initialTabRef.current.id)
-  const [devToolsMode, setDevToolsMode] = useState<BrowserDevToolsDockMode>('right')
+  const pageControlsRef = useRef<BrowserPageControls | null>(null)
+  const [pageState, setPageState] = useState<BrowserPageState>({ isWebsite: false, canUsePage: false, zoomPercent: 100 })
   const { visitedSites, recordVisit, cacheFavicon } = useBrowserHistory(projectKey)
 
   const handleTitleChange = useCallback((tabId: string, title: string) => {
@@ -826,13 +586,24 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
   }, [activeTabId, onClose, tabs])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       <BrowserTabsBar
         activeTabId={activeTabId}
         onCloseTab={handleCloseTab}
         onCreateTab={handleCreateTab}
         isFullScreen={isFullScreen}
         onToggleFullScreen={onToggleFullScreen}
+        pageState={pageState}
+
+        onOpenDevTools={async () => {
+          if (!pageControlsRef.current) {
+            throw new Error('Open a webpage first.')
+          }
+          await pageControlsRef.current.openDevTools()
+        }}
+        onChangeZoom={async (direction) => {
+          await pageControlsRef.current?.changeZoom(direction)
+        }}
         onSelectTab={setActiveTabId}
         tabs={tabs}
       />
@@ -840,10 +611,11 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
       <div className="relative flex min-h-0 flex-1 flex-col">
         {tabs.map((tab) => (
           <BrowserTabSession
+            projectPath={projectKey}
             key={tab.id}
             active={active && tab.id === activeTabId}
-            devToolsMode={devToolsMode}
-            onDevToolsModeChange={setDevToolsMode}
+            controlsRef={active && tab.id === activeTabId ? pageControlsRef : null}
+            onPageStateChange={setPageState}
             onFaviconChange={handleFaviconChange}
             onCacheFavicon={cacheFavicon}
             onTitleChange={handleTitleChange}

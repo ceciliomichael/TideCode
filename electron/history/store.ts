@@ -12,6 +12,7 @@ import type {
   CreateConversationInput,
   FolderMoveDirection,
   ReorderConversationFolderInput,
+  Message,
 } from '../../src/types/chat'
 import {
   appendMessagesToLog,
@@ -40,6 +41,7 @@ import {
   adoptDraftChatAttachments,
   cloneConversationChatAttachments,
   deleteConversationChatAttachments,
+  deleteChatAttachmentPaths,
 } from './chatAttachments'
 import { runConversationMutation } from './conversationMutationQueue'
 import { getConversationAgentContextPath } from './paths'
@@ -445,6 +447,54 @@ export async function appendStoredMessages(input: AppendConversationMessagesInpu
   })
 }
 
+function getMessageAttachmentReferences(messages: readonly Message[]) {
+  const paths = new Set<string>()
+  for (const message of messages) {
+    for (const attachment of message.attachments ?? []) {
+      if ('path' in attachment && attachment.path) {
+        paths.add(attachment.path.replace(/\/$/u, ''))
+      }
+    }
+    for (const [label, value] of Object.entries(message.mentionPathMap ?? {})) {
+      if (!message.content.includes(value) && !message.content.includes(`@${label}`)) {
+        continue
+      }
+      const aliasIndex = value.indexOf('@attachments/')
+      if (aliasIndex >= 0) {
+        paths.add(value.slice(aliasIndex).replace(/\/$/u, ''))
+      }
+    }
+  }
+  return paths
+}
+
+function findUnreferencedChatAttachmentPaths(
+  candidates: readonly string[],
+  retainedMessages: readonly Message[],
+) {
+  const references = getMessageAttachmentReferences(retainedMessages)
+  return candidates.filter((candidate) => {
+    const normalized = candidate.replace(/\/$/u, '')
+    if (Array.from(references).some((reference) => (
+      reference === normalized || reference.startsWith(`${normalized}/`)
+    ))) {
+      return false
+    }
+    return !retainedMessages.some((message) => message.content.includes(normalized))
+  })
+}
+
+export async function cleanupUnreferencedStoredChatAttachments(
+  conversationId: string,
+  paths: readonly string[],
+) {
+  return runConversationMutation(conversationId, async () => {
+    const conversation = await readConversationForMutation(conversationId)
+    const unreferencedPaths = findUnreferencedChatAttachmentPaths(paths, conversation?.messages ?? [])
+    await deleteChatAttachmentPaths(conversationId, unreferencedPaths)
+  })
+}
+
 export async function replaceStoredMessages(input: ReplaceConversationMessagesInput) {
   return runConversationMutation(input.conversationId, async () => {
     const existingConversation = await readConversationForMutation(input.conversationId)
@@ -486,6 +536,16 @@ export async function replaceStoredMessages(input: ReplaceConversationMessagesIn
         await synchronizeCanonicalMessages(input.conversationId, input.messages)
       } catch (error) {
         console.error('Canonical chat history synchronization failed after message replacement.', error)
+      }
+    }
+
+    if (input.cleanupOrphanedAttachments) {
+      const previousPaths = Array.from(getMessageAttachmentReferences(existingConversation.messages))
+      const orphanedPaths = findUnreferencedChatAttachmentPaths(previousPaths, input.messages)
+      try {
+        await deleteChatAttachmentPaths(input.conversationId, orphanedPaths)
+      } catch (error) {
+        console.error('Failed to clean up attachments from discarded chat messages.', error)
       }
     }
 

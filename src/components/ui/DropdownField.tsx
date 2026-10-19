@@ -7,9 +7,8 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
-import { createPortal } from 'react-dom'
 import { twMerge } from 'tailwind-merge'
-import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
+import { DropdownPopover } from './DropdownPopover'
 import { getDropdownOptionStateClassName } from './dropdownOptionStyles'
 
 export interface DropdownOption {
@@ -65,22 +64,31 @@ export function DropdownField({
       options.findIndex((option) => option.value === value),
     ),
   )
-  const menuStyle = useFloatingMenuPosition({
-    anchorRef: buttonRef,
-    isOpen,
-    menuRef: listboxRef,
-    preferredPlacement: variant === 'text' ? 'above' : 'below',
-  })
   const selectedOption = useMemo(
     () => options.find((option) => option.value === value) ?? options[0],
     [options, value],
   )
+  let popupClassName = 'p-1'
+  if (variant === 'text' && fitToContent) {
+    popupClassName = 'w-[min(9rem,calc(100vw-1rem))] p-1'
+  } else if (variant === 'default' && fitToContent) {
+    popupClassName = 'p-0.5'
+  }
   const shouldVirtualizeOptions = options.length > VIRTUALIZATION_THRESHOLD
-  const estimatedVisibleOptionCount = Math.max(1, Math.ceil(listboxViewportHeight / OPTION_HEIGHT_PX))
-  const virtualStartIndex = Math.max(0, Math.floor(listboxScrollTop / OPTION_HEIGHT_PX) - VIRTUAL_OVERSCAN_OPTION_COUNT)
+  const estimatedVisibleOptionCount = Math.max(
+    1,
+    Math.ceil(listboxViewportHeight / OPTION_HEIGHT_PX),
+  )
+  const virtualStartIndex = Math.max(
+    0,
+    Math.floor(listboxScrollTop / OPTION_HEIGHT_PX) -
+      VIRTUAL_OVERSCAN_OPTION_COUNT,
+  )
   const virtualEndIndex = Math.min(
     options.length,
-    virtualStartIndex + estimatedVisibleOptionCount + VIRTUAL_OVERSCAN_OPTION_COUNT * 2,
+    virtualStartIndex +
+      estimatedVisibleOptionCount +
+      VIRTUAL_OVERSCAN_OPTION_COUNT * 2,
   )
   const virtualOptions = options.slice(virtualStartIndex, virtualEndIndex)
   const virtualTopOffset = virtualStartIndex * OPTION_HEIGHT_PX
@@ -111,41 +119,6 @@ export function DropdownField({
       return
     }
 
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target
-      if (
-        target instanceof Node &&
-        !containerRef.current?.contains(target) &&
-        !listboxRef.current?.contains(target)
-      ) {
-        setIsOpen(false)
-      }
-    }
-
-    function handleEscape(event: globalThis.KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setIsOpen(false)
-        buttonRef.current?.focus()
-      }
-    }
-
-    // Keep the menu open while an ancestor viewport scrolls. The floating
-    // position hook re-anchors the portal, and chat streaming legitimately
-    // scrolls its message viewport on every streamed update.
-    document.addEventListener('mousedown', handlePointerDown)
-    document.addEventListener('keydown', handleEscape)
-
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [isOpen])
-
-  useEffect(() => {
-    if (!isOpen) {
-      return
-    }
-
     listboxRef.current?.focus()
     const listboxElement = listboxRef.current
     if (!listboxElement) {
@@ -168,7 +141,9 @@ export function DropdownField({
       return
     }
 
-    const activeOption = listboxElement.querySelector<HTMLElement>(`[data-option-index="${highlightedIndex}"]`)
+    const activeOption = listboxElement.querySelector<HTMLElement>(
+      `[data-option-index="${highlightedIndex}"]`,
+    )
     activeOption?.scrollIntoView({ block: 'nearest' })
   }, [highlightedIndex, isOpen, shouldVirtualizeOptions])
 
@@ -212,7 +187,9 @@ export function DropdownField({
   function handleListboxKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      setHighlightedIndex((currentValue) => Math.min(currentValue + 1, options.length - 1))
+      setHighlightedIndex((currentValue) =>
+        Math.min(currentValue + 1, options.length - 1),
+      )
       return
     }
 
@@ -244,7 +221,10 @@ export function DropdownField({
   }
 
   return (
-    <div ref={containerRef} className={['relative', className].filter(Boolean).join(' ')}>
+    <div
+      ref={containerRef}
+      className={['relative', className].filter(Boolean).join(' ')}
+    >
       <button
         id={controlId}
         ref={buttonRef}
@@ -283,138 +263,142 @@ export function DropdownField({
           <ChevronDown
             size={16}
             strokeWidth={2.2}
-            className={['shrink-0 text-muted-foreground transition-transform', isOpen ? 'rotate-180' : ''].join(' ')}
+            className={[
+              'shrink-0 text-muted-foreground transition-transform',
+              isOpen ? 'rotate-180' : '',
+            ].join(' ')}
           />
         ) : null}
       </button>
 
-      {isOpen
-        ? createPortal(
-            <div
-              ref={listboxRef}
-              id={listboxId}
-              data-floating-menu-root="true"
-              role="listbox"
-              tabIndex={-1}
-              aria-labelledby={controlId}
-              onKeyDown={handleListboxKeyDown}
-              onMouseLeave={resetHighlightToSelected}
-              onScroll={(event) => {
-                setListboxScrollTop(event.currentTarget.scrollTop)
-                setListboxViewportHeight(event.currentTarget.clientHeight)
-              }}
-              className={[
-                'fixed z-[1500] overflow-y-auto rounded-xl border border-border bg-surface-raised shadow-soft',
-                variant === 'text'
-                  ? fitToContent
-                    ? 'w-[min(9rem,calc(100vw-1rem))] p-1'
-                    : 'p-1'
-                  : fitToContent
-                    ? 'p-0.5'
-                    : 'p-1',
-              ].join(' ')}
-              style={menuStyle}
-            >
-              {shouldVirtualizeOptions ? (
-                <div style={{ height: `${virtualTotalHeight}px`, position: 'relative' }}>
-                  <div style={{ transform: `translateY(${virtualTopOffset}px)` }}>
-                    {virtualOptions.map((option, index) => {
-                      const optionIndex = virtualStartIndex + index
-                      const isSelected = option.value === value
-                      const isHighlighted = optionIndex === highlightedIndex
+      <DropdownPopover
+        anchorRef={buttonRef}
+        panelRef={listboxRef}
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        preferredPlacement={variant === 'text' ? 'above' : 'below'}
+        id={listboxId}
+        role="listbox"
+        tabIndex={-1}
+        aria-labelledby={controlId}
+        onKeyDown={handleListboxKeyDown}
+        onMouseLeave={resetHighlightToSelected}
+        onScroll={(event) => {
+          setListboxScrollTop(event.currentTarget.scrollTop)
+          setListboxViewportHeight(event.currentTarget.clientHeight)
+        }}
+        className={popupClassName}
+      >
+        {shouldVirtualizeOptions ? (
+          <div
+            style={{ height: `${virtualTotalHeight}px`, position: 'relative' }}
+          >
+            <div style={{ transform: `translateY(${virtualTopOffset}px)` }}>
+              {virtualOptions.map((option, index) => {
+                const optionIndex = virtualStartIndex + index
+                const isSelected = option.value === value
+                const isHighlighted = optionIndex === highlightedIndex
 
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          role="option"
-                          aria-selected={isSelected}
-                          data-option-index={optionIndex}
-                          onMouseEnter={() => setHighlightedIndex(optionIndex)}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => commitValue(option.value)}
-                          className={twMerge(
-                            variant === 'text'
-                              ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
-                              : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
-                            getDropdownOptionStateClassName(isSelected, isHighlighted),
-                            isSelected ? selectedOptionClassName : undefined,
-                          )}
-                        >
-                          <span
-                            className={variant === 'text'
-                              ? 'block min-w-0 flex-1 truncate text-[15px] leading-5'
-                              : 'truncate pr-3'}
-                          >
-                            {option.label}
-                          </span>
-                          {isSelected ? (
-                            <Check
-                              size={16}
-                              strokeWidth={2.2}
-                              className={[
-                                variant === 'text' ? 'mt-0.5' : '',
-                                'shrink-0',
-                                selectedOptionIconClassName ?? 'text-brand',
-                              ].filter(Boolean).join(' ')}
-                            />
-                          ) : null}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-0.5">
-                  {options.map((option, index) => {
-                    const isSelected = option.value === value
-                    const isHighlighted = index === highlightedIndex
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    data-option-index={optionIndex}
+                    onMouseEnter={() => setHighlightedIndex(optionIndex)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => commitValue(option.value)}
+                    className={twMerge(
+                      variant === 'text'
+                        ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
+                        : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
+                      getDropdownOptionStateClassName(
+                        isSelected,
+                        isHighlighted,
+                      ),
+                      isSelected ? selectedOptionClassName : undefined,
+                    )}
+                  >
+                    <span
+                      className={
+                        variant === 'text'
+                          ? 'block min-w-0 flex-1 truncate text-[15px] leading-5'
+                          : 'truncate pr-3'
+                      }
+                    >
+                      {option.label}
+                    </span>
+                    {isSelected ? (
+                      <Check
+                        size={16}
+                        strokeWidth={2.2}
+                        className={[
+                          variant === 'text' ? 'mt-0.5' : '',
+                          'shrink-0',
+                          selectedOptionIconClassName ?? 'text-brand',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                      />
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-0.5">
+            {options.map((option, index) => {
+              const isSelected = option.value === value
+              const isHighlighted = index === highlightedIndex
 
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        role="option"
-                        aria-selected={isSelected}
-                        data-option-index={index}
-                        onMouseEnter={() => setHighlightedIndex(index)}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => commitValue(option.value)}
-                        className={twMerge(
-                          variant === 'text'
-                            ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
-                            : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
-                          getDropdownOptionStateClassName(isSelected, isHighlighted),
-                          isSelected ? selectedOptionClassName : undefined,
-                        )}
-                      >
-                        <span
-                          className={variant === 'text'
-                            ? 'block min-w-0 flex-1 truncate text-[15px] leading-5'
-                            : 'truncate pr-3'}
-                        >
-                          {option.label}
-                        </span>
-                        {isSelected ? (
-                          <Check
-                            size={16}
-                            strokeWidth={2.2}
-                            className={[
-                              variant === 'text' ? 'mt-0.5' : '',
-                              'shrink-0',
-                              selectedOptionIconClassName ?? 'text-brand',
-                            ].filter(Boolean).join(' ')}
-                          />
-                        ) : null}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>,
-            document.body,
-          )
-        : null}
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  data-option-index={index}
+                  onMouseEnter={() => setHighlightedIndex(index)}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => commitValue(option.value)}
+                  className={twMerge(
+                    variant === 'text'
+                      ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
+                      : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
+                    getDropdownOptionStateClassName(isSelected, isHighlighted),
+                    isSelected ? selectedOptionClassName : undefined,
+                  )}
+                >
+                  <span
+                    className={
+                      variant === 'text'
+                        ? 'block min-w-0 flex-1 truncate text-[15px] leading-5'
+                        : 'truncate pr-3'
+                    }
+                  >
+                    {option.label}
+                  </span>
+                  {isSelected ? (
+                    <Check
+                      size={16}
+                      strokeWidth={2.2}
+                      className={[
+                        variant === 'text' ? 'mt-0.5' : '',
+                        'shrink-0',
+                        selectedOptionIconClassName ?? 'text-brand',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                    />
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </DropdownPopover>
     </div>
   )
 }

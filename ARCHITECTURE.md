@@ -48,7 +48,7 @@ The native window-controls overlay uses a transparent background in both themes 
 
 ## Embedded Browser
 
-`BrowserPanel.tsx` owns tab sessions, address drafts, navigation state, and the Electron webview elements. The application window attaches guest behavior and manages native DevTools views. Guest setup runs without synthetic user activation, including when Electron defers script execution until loading stops.
+`BrowserPanel.tsx` owns tab sessions, address drafts, navigation state, and the Electron webview elements. The application window attaches guest behavior and manages floating DevTools windows. Guest setup runs without synthetic user activation, including when Electron defers script execution until loading stops.
 
 New tabs render the local `BrowserNewTabPage.tsx` with an empty address. No webview or iframe is started until a nonempty address or search is submitted. URL normalization keeps Google as the search provider, independently of the home view. Home resets the tab to a fresh local new-tab state and releases its page session.
 
@@ -60,7 +60,7 @@ Closing the last tab calls the Browser panel's parent close action. `BrowserWork
 
 The embedded Browser is desktop Electron-only. Remote web clients do not render the Browser control, do not expose a Browser RPC namespace, and do not create virtual BrowserWindows or screencast page frames on the host.
 
-DevTools are initialized on explicit user opening, rather than during guest load. The renderer requests native DevTools creation and visibility through the preload bridge; the main process owns the native views. Page title, favicon, and loading updates retain the existing webview session.
+DevTools are initialized on explicit user opening, rather than during guest load. The renderer requests floating DevTools through the preload bridge; the main process owns the child windows. Page title, favicon, and loading updates retain the existing webview session.
 
 ## Chat attachments and workspace aliases
 
@@ -102,7 +102,7 @@ PDF previews own reference-counted document leases. Active previews pin their do
 
 Chat and Monaco share a single lazy Shiki runtime. Monaco registers asynchronous token provider factories and loads each grammar when its language is first needed. Main-process TypeScript snapshots retain at most six requests and 32 MiB of source strings; the renderer retains four requests and 16 MiB. Monaco project libraries release 30 seconds after their final editor consumer closes, allowing quick tab switches to reuse declarations.
 
-History traversal reads two conversation files at a time and transforms each into a summary before advancing. Completed shared runs retain their reconnect projection for 60 seconds, then release projections, follow-ups, sequence entries, and timers. Conversation runtime and settled compaction metadata have 128-entry limits with active work protected. Service connection probes coalesce, and failed handshakes destroy sockets and release receive buffers. Terminal retention removes unreferenced exited sessions after five minutes, including their legacy owner state, and bounds completed command metadata at 64 records per session or five minutes. Active operations and attached exited terminal output remain available. Closed Browser DevTools destroy their native view; dock transitions temporarily retain it.
+History traversal reads two conversation files at a time and transforms each into a summary before advancing. Completed shared runs retain their reconnect projection for 60 seconds, then release projections, follow-ups, sequence entries, and timers. Conversation runtime and settled compaction metadata have 128-entry limits with active work protected. Service connection probes coalesce, and failed handshakes destroy sockets and release receive buffers. Terminal retention removes unreferenced exited sessions after five minutes, including their legacy owner state, and bounds completed command metadata at 64 records per session or five minutes. Active operations and attached exited terminal output remain available. Closing Browser DevTools destroys its floating child window.
 
 `scripts/profile-memory.mjs` measures the built application or Vite renderer with a temporary home, Chromium profile, synthetic history, isolated service namespace, and separate remote port. It records process working sets/private bytes and renderer heap/canvas metrics without forcing garbage collection. Findings and reproduction commands are in `docs/performance.md`.
 
@@ -129,3 +129,11 @@ Browser has one retained host in `ChatWorkspaceSidePanels.tsx`. It opens as a ri
 Workspace terminal tabs retain the broker session ID returned at creation and send it with input, resize, and close requests. Numeric IDs remain part of PTY transport and event indexing; broker identity validates events and asynchronous failures before they update a tab, preventing a reused numeric ID from targeting a replacement session.
 
 `terminalSessionLifecycle.ts` owns the shared asynchronous creation/replacement boundary. Each attempt uses a generation-specific creation key. Lost-session and service-disconnection input failures recover without replaying uncertain input; stale creation results release only their own session. Setup and service failures leave an error state from which Restart can retry. The broker distinguishes missing references from unknown numeric IDs, permits closing dead records, and keeps retained output readable after session loss.
+
+## Browser menu and page actions
+
+`DropdownPopover.tsx` shares portal positioning and outside-click/Escape dismissal between `DropdownField` and `BrowserMenu`. The tab bar retains new-tab and fullscreen buttons beside the browser menu; a single overlapping divider paints above the tab viewport to preserve its edge. The active tab exposes page actions through `useBrowserPageActions.ts`. Zoom choices are available from navigation start, including pending redirects, and are applied when the guest becomes available. New tabs do not show zoom controls. Request revisions prevent late zoom responses from replacing newer choices.
+
+`electron/browser/pageActions.ts` validates workspace-window and guest ownership for zoom and screenshots and restricts cookie/cache clearing to `persist:tidecode-browser`. This does not clear TideCode's default session. Page DevTools use a floating child BrowserWindow only; the dock modes, native docking menu, reserved page area, and dock bounds/visibility IPC have been removed.
+
+`BrowserScreenshotButton.tsx` starts capture from each tab's URL row; `BrowserScreenshotToast.tsx` owns saved-file actions and timed feedback through a portal into the positioned tab container, anchored below the URL row within browser bounds. Toast surfaces and controls use semantic theme tokens. Screenshot availability uses document readiness, separate from zoom readiness: main-frame navigation disables capture until dom-ready; same-document navigation preserves it. The active tab passes its project root through `useBrowserPageActions.ts`. `electron/browser/screenshots.ts` creates `.tidecode/browser-screenshots/`, rejects redirected screenshot folders, and writes uniquely named PNGs without overwriting. Main-process screenshot actions validate the workspace sender and restrict clipboard/reveal operations to existing browser screenshot files in that folder. Saving does not modify the clipboard; Copy image reads the saved PNG. Capture/save failures appear beside the camera, while action errors remain in the toast.

@@ -52,6 +52,44 @@ test('context usage estimation tolerates a workspace deleted before the estimate
   }
 })
 
+test('context usage separates injected XML from chat history', async () => {
+  const injectedContext = [
+    '<hidden_user_context kind="chat_mode" state="agent">',
+    '<chat_mode_context mode="agent">Agent mode instructions.</chat_mode_context>',
+    '</hidden_user_context>',
+  ].join('\n')
+  const usage = await estimateToolEnabledContextUsage({
+    agentContextRootPath: null,
+    chatMode: 'agent',
+    contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+    messages: [{
+      content: 'Please inspect this request.',
+      hiddenUserContext: [{
+        content: injectedContext,
+        kind: 'chat_mode',
+        state: 'agent',
+      }],
+      id: 'user-injection',
+      role: 'user',
+      timestamp: 1,
+    }],
+    modelId: 'test-model',
+    providerId: 'codex',
+    terminalExecutionMode: 'sandbox',
+  })
+
+  assert.ok(usage.injectionTokens > 0)
+  assert.ok(usage.historyTokens > 0)
+  assert.equal(
+    usage.totalTokens,
+    usage.systemPromptTokens
+      + (usage.toolSchemaTokens ?? 0)
+      + usage.historyTokens
+      + usage.injectionTokens
+      + usage.toolResultsTokens,
+  )
+})
+
 test('cached lightweight tool-schema counts match runtime provider-visible schemas', async () => {
   for (const providerId of ['openai', 'anthropic'] as const) {
     const workspaceRootPath = process.cwd()
@@ -170,7 +208,11 @@ test('automatic compaction uses the same model-content token estimate as the con
 
 test('live context usage and automatic compaction share one calculated state', () => {
   const messages = [
-    { role: 'user', content: 'H'.repeat(120_000) },
+    {
+      role: 'user',
+      content: 'H'.repeat(120_000)
+        + '\n\n<hidden_user_context kind="execution_mode" state="sandbox">Execution mode instructions.</hidden_user_context>',
+    },
     {
       role: 'tool',
       content: [{
@@ -198,9 +240,11 @@ test('live context usage and automatic compaction share one calculated state', (
     state.usage.systemPromptTokens
       + (state.usage.toolSchemaTokens ?? 0)
       + state.usage.historyTokens
+      + state.usage.injectionTokens
       + state.usage.toolResultsTokens,
   )
   assert.ok(state.usage.toolResultsTokens > 0)
+  assert.ok(state.usage.injectionTokens > 0)
   assert.equal(shouldCompactContext(state.budget), state.usage.totalTokens >= 160_000)
 })
 

@@ -11,6 +11,7 @@ import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPat
 
 const EMPTY_CONTEXT_USAGE: ContextUsageEstimate = {
   historyTokens: 0,
+  injectionTokens: 0,
   maxTokens: 200_000,
   systemPromptTokens: 0,
   toolSchemaTokens: 0,

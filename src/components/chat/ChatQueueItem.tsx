@@ -171,6 +171,15 @@ export function ChatQueueItem({
     const errors: string[] = []
 
     for (const file of files) {
+      if (isSupportedImageMimeType(file.type)) {
+        const result = await readChatAttachmentsFromFiles([file], [
+          ...draftAttachments,
+          ...nextAttachments,
+        ])
+        nextAttachments.push(...result.attachments)
+        errors.push(...result.errors)
+        continue
+      }
       if (isRemoteBrowserRuntime()) {
         try {
           nextAttachments.push(await uploadRemoteAttachmentSelection({ file, kind: 'file' }, conversationId))
@@ -192,18 +201,6 @@ export function ChatQueueItem({
             conversationId,
             sourcePath,
           })
-          if (isSupportedImageMimeType(file.type)) {
-            const imageResult = await readChatAttachmentsFromFiles([file], [])
-            const imageAttachment = imageResult.attachments.find((attachment) => attachment.kind === 'image')
-            if (imageAttachment?.kind === 'image') {
-              nextAttachments.push({
-                ...imageAttachment,
-                fileName: stored.fileName,
-                path: stored.path,
-              })
-              continue
-            }
-          }
           nextAttachments.push({
             fileName: stored.fileName,
             id: createClientId(),
@@ -220,20 +217,7 @@ export function ChatQueueItem({
           ...nextAttachments,
         ])
         for (const attachment of fallbackResult.attachments) {
-          if (attachment.kind === 'image') {
-            const stored = await window.tidecodeHistory.storeChatImageAttachment({
-              conversationId,
-              dataUrl: attachment.dataUrl,
-              fileName: attachment.fileName,
-            })
-            nextAttachments.push({
-              ...attachment,
-              fileName: stored.fileName,
-              path: stored.path,
-            })
-          } else {
-            nextAttachments.push(attachment)
-          }
+          nextAttachments.push(attachment)
         }
         errors.push(...fallbackResult.errors)
       } catch (error) {
@@ -262,7 +246,7 @@ export function ChatQueueItem({
       }
       setDraftMentionPathMap(nextMentionMap)
       setDraftAttachments((currentValue) => [...currentValue, ...nextAttachments])
-      setDraftContent(nextContent)
+      setDraftContent(ensureChatImageReferences(nextContent, [...draftAttachments, ...nextAttachments]))
       window.requestAnimationFrame(() => {
         textareaRef.current?.focus()
         textareaRef.current?.setSelectionRange(nextCursorPosition, nextCursorPosition)

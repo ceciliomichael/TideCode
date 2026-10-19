@@ -18,6 +18,7 @@ import { restoreChatMentionPathMap } from '../lib/chatMentions'
 import { hasPlanToolInvocation } from '../lib/planPresentation'
 import { loadChatCompactionMarkers } from '../lib/chatCompactionMarkerCache'
 import { isSameTurnSteerMessage } from '../lib/chatMessageMetadata'
+import { cleanupUnreferencedChatImages, persistStagedChatImages } from '../lib/chatAttachmentPersistence'
 import {
   buildHiddenUserContextTransitions,
   buildRuntimeEnvironmentHiddenContextTransitions,
@@ -390,46 +391,54 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
       throw new Error(`Message not found: ${input.targetEditMessageId}`)
     }
 
-    const messagesBeforeEditedTurn = currentConversation.messages.slice(0, targetMessageIndex)
-    const hiddenUserContext = await buildPersistedHiddenUserContext({
-      chatMode: input.chatMode,
-      messages: messagesBeforeEditedTurn,
-      terminalExecutionMode: input.terminalExecutionMode,
-      workspaceRootPath: currentConversation.agentContextRootPath,
-    })
-    const runCheckpoint = await createRunCheckpoint(currentConversation.agentContextRootPath)
-    const userMessage = buildUserMessage(
-      normalizedMessages[0].text,
-      input.modelId,
-      input.providerId,
-      input.reasoningEffort,
-      normalizedMessages[0].attachments,
-      runCheckpoint,
-      input.chatMode,
-      hiddenUserContext,
-      normalizedMessages[0].mentionPathMap,
-      input.targetEditMessageId,
-    )
+    const staged = await persistStagedChatImages(currentConversation.id, normalizedMessages)
+    try {
+      const editedMessage = staged.messages[0]
+      const messagesBeforeEditedTurn = currentConversation.messages.slice(0, targetMessageIndex)
+      const hiddenUserContext = await buildPersistedHiddenUserContext({
+        chatMode: input.chatMode,
+        messages: messagesBeforeEditedTurn,
+        terminalExecutionMode: input.terminalExecutionMode,
+        workspaceRootPath: currentConversation.agentContextRootPath,
+      })
+      const runCheckpoint = await createRunCheckpoint(currentConversation.agentContextRootPath)
+      const userMessage = buildUserMessage(
+        editedMessage.text,
+        input.modelId,
+        input.providerId,
+        input.reasoningEffort,
+        editedMessage.attachments,
+        runCheckpoint,
+        input.chatMode,
+        hiddenUserContext,
+        editedMessage.mentionPathMap,
+        input.targetEditMessageId,
+      )
 
-    const rewrittenMessages = [...currentConversation.messages.slice(0, targetMessageIndex), userMessage]
-    const conversation = await window.tidecodeHistory.replaceMessages({
-      chatMode: input.chatMode,
-      conversationId: currentConversation.id,
-      messages: rewrittenMessages,
-      synchronizeCanonicalHistory: true,
-      title:
-        targetMessageIndex === 0
-          ? input.title?.trim() || getConversationTitleFromInput(
-              normalizedMessages[0].text,
-              normalizedMessages[0].attachments,
-              restoreChatMentionPathMap(normalizedMessages[0].mentionPathMap),
-            )
-          : undefined,
-    })
+      const rewrittenMessages = [...currentConversation.messages.slice(0, targetMessageIndex), userMessage]
+      const conversation = await window.tidecodeHistory.replaceMessages({
+        chatMode: input.chatMode,
+        cleanupOrphanedAttachments: true,
+        conversationId: currentConversation.id,
+        messages: rewrittenMessages,
+        synchronizeCanonicalHistory: true,
+        title:
+          targetMessageIndex === 0
+            ? input.title?.trim() || getConversationTitleFromInput(
+                editedMessage.text,
+                editedMessage.attachments,
+                restoreChatMentionPathMap(editedMessage.mentionPathMap),
+              )
+            : undefined,
+      })
 
-    return {
-      conversation,
-      userMessage,
+      return {
+        conversation,
+        userMessage,
+      }
+    } catch (error) {
+      await cleanupUnreferencedChatImages(currentConversation.id, staged.storedPaths)
+      throw error
     }
   }
 
@@ -457,48 +466,54 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
     throw new Error(`Conversation not found: ${conversationId}`)
   }
 
-  const shouldUpdateTitle = currentConversation.messages.length === 0
-  const runCheckpoint = await createRunCheckpoint(currentConversation.agentContextRootPath)
-  const hiddenUserContext = await buildPersistedHiddenUserContext({
-    chatMode: input.chatMode,
-    messages: currentConversation.messages,
-    terminalExecutionMode: input.terminalExecutionMode,
-    workspaceRootPath: currentConversation.agentContextRootPath,
-  })
-  const userMessages = normalizedMessages.map((message, index) =>
-    buildUserMessage(
-      message.text,
-      input.modelId,
-      input.providerId,
-      input.reasoningEffort,
-      message.attachments,
-      runCheckpoint,
-      input.chatMode,
-      index === 0 ? hiddenUserContext : [],
-      message.mentionPathMap,
-      input.preferredMessageIds?.[index],
-    ),
-  )
-  const userMessage = userMessages[0]
-  if (!userMessage) {
-    throw new Error('Cannot persist an empty user message batch.')
-  }
-  const conversation = await window.tidecodeHistory.appendMessages({
-    chatMode: input.chatMode,
-    conversationId,
-    messages: userMessages,
-    title: shouldUpdateTitle
-      ? input.title?.trim() || getConversationTitleFromInput(
-          userMessage.content,
-          userMessage.attachments ?? [],
-          restoreChatMentionPathMap(userMessage.mentionPathMap),
-        )
-      : undefined,
-  })
+  const staged = await persistStagedChatImages(conversationId, normalizedMessages)
+  try {
+    const shouldUpdateTitle = currentConversation.messages.length === 0
+    const runCheckpoint = await createRunCheckpoint(currentConversation.agentContextRootPath)
+    const hiddenUserContext = await buildPersistedHiddenUserContext({
+      chatMode: input.chatMode,
+      messages: currentConversation.messages,
+      terminalExecutionMode: input.terminalExecutionMode,
+      workspaceRootPath: currentConversation.agentContextRootPath,
+    })
+    const userMessages = staged.messages.map((message, index) =>
+      buildUserMessage(
+        message.text,
+        input.modelId,
+        input.providerId,
+        input.reasoningEffort,
+        message.attachments,
+        runCheckpoint,
+        input.chatMode,
+        index === 0 ? hiddenUserContext : [],
+        message.mentionPathMap,
+        input.preferredMessageIds?.[index],
+      ),
+    )
+    const userMessage = userMessages[0]
+    if (!userMessage) {
+      throw new Error('Cannot persist an empty user message batch.')
+    }
+    const conversation = await window.tidecodeHistory.appendMessages({
+      chatMode: input.chatMode,
+      conversationId,
+      messages: userMessages,
+      title: shouldUpdateTitle
+        ? input.title?.trim() || getConversationTitleFromInput(
+            userMessage.content,
+            userMessage.attachments ?? [],
+            restoreChatMentionPathMap(userMessage.mentionPathMap),
+          )
+        : undefined,
+    })
 
-  return {
-    conversation,
-    userMessage,
+    return {
+      conversation,
+      userMessage,
+    }
+  } catch (error) {
+    await cleanupUnreferencedChatImages(conversationId, staged.storedPaths)
+    throw error
   }
 }
 

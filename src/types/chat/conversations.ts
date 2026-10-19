@@ -295,6 +295,7 @@ export interface AppendConversationMessagesInput {
 
 export interface ReplaceConversationMessagesInput {
   chatMode?: ChatMode
+  cleanupOrphanedAttachments?: boolean
   conversationId: string
   messages: Message[]
   synchronizeCanonicalHistory?: boolean

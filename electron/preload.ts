@@ -65,7 +65,7 @@ import type { TideCodeMcpApi, McpAddServerInput, McpState } from '../src/types/m
 import type { TideCodeSkillsApi } from '../src/types/skills'
 import type { TideCodeUpdatesApi } from '../src/types/updates'
 import type { RemoteBridgeEvent, TideCodeRemoteHostBridgeApi } from '../src/remote/protocol'
-import type { TideCodeBrowserDevToolsApi, TideCodeBrowserFaviconsApi } from '../src/types/browser'
+import type { TideCodeBrowserDevToolsApi, TideCodeBrowserFaviconsApi, TideCodeBrowserPageActionsApi } from '../src/types/browser'
 
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
@@ -95,11 +95,14 @@ const historyApi: TideCodeHistoryApi = {
   ensureDraftAgentContext: () => ipcRenderer.invoke('history:ensureDraftAgentContext'),
   cleanupDraftAgentContext: () => ipcRenderer.invoke('history:cleanupDraftAgentContext'),
   cleanupChatAttachmentScope: (scopeId) => ipcRenderer.invoke('history:cleanupChatAttachmentScope', scopeId),
+  cleanupUnreferencedChatAttachments: (conversationId, paths) =>
+    ipcRenderer.invoke('history:cleanupUnreferencedChatAttachments', conversationId, paths),
   pickAndStoreChatAttachmentFolder: (conversationId) =>
     ipcRenderer.invoke('history:pickAndStoreChatAttachmentFolder', conversationId),
   listChatAttachments: (conversationId) => ipcRenderer.invoke('history:listChatAttachments', conversationId),
   readChatAttachmentImagePreview: (conversationId, aliasPath) =>
     ipcRenderer.invoke('history:readChatAttachmentImagePreview', conversationId, aliasPath),
+  readChatImageSource: (sourcePath) => ipcRenderer.invoke('history:readChatImageSource', sourcePath),
   storeChatAttachment: (input) => ipcRenderer.invoke('history:storeChatAttachment', input),
   storeChatImageAttachment: (input) => ipcRenderer.invoke('history:storeChatImageAttachment', input),
   listConversations: () => ipcRenderer.invoke('history:list'),
@@ -407,13 +410,6 @@ const browserDevToolsApi: TideCodeBrowserDevToolsApi = {
       ipcRenderer.off('browser:devToolsClosed', wrappedListener)
     }
   },
-  onReady: (listener) => {
-    const wrappedListener = (_event: unknown, webContentsId: number) => listener(webContentsId)
-    ipcRenderer.on('browser:devToolsReady', wrappedListener)
-    return () => {
-      ipcRenderer.off('browser:devToolsReady', wrappedListener)
-    }
-  },
   onShortcut: (listener) => {
     const wrappedListener = (_event: unknown, webContentsId: number) => listener(webContentsId)
     ipcRenderer.on('browser:devToolsShortcut', wrappedListener)
@@ -422,9 +418,15 @@ const browserDevToolsApi: TideCodeBrowserDevToolsApi = {
     }
   },
   open: (input) => ipcRenderer.invoke('browser:openDevTools', input),
-  showDockMenu: (input) => ipcRenderer.invoke('browser:showDevToolsDockMenu', input),
-  setVisible: (input) => ipcRenderer.invoke('browser:setDevToolsVisible', input),
-  updateBounds: (input) => ipcRenderer.invoke('browser:updateDevToolsBounds', input),
+}
+
+const browserPageActionsApi: TideCodeBrowserPageActionsApi = {
+  screenshotAction: (input) => ipcRenderer.invoke('browser:screenshotAction', input),
+  captureScreenshot: (input) => ipcRenderer.invoke('browser:captureScreenshot', input),
+  getZoom: (input) => ipcRenderer.invoke('browser:getZoom', input),
+  setZoom: (input) => ipcRenderer.invoke('browser:setZoom', input),
+  clearCookies: () => ipcRenderer.invoke('browser:clearCookies'),
+  clearCache: () => ipcRenderer.invoke('browser:clearCache'),
 }
 
 const browserFaviconsApi: TideCodeBrowserFaviconsApi = {
@@ -494,6 +496,7 @@ contextBridge.exposeInMainWorld('tidecodeRuns', runsApi)
 contextBridge.exposeInMainWorld('tidecodeGit', gitApi)
 contextBridge.exposeInMainWorld('tidecodeBrowserDevTools', browserDevToolsApi)
 contextBridge.exposeInMainWorld('tidecodeBrowserFavicons', browserFaviconsApi)
+contextBridge.exposeInMainWorld('tidecodeBrowserPageActions', browserPageActionsApi)
 contextBridge.exposeInMainWorld('tidecodeFileDrop', fileDropApi)
 contextBridge.exposeInMainWorld('tidecodeClipboard', clipboardApi)
 contextBridge.exposeInMainWorld('tidecodeWorkspace', workspaceApi)

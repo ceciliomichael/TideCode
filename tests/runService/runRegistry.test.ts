@@ -51,6 +51,7 @@ test('active runs retain the latest live context usage for reconnecting clients'
   registry.attachStream(run.runId, 'stream-1')
   registry.updateContextUsage(run.runId, {
     historyTokens: 42_000,
+    injectionTokens: 0,
     maxTokens: 200_000,
     systemPromptTokens: 5_000,
     toolResultsTokens: 80_000,
@@ -59,6 +60,7 @@ test('active runs retain the latest live context usage for reconnecting clients'
 
   assert.deepEqual(registry.listActive()[0]?.contextUsage, {
     historyTokens: 42_000,
+    injectionTokens: 0,
     maxTokens: 200_000,
     systemPromptTokens: 5_000,
     toolResultsTokens: 80_000,

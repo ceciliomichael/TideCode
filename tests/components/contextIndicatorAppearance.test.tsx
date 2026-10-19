@@ -10,6 +10,7 @@ import type { ContextUsageEstimate } from '../../src/types/chat'
 function renderIndicator(totalTokens: number) {
   const usage: ContextUsageEstimate = {
     historyTokens: totalTokens,
+    injectionTokens: 0,
     maxTokens: 100,
     systemPromptTokens: 0,
     toolResultsTokens: 0,
@@ -31,6 +32,12 @@ test('context usage uses distinct brand, warning and danger active dashes', () =
   assert.match(renderIndicator(75), /stroke="var\(--color-warning-foreground\)"/u)
   assert.match(renderIndicator(90), /stroke="var\(--color-danger-foreground\)"/u)
   assert.doesNotMatch(renderIndicator(25), /stroke="var\(--color-action\)"/u)
+})
+
+test('context tooltip exposes the separate injection token row', () => {
+  const source = readFileSync(new URL('../../src/components/chat/ContextIndicator.tsx', import.meta.url), 'utf8')
+  assert.match(source, /<span>Injection<\/span>/u)
+  assert.match(source, /formatTokenCount\(usage\.injectionTokens\)/u)
 })
 
 test('context percentage and compress action use theme foreground text', () => {

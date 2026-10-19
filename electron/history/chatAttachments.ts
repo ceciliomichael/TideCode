@@ -19,6 +19,16 @@ import {
 } from '../workspace/gitignoreMatcher'
 
 const ATTACHMENTS_ALIAS = '@attachments'
+const SOURCE_IMAGE_MIME_TYPES: Readonly<Record<string, string>> = {
+  '.gif': 'image/gif',
+  '.heic': 'image/heic',
+  '.heif': 'image/heif',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+}
 
 function getAttachmentRoot(conversationId?: string | null) {
   const normalizedConversationId = conversationId?.trim() ?? ''
@@ -140,6 +150,28 @@ export async function readChatAttachmentImagePreview(
     return null
   }
   return `data:${mediaType};base64,${data.toString('base64')}`
+}
+
+export async function readChatImageSource(sourcePath: string) {
+  const mimeType = SOURCE_IMAGE_MIME_TYPES[path.extname(sourcePath).toLowerCase()]
+  if (!mimeType) {
+    return null
+  }
+  const absolutePath = path.resolve(sourcePath)
+  await assertNotSymbolicLink(absolutePath)
+  const stats = await fs.stat(absolutePath)
+  if (!stats.isFile()) {
+    return null
+  }
+  if (stats.size > CHAT_ATTACHMENT_MAX_IMAGE_BYTES) {
+    throw new Error('Images must be 8 MB or smaller.')
+  }
+  const data = await fs.readFile(absolutePath)
+  return {
+    dataUrl: `data:${mimeType};base64,${data.toString('base64')}`,
+    fileName: path.basename(absolutePath),
+    mimeType,
+  }
 }
 
 export async function storeChatAttachment(input: StoreChatAttachmentInput): Promise<StoredChatAttachment> {
@@ -354,6 +386,29 @@ export async function listChatAttachments(conversationId: string): Promise<Store
   return attachments.sort((left, right) =>
     left.fileName.localeCompare(right.fileName, undefined, { sensitivity: 'base' }),
   )
+}
+
+/**
+ * Delete only top-level entries in one conversation's attachment directory.
+ * Paths are virtual aliases, never absolute paths supplied by the renderer.
+ */
+export async function deleteChatAttachmentPaths(conversationId: string, paths: readonly string[]) {
+  if (!/^[a-zA-Z0-9_-]+$/u.test(conversationId)) {
+    throw new Error('Invalid conversation attachment scope.')
+  }
+  for (const alias of new Set(paths)) {
+    if (!alias.startsWith(`${ATTACHMENTS_ALIAS}/`)) {
+      continue
+    }
+    const entryName = alias.slice(ATTACHMENTS_ALIAS.length + 1).replace(/\/$/u, '')
+    if (!entryName || entryName === '.' || entryName === '..' || entryName.includes('/') || entryName.includes('\\')) {
+      continue
+    }
+    await fs.rm(path.join(getAttachmentRoot(conversationId), entryName), {
+      force: true,
+      recursive: true,
+    })
+  }
 }
 
 export async function deleteConversationChatAttachments(conversationId: string) {

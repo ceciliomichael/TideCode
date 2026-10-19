@@ -28,11 +28,12 @@ test('Electron Browser keeps native focus through page load and accepts intentio
           window.tidecodeBrowserDevTools = {
             open: (input) => ipcRenderer.invoke('open-devtools', input),
             close: async () => true,
-            setVisible: async () => true,
-            updateBounds: async () => true,
             onClosed: () => () => {},
             onShortcut: () => () => {},
-            showDockMenu: async () => null,
+          }
+          window.tidecodeBrowserPageActions = {
+            getZoom: async () => 100, setZoom: async (input) => input.percent,
+            clearCookies: async () => {}, clearCache: async () => {},
           }
           createRoot(document.getElementById('root')).render(
             <BrowserPanel active={true} onClose={() => {}} projectKey="focus-regression" />
@@ -58,13 +59,12 @@ test('Electron Browser keeps native focus through page load and accepts intentio
         body { margin: 0; }
         input[aria-label="Search or enter address"] { position: fixed; top: 50px; left: 50px; width: 500px; height: 30px; }
         webview { position: fixed; top: 150px; left: 0; width: 600px !important; height: 300px !important; }
-        [aria-label="Browser DevTools"] { position: fixed; top: 150px; left: 620px; width: 250px; height: 300px; }
         div.absolute.left-0.top-0 { position: fixed; top: 150px; left: 0; width: 600px; height: 300px; }
       </style></head><body><div id="root"></div><script src="renderer.js"></script></body></html>
     `)
     const environment = { ...process.env }
     delete environment.ELECTRON_RUN_AS_NODE
-    for (const mode of ['fixed', 'warmup']) {
+    for (const mode of ['fixed']) {
       const child = spawn(require('electron'), [path.join(import.meta.dirname, 'fixtures/browserFocus.electron.cjs'), directory, mode], {
         env: environment,
         windowsHide: true,

@@ -7,7 +7,7 @@ const assert = require('node:assert/strict')
 const { readFileSync } = require('node:fs')
 const http = require('node:http')
 const path = require('node:path')
-const { app, BrowserWindow, ipcMain, session, webContents, WebContentsView } = require('electron')
+const { app, BrowserWindow, ipcMain, session, webContents } = require('electron')
 
 const directory = process.argv[2]
 const mode = process.argv[3] || 'fixed'
@@ -79,20 +79,15 @@ async function run() {
     contents.on('dom-ready', () => {
       trace.push('dom-ready')
       void contents.executeJavaScript(guestScript, false)
-      if (mode === 'warmup') {
-        setTimeout(() => openDevTools({ webContentsId: contents.id }), 0)
-      }
     })
     contents.on('did-stop-loading', () => trace.push('did-stop-loading'))
   })
   function openDevTools(input) {
     devToolsRequests += 1
     const target = webContents.fromId(input.webContentsId)
-    const view = new WebContentsView({ webPreferences: { sandbox: true } })
-    view.setVisible(false)
-    win.contentView.addChildView(view)
-    target.setDevToolsWebContents(view.webContents)
-    target.openDevTools({ mode: 'detach', activate: true })
+    const floating = new BrowserWindow({ parent: win, show: false, webPreferences: { sandbox: true } })
+    target.setDevToolsWebContents(floating.webContents)
+    target.openDevTools({ mode: 'detach', activate: false })
     return true
   }
   ipcMain.handle('open-devtools', (_event, input) => openDevTools(input))
@@ -161,7 +156,8 @@ async function run() {
   guest.sendInputEvent({ type: 'mouseUp', x: 380, y: 35, button: 'left', clickCount: 1 })
   await waitFor(() => guest.executeJavaScript('document.getElementById("page-button").dataset.clicks === "1"', false), 'first click activates page button')
   const requestsBeforeOpening = devToolsRequests
-  await evaluate(`document.querySelector('button[aria-label="Open page DevTools"]').click()`)
+  await evaluate(`document.querySelector('button[aria-label="Browser menu"]').click()`)
+  await evaluate(`Array.from(document.querySelectorAll('[aria-label="Browser actions"] button')).find(button => button.textContent === 'Open DevTools').click()`)
   await waitFor(() => devToolsRequests === requestsBeforeOpening + 1, 'explicit DevTools opening')
   await evaluate(`document.querySelector('button[aria-label="Home"]').click()`)
   await waitFor(() => evaluate(`!!document.querySelector('section[aria-label="New tab"]') && !document.querySelector('webview')`), 'Home returns to a local new tab')

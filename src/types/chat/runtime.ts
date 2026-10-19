@@ -107,6 +107,7 @@ export interface EstimateContextUsageInput {
 
 export interface ContextUsageEstimate {
   historyTokens: number
+  injectionTokens: number
   maxTokens: number
   systemPromptTokens: number
   toolSchemaTokens?: number

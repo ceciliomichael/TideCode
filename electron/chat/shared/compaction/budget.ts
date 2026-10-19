@@ -112,6 +112,7 @@ export function calculateModelMessagesContextState(input: ModelMessagesBudgetInp
     budget,
     usage: {
       historyTokens: messageUsage.historyTokens,
+      injectionTokens: messageUsage.injectionTokens,
       maxTokens: budget.contextWindowTokens,
       systemPromptTokens: input.systemPromptTokens,
       toolSchemaTokens: input.toolSchemaTokens,

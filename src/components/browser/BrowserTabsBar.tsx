@@ -2,6 +2,11 @@ import { Globe2, Maximize, Minimize, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import type { WheelEvent as ReactWheelEvent } from 'react'
 import { Tooltip } from '../Tooltip'
+import { BrowserMenu } from './BrowserMenu'
+import type {
+  BrowserPageControls,
+  BrowserPageState,
+} from './useBrowserPageActions'
 import type { BrowserTab } from './browserTabUtils'
 
 function BrowserTabFavicon({ faviconUrl }: { faviconUrl: string }) {
@@ -32,6 +37,9 @@ interface BrowserTabsBarProps {
   isFullScreen: boolean
   onToggleFullScreen: () => void
   onSelectTab: (tabId: string) => void
+  pageState: BrowserPageState
+  onOpenDevTools: BrowserPageControls['openDevTools']
+  onChangeZoom: BrowserPageControls['changeZoom']
   tabs: readonly BrowserTab[]
 }
 
@@ -43,12 +51,18 @@ export function BrowserTabsBar({
   onToggleFullScreen,
   onSelectTab,
   tabs,
+  pageState,
+  onOpenDevTools,
+  onChangeZoom,
 }: BrowserTabsBarProps) {
   function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
     const target = event.currentTarget
     if (target.scrollWidth <= target.clientWidth) return
 
-    const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX
+    const delta =
+      Math.abs(event.deltaY) > Math.abs(event.deltaX)
+        ? event.deltaY
+        : event.deltaX
     if (delta === 0) return
 
     event.preventDefault()
@@ -64,7 +78,10 @@ export function BrowserTabsBar({
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId
           return (
-            <div key={tab.id} className="group relative inline-flex h-full w-[200px] shrink-0 items-stretch border-r border-border">
+            <div
+              key={tab.id}
+              className="group relative inline-flex h-full w-[200px] shrink-0 items-stretch border-r border-border"
+            >
               <button
                 type="button"
                 onClick={() => onSelectTab(tab.id)}
@@ -81,7 +98,9 @@ export function BrowserTabsBar({
                 ].join(' ')}
               >
                 <BrowserTabFavicon faviconUrl={tab.faviconUrl} />
-                <span className="min-w-0 flex-1 truncate text-left">{tab.title}</span>
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {tab.title}
+                </span>
               </button>
               <button
                 type="button"
@@ -99,7 +118,7 @@ export function BrowserTabsBar({
         })}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 px-2">
+      <div className="relative z-10 -ml-px flex shrink-0 items-center gap-1 border-l border-border bg-background px-2">
         <Tooltip content="New browser tab" side="bottom" noWrap>
           <button
             type="button"
@@ -110,16 +129,30 @@ export function BrowserTabsBar({
             <Plus size={14} />
           </button>
         </Tooltip>
-        <Tooltip content={isFullScreen ? 'Show browser in sidebar' : 'Show browser full screen'} side="bottom" noWrap>
+        <Tooltip
+          content={
+            isFullScreen ? 'Exit fullscreen browser' : 'Fullscreen browser'
+          }
+          side="bottom"
+          noWrap
+        >
           <button
             type="button"
+            aria-label={
+              isFullScreen ? 'Exit fullscreen browser' : 'Fullscreen browser'
+            }
             onClick={onToggleFullScreen}
             className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:rounded-xl hover:bg-surface-muted hover:text-foreground"
-            aria-label={isFullScreen ? 'Show browser in sidebar' : 'Show browser full screen'}
           >
             {isFullScreen ? <Minimize size={14} /> : <Maximize size={14} />}
           </button>
         </Tooltip>
+        <BrowserMenu
+          key={activeTabId}
+          pageState={pageState}
+          onOpenDevTools={onOpenDevTools}
+          onChangeZoom={onChangeZoom}
+        />
       </div>
     </div>
   )

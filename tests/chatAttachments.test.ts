@@ -9,11 +9,17 @@ import {
   finalizeRemoteChatAttachmentDirectory,
   listChatAttachments,
   prepareRemoteChatAttachmentUpload,
+  readChatImageSource,
   resolveRemoteChatAttachmentFolderEntryPath,
   storeChatAttachment,
+  storeChatImageAttachment,
 } from '../electron/history/chatAttachments'
+import { writeConversationFile } from '../electron/history/conversationFileStore'
+import { replaceStoredMessages } from '../electron/history/store'
+import type { ConversationRecord, Message } from '../src/types/chat'
 import {
   getConversationAttachmentsPath,
+  getConversationFilePath,
   getDraftAttachmentsPath,
 } from '../electron/history/paths'
 
@@ -140,6 +146,23 @@ test('draft attachment scopes adopt only their own files into the created conver
   }
 })
 
+test('clipboard image files can be read into a draft without being copied to attachments', async () => {
+  const sourceRoot = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-image-clipboard-'))
+  const sourcePath = path.join(sourceRoot, 'clipboard.png')
+  const encodedImage = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wb8tfYAAAAASUVORK5CYII='
+  try {
+    await fs.writeFile(sourcePath, Buffer.from(encodedImage, 'base64'))
+    const staged = await readChatImageSource(sourcePath)
+    assert.equal(staged?.fileName, 'clipboard.png')
+    assert.equal(staged?.mimeType, 'image/png')
+    assert.equal(staged?.dataUrl, `data:image/png;base64,${encodedImage}`)
+    assert.equal(await readChatImageSource(path.join(sourceRoot, 'notes.txt')), null)
+    assert.deepEqual(await fs.readdir(sourceRoot), ['clipboard.png'])
+  } finally {
+    await fs.rm(sourceRoot, { recursive: true, force: true })
+  }
+})
+
 test('remote attachment uploads reserve managed paths and reject folder traversal', async () => {
   const scopeId = uniqueScope('remote-attachment-upload')
   const prepared = await prepareRemoteChatAttachmentUpload({
@@ -147,6 +170,7 @@ test('remote attachment uploads reserve managed paths and reject folder traversa
     fileName: 'docs',
     isDirectory: true,
   })
+
 
   try {
     assert.equal(prepared.attachment.kind, 'folder')
@@ -173,5 +197,69 @@ test('remote attachment uploads reserve managed paths and reject folder traversa
   } finally {
     await cleanupPreparedRemoteChatAttachmentUpload(prepared.absolutePath)
     await fs.rm(getConversationAttachmentsPath(scopeId), { force: true, recursive: true })
+  }
+})
+
+test('committed revert deletes discarded images but keeps images referenced by retained messages', async () => {
+  const conversationId = uniqueScope('attachment-revert')
+  const attachmentRoot = getConversationAttachmentsPath(conversationId)
+  const shared = await storeChatImageAttachment({
+    conversationId,
+    dataUrl: 'data:image/png;base64,YQ==',
+    fileName: 'shared.png',
+  })
+  const discarded = await storeChatImageAttachment({
+    conversationId,
+    dataUrl: 'data:image/png;base64,Yg==',
+    fileName: 'discarded.png',
+  })
+  const retained: Message = {
+    content: `Keep [[tools.read:${shared.path}]]`,
+    id: 'user-1',
+    mentionPathMap: { 'shared.png': shared.path },
+    role: 'user',
+    timestamp: 1,
+  }
+  const removed: Message = {
+    attachments: [
+      { ...shared, id: 'shared-image', kind: 'image', dataUrl: 'data:image/png;base64,YQ==' },
+      { ...discarded, id: 'discarded-image', kind: 'image', dataUrl: 'data:image/png;base64,Yg==' },
+    ],
+    content: 'Two images',
+    id: 'user-2',
+    role: 'user',
+    timestamp: 2,
+  }
+  const conversation: ConversationRecord = {
+    agentContextRootPath: path.join(tmpdir(), 'tidecode-attachment-test-workspace'),
+    chatMode: 'agent',
+    createdAt: 1,
+    folderId: null,
+    id: conversationId,
+    messages: [retained, removed],
+    title: 'Image revert cleanup',
+    updatedAt: 2,
+  }
+
+  try {
+    await writeConversationFile(conversation)
+    await replaceStoredMessages({
+      conversationId,
+      messages: [retained],
+      synchronizeCanonicalHistory: false,
+    })
+    assert.equal(await fs.readFile(path.join(attachmentRoot, discarded.fileName), 'utf8'), 'b')
+
+    await replaceStoredMessages({ conversationId, messages: [retained, removed] })
+    await replaceStoredMessages({
+      cleanupOrphanedAttachments: true,
+      conversationId,
+      messages: [retained],
+    })
+    await assert.rejects(fs.access(path.join(attachmentRoot, discarded.fileName)))
+    assert.equal(await fs.readFile(path.join(attachmentRoot, shared.fileName), 'utf8'), 'a')
+  } finally {
+    await fs.rm(attachmentRoot, { force: true, recursive: true })
+    await fs.rm(getConversationFilePath(conversationId), { force: true })
   }
 })

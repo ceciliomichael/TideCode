@@ -35,7 +35,11 @@ function getEstimatedContextTokens(usage: ContextUsageEstimate) {
     return usage.totalTokens
   }
 
-  return usage.systemPromptTokens + (usage.toolSchemaTokens ?? 0) + usage.historyTokens + usage.toolResultsTokens
+  return usage.systemPromptTokens
+    + (usage.toolSchemaTokens ?? 0)
+    + usage.historyTokens
+    + usage.injectionTokens
+    + usage.toolResultsTokens
 }
 
 function getEffectiveMaxTokens(usage: ContextUsageEstimate) {
@@ -93,6 +97,10 @@ export function ContextIndicator({
         <div className="flex items-center justify-between gap-3 text-subtle-foreground">
           <span>Tools</span>
           <span className="text-foreground">{formatTokenCount(usage.toolSchemaTokens ?? 0)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-subtle-foreground">
+          <span>Injection</span>
+          <span className="text-foreground">{formatTokenCount(usage.injectionTokens)}</span>
         </div>
         <div className="flex items-center justify-between gap-3 text-subtle-foreground">
           <span>Chat history</span>

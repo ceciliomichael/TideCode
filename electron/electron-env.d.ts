@@ -23,6 +23,7 @@ declare namespace NodeJS {
 
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
+  tidecodeBrowserPageActions: import('../src/types/browser').TideCodeBrowserPageActionsApi
   tidecodeBrowserDevTools: import('../src/types/browser').TideCodeBrowserDevToolsApi
   tidecodeBrowserFavicons: import('../src/types/browser').TideCodeBrowserFaviconsApi
   ipcRenderer: import('electron').IpcRenderer

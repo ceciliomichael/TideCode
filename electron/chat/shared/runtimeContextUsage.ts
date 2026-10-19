@@ -123,6 +123,7 @@ export async function estimateToolEnabledContextUsage(input: {
 
   return {
     historyTokens: messageUsage.historyTokens,
+    injectionTokens: messageUsage.injectionTokens,
     maxTokens: contextCompaction.contextWindowTokens,
     systemPromptTokens,
     toolSchemaTokens,

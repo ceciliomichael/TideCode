@@ -365,17 +365,6 @@ export function ChatInput({
         sizeBytes: stored.sizeBytes,
       }
     }
-    if (isSupportedImageMimeType(file.type)) {
-      const imageResult = await readChatAttachmentsFromFiles([file], [])
-      const imageAttachment = imageResult.attachments.find((attachment) => attachment.kind === 'image')
-      if (imageAttachment?.kind === 'image') {
-        return {
-          ...imageAttachment,
-          fileName: stored.fileName,
-          path: stored.path,
-        }
-      }
-    }
     return {
       fileName: stored.fileName,
       id: createClientId(),
@@ -398,6 +387,15 @@ export function ChatInput({
     const errors: string[] = []
     for (const selection of selections.slice(0, availableSlots)) {
       try {
+        if (selection.kind === 'file' && isSupportedImageMimeType(selection.file.type)) {
+          const result = await readChatAttachmentsFromFiles(
+            [selection.file],
+            [...attachments, ...nextNewAttachments],
+          )
+          nextNewAttachments.push(...result.attachments)
+          errors.push(...result.errors)
+          continue
+        }
         nextNewAttachments.push(await uploadRemoteAttachmentSelection(selection, conversationId))
       } catch (error) {
         errors.push(error instanceof Error ? error.message : 'Unable to upload attachment.')
@@ -444,6 +442,15 @@ export function ChatInput({
         sourcePath = ''
       }
       try {
+        if (isSupportedImageMimeType(file.type)) {
+          const result = await readChatAttachmentsFromFiles(
+            [file],
+            [...attachments, ...nextNewAttachments],
+          )
+          nextNewAttachments.push(...result.attachments)
+          errors.push(...result.errors)
+          continue
+        }
         if (sourcePath.length > 0) {
           nextNewAttachments.push(await persistNativeAttachment(file, sourcePath))
           continue
@@ -453,20 +460,7 @@ export function ChatInput({
           [...attachments, ...nextNewAttachments],
         )
         for (const attachment of fallbackResult.attachments) {
-          if (attachment.kind === 'image') {
-            const stored = await window.tidecodeHistory.storeChatImageAttachment({
-              conversationId,
-              dataUrl: attachment.dataUrl,
-              fileName: attachment.fileName,
-            })
-            nextNewAttachments.push({
-              ...attachment,
-              fileName: stored.fileName,
-              path: stored.path,
-            })
-          } else {
-            nextNewAttachments.push(attachment)
-          }
+          nextNewAttachments.push(attachment)
         }
         errors.push(...fallbackResult.errors)
       } catch (error) {
@@ -508,6 +502,18 @@ export function ChatInput({
     const errors: string[] = []
     for (const sourcePath of paths.slice(0, availableSlots)) {
       try {
+        const imageSource = await window.tidecodeHistory.readChatImageSource(sourcePath)
+        if (imageSource) {
+          const imageBytes = await (await fetch(imageSource.dataUrl)).blob()
+          const file = new globalThis.File([imageBytes], imageSource.fileName, { type: imageSource.mimeType })
+          const result = await readChatAttachmentsFromFiles(
+            [file],
+            [...attachments, ...nextAttachments],
+          )
+          nextAttachments.push(...result.attachments)
+          errors.push(...result.errors)
+          continue
+        }
         const stored = await window.tidecodeHistory.storeChatAttachment({
           conversationId,
           sourcePath,

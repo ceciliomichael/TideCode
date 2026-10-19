@@ -95,6 +95,7 @@ test('mounted context hook publishes estimates during refresh bursts and isolate
             }
             const estimate = (tokens) => ({
               historyTokens: tokens,
+              injectionTokens: 0,
               maxTokens: 200000,
               systemPromptTokens: 10,
               toolSchemaTokens: 20,

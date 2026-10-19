@@ -83,6 +83,7 @@ export async function removeResetCustomModel(modelId: string) {
 export async function estimateResetChatContextUsage(): Promise<ContextUsageEstimate> {
   return {
     historyTokens: 0,
+    injectionTokens: 0,
     maxTokens: 0,
     systemPromptTokens: 0,
     toolSchemaTokens: 0,

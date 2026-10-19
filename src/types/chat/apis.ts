@@ -124,9 +124,11 @@ export interface TideCodeHistoryApi {
   ensureDraftAgentContext: () => Promise<string>
   cleanupDraftAgentContext: () => Promise<void>
   cleanupChatAttachmentScope: (scopeId: string) => Promise<void>
+  cleanupUnreferencedChatAttachments: (conversationId: string, paths: string[]) => Promise<void>
   pickAndStoreChatAttachmentFolder: (conversationId?: string | null) => Promise<StoredChatAttachment | null>
   listChatAttachments: (conversationId: string) => Promise<StoredChatAttachment[]>
   readChatAttachmentImagePreview: (conversationId: string, aliasPath: string) => Promise<string | null>
+  readChatImageSource: (sourcePath: string) => Promise<{ dataUrl: string; fileName: string; mimeType: string } | null>
   storeChatAttachment: (input: StoreChatAttachmentInput) => Promise<StoredChatAttachment>
   storeChatImageAttachment: (input: StoreChatImageAttachmentInput) => Promise<StoredChatAttachment>
   listConversations: () => Promise<ConversationSummary[]>

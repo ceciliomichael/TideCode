@@ -1,5 +1,6 @@
 import type { ModelMessage } from 'ai'
 import type { Message } from '../types/chat'
+import { extractHiddenUserContexts } from './hiddenUserContext'
 
 export function approximateTokenCount(value: string) {
   const trimmedValue = value.trim()
@@ -114,8 +115,45 @@ export function estimateMessageContextUsage(messages: readonly Message[]) {
   }
 }
 
+function getModelTextParts(content: unknown) {
+  if (typeof content === 'string') {
+    return [content]
+  }
+
+  if (!Array.isArray(content)) {
+    return []
+  }
+
+  return content.flatMap((part) => {
+    if (
+      typeof part !== 'object'
+      || part === null
+      || !('type' in part)
+      || part.type !== 'text'
+      || !('text' in part)
+      || typeof part.text !== 'string'
+    ) {
+      return []
+    }
+
+    return [part.text]
+  })
+}
+
+function estimateInjectedContextTokens(content: unknown) {
+  const hiddenContexts = getModelTextParts(content)
+    .flatMap((text) => extractHiddenUserContexts(text))
+
+  if (hiddenContexts.length === 0) {
+    return 0
+  }
+
+  return estimateModelContentTokens(hiddenContexts.map((context) => context.content).join('\n\n'))
+}
+
 export function estimateModelMessageContextUsage(messages: readonly ModelMessage[]) {
   let historyTokens = 0
+  let injectionTokens = 0
   let toolResultsTokens = 0
 
   for (const message of messages) {
@@ -125,20 +163,27 @@ export function estimateModelMessageContextUsage(messages: readonly ModelMessage
       continue
     }
 
+    let messageHistoryTokens = messageTokens
+    let messageToolResultsTokens = 0
     if (message.role === 'user' && typeof message.content === 'string') {
       const migratedUsage = estimateMigratedToolResultUsage(message.content, messageTokens)
-      historyTokens += migratedUsage.historyTokens
-      toolResultsTokens += migratedUsage.toolResultsTokens
-      continue
+      messageHistoryTokens = migratedUsage.historyTokens
+      messageToolResultsTokens = migratedUsage.toolResultsTokens
     }
 
-    historyTokens += messageTokens
+    const messageInjectionTokens = message.role === 'user'
+      ? Math.min(messageHistoryTokens, estimateInjectedContextTokens(message.content))
+      : 0
+    historyTokens += messageHistoryTokens - messageInjectionTokens
+    injectionTokens += messageInjectionTokens
+    toolResultsTokens += messageToolResultsTokens
   }
 
   return {
     historyTokens,
+    injectionTokens,
     toolResultsTokens,
-    totalTokens: historyTokens + toolResultsTokens,
+    totalTokens: historyTokens + injectionTokens + toolResultsTokens,
   }
 }
 

@@ -70,6 +70,10 @@ Tools are created from the current workspace root and execution mode. Workspace 
 
 The prompt includes current execution-mode context. When execution mode changes, the runtime ensures the model-facing message projection reflects the current mode rather than continuing with stale mode instructions.
 
+## Context usage estimates
+
+`ContextUsageEstimate` separates system prompt, tool schema, chat history, injected context, and tool-result token counts. The idle context estimate and live compaction budget share model-message accounting, and the chat context indicator presents injected tokens in a distinct **Injection** row. User-message `<hidden_user_context ...>` XML blocks are extracted from model-facing content and counted separately from the surrounding chat text.
+
 ## Change guidance
 
 When modifying chat behavior:
@@ -82,4 +86,4 @@ When modifying chat behavior:
 - Make abort handling idempotent and ensure active sessions/streams are cleaned up.
 - Verify both visible conversation persistence and canonical replay behavior.
 
-Verified against the shared runtime, provider runtimes, event store, and IPC routing on August 11, 2026.
+Runtime, history, and IPC details were verified on August 11, 2026. Context usage and injected-context accounting were verified against the implementation and tests on October 19, 2026.
