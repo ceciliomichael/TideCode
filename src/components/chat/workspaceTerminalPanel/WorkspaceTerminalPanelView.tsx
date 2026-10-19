@@ -157,16 +157,6 @@ export function WorkspaceTerminalPanelView({
               </button>
             </Tooltip>
           ) : null}
-          <Tooltip content="Close terminal panel" side="bottom" noWrap>
-            <button
-              type="button"
-              onClick={panelState.onClose}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:rounded-xl hover:bg-surface-muted hover:text-foreground"
-              aria-label="Close terminal panel"
-            >
-              <X size={14} />
-            </button>
-          </Tooltip>
         </div>
       </div>
       <div className="relative flex-1 min-h-0 overflow-hidden bg-[var(--workspace-panel-surface)] px-4 py-3">

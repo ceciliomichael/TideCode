@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
+import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
 import type { McpAddServerInput, McpState } from '../types/mcp'
 
 export interface UseMcpServersStateResult {
@@ -95,7 +96,14 @@ export function useMcpServersState(workspacePath?: string | null): UseMcpServers
     }
 
     return api.onStateChange((payload) => {
-      if (payload.workspacePath !== workspacePathRef.current) {
+      const eventWorkspacePath = payload.workspacePath
+        ? normalizeWorkspaceRootPathForComparison(payload.workspacePath)
+        : null
+      const activeWorkspacePath = workspacePathRef.current
+        ? normalizeWorkspaceRootPathForComparison(workspacePathRef.current)
+        : null
+
+      if (eventWorkspacePath !== activeWorkspacePath) {
         return
       }
 

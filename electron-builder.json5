@@ -30,7 +30,8 @@
       "from": "dist-cli-runtime",
       "to": "cli",
       "filter": [
-        "**/*"
+        "**/*",
+        "!node_modules{,/**/*}"
       ]
     },
     {

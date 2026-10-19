@@ -9,6 +9,34 @@ interface CreateWorkspaceMonacoDiffOptionsParams {
 
 const DEFAULT_EMBEDDED_DIFF_MAX_HEIGHT_PX = 320
 const MINIMUM_DIFF_HEIGHT_PX = 20
+const ESTIMATED_LINE_HEIGHT_PX = 20
+
+export function estimateWorkspaceMonacoDiffHeight(
+  oldContent: string | null | undefined,
+  newContent: string,
+  contextLines: number,
+  maxHeight: number | null,
+  viewOnly = false,
+) {
+  const modified = newContent.split(/\r?\n/u)
+  if (viewOnly || oldContent == null) {
+    return clampWorkspaceMonacoDiffHeight(modified.length * ESTIMATED_LINE_HEIGHT_PX, maxHeight)
+  }
+
+  const original = oldContent.split(/\r?\n/u)
+  let prefix = 0
+  while (prefix < Math.min(original.length, modified.length) && original[prefix] === modified[prefix]) prefix++
+  let suffix = 0
+  while (suffix < Math.min(original.length, modified.length) - prefix
+    && original[original.length - suffix - 1] === modified[modified.length - suffix - 1]) suffix++
+
+  const surrounding = Math.max(0, Math.trunc(contextLines))
+  const visibleLines = prefix === original.length && prefix === modified.length
+    ? Math.min(modified.length, surrounding * 2 + 1)
+    : Math.max(original.length, modified.length) - prefix - suffix
+      + Math.min(prefix, surrounding) + Math.min(suffix, surrounding)
+  return clampWorkspaceMonacoDiffHeight(Math.max(1, visibleLines) * ESTIMATED_LINE_HEIGHT_PX, maxHeight)
+}
 
 export function resolveWorkspaceMonacoDiffMaxHeight(maxBodyHeightClassName?: string) {
   if (!maxBodyHeightClassName) {

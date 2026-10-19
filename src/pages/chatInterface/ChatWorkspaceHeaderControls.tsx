@@ -107,7 +107,7 @@ export function ChatWorkspaceHeaderControls({
             active={isBrowserOpen}
             ariaPressed={isBrowserOpen}
             disabled={false}
-            label={isBrowserOpen ? 'Return to chat' : 'Open browser'}
+            label={isBrowserOpen ? 'Hide browser panel' : 'Open browser panel'}
             onClick={onToggleWorkspaceBrowser}
             text="Browser"
           >

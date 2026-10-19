@@ -8,3 +8,12 @@ export function getMaxSidebarWidth(viewportWidth: number) {
 export function clampSidebarWidth(sidebarWidth: number, viewportWidth: number) {
   return Math.min(Math.max(sidebarWidth, MIN_SIDEBAR_WIDTH), getMaxSidebarWidth(viewportWidth))
 }
+
+export function getMaxSidebarWidthForContent(
+  sidebarWidth: number,
+  flexibleContentWidth: number,
+  minimumContentWidth: number,
+) {
+  const availableGrowth = Math.max(0, Math.floor(flexibleContentWidth - minimumContentWidth - 8))
+  return sidebarWidth + availableGrowth
+}

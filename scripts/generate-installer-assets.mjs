@@ -2,11 +2,27 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
+import { generatedAssetsCache } from './generated-assets-cache.mjs'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const rootDirectory = path.resolve(scriptDirectory, '..')
 const outputDirectory = path.join(rootDirectory, 'build')
 const bitmapScale = 2
+const cache = await generatedAssetsCache({
+  inputs: [
+    fileURLToPath(import.meta.url),
+    fileURLToPath(new URL('./generated-assets-cache.mjs', import.meta.url)),
+    path.join(rootDirectory, 'package-lock.json'),
+  ],
+  outputs: ['installerHeader.bmp', 'installerSidebar.bmp', 'uninstallerSidebar.bmp']
+    .map((fileName) => path.join(outputDirectory, fileName)),
+  cacheFile: path.join(outputDirectory, '.installer-assets-fingerprint'),
+  context: process.platform,
+})
+if (cache.fresh) {
+  console.log('Installer artwork is up to date.')
+  process.exit(0)
+}
 
 const colors = {
   aqua: '#2dd4bf',
@@ -94,4 +110,5 @@ await writeRgbBitmap('installerHeader.bmp', createInstallerHeaderSvg())
 await writeRgbBitmap('installerSidebar.bmp', createInstallerSidebarSvg())
 await writeRgbBitmap('uninstallerSidebar.bmp', createInstallerSidebarSvg())
 
+await cache.commit()
 console.log('Generated TideCode installer artwork in build/.')

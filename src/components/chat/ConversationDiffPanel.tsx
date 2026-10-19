@@ -4,6 +4,7 @@ import { Check, ChevronDown, Maximize, Minimize } from 'lucide-react'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
 import { projectGitFileDiffScope, type ConversationFileDiff } from '../../lib/chatDiffs'
 import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from '../../lib/diffPanelSizing'
+import { clampWorkspacePanelWidth } from '../../lib/workspacePanelSizing'
 import { Tooltip } from '../Tooltip'
 import { VirtualizedConversationDiffFileList } from './VirtualizedConversationDiffFileList'
 
@@ -101,7 +102,7 @@ function ConversationDiffPanelContent({
   const expandedFilePathSet = useMemo(() => new Set(expandedFilePaths), [expandedFilePaths])
 
   const panelIconButtonClassName =
-    'inline-flex h-6 w-6 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent'
+    'inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:rounded-xl hover:bg-surface-muted hover:text-foreground'
 
   const scopeOptions = useMemo(
     () =>
@@ -206,7 +207,7 @@ function ConversationDiffPanelContent({
         return
       }
 
-      const clampedWidth = Math.min(getMaxDiffPanelWidth(parentWidth), Math.max(getMinDiffPanelWidth(parentWidth), renderedWidth))
+      const clampedWidth = clampWorkspacePanelWidth(panelRef.current!, renderedWidth, getMinDiffPanelWidth(parentWidth), getMaxDiffPanelWidth(parentWidth))
       if (clampedWidth !== renderedWidth) {
         setRenderedWidth(clampedWidth)
         onWidthChangeRef.current(clampedWidth)
@@ -214,22 +215,33 @@ function ConversationDiffPanelContent({
     }
 
     clampPanelWidth()
+    const observer = new ResizeObserver(clampPanelWidth)
+    observer.observe(panelRef.current!.parentElement!)
+    const chat = panelRef.current!.parentElement!.querySelector('[data-chat-panel]')
+    if (chat) {
+      observer.observe(chat)
+    }
     window.addEventListener('resize', clampPanelWidth)
-    return () => window.removeEventListener('resize', clampPanelWidth)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', clampPanelWidth)
+    }
   }, [isOpen, renderedWidth])
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
       const dragState = dragStateRef.current
       const parentWidth = panelRef.current?.parentElement?.clientWidth
-      if (!dragState || !parentWidth) {
+      if (!dragState || dragState.pointerId !== event.pointerId || !parentWidth) {
         return
       }
 
       const nextWidth = dragState.startWidth - (event.clientX - dragState.startX)
-      const clampedWidth = Math.min(
+      const clampedWidth = clampWorkspacePanelWidth(
+        panelRef.current!,
+        nextWidth,
+        getMinDiffPanelWidth(parentWidth),
         getMaxDiffPanelWidth(parentWidth),
-        Math.max(getMinDiffPanelWidth(parentWidth), Math.round(nextWidth)),
       )
       widthRef.current = clampedWidth
       if (resizeAnimationFrameRef.current !== null) {
@@ -265,10 +277,12 @@ function ConversationDiffPanelContent({
 
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
       if (resizeAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(resizeAnimationFrameRef.current)
         resizeAnimationFrameRef.current = null
@@ -459,7 +473,7 @@ function ConversationDiffPanelContent({
               : null}
           </div>
 
-          <Tooltip content={isFullscreen ? 'Exit fullscreen diff panel' : 'Fullscreen diff panel'} side="left" noWrap>
+          <Tooltip content={isFullscreen ? 'Exit fullscreen diff panel' : 'Fullscreen diff panel'} side="bottom" noWrap>
             <button
               type="button"
               aria-label={isFullscreen ? 'Exit fullscreen diff panel' : 'Fullscreen diff panel'}

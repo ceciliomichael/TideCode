@@ -27,6 +27,7 @@ interface AppWorkspaceShellProps {
   onSidebarResizeStateChange?: (isResizing: boolean) => void
   sidebar: ReactNode
   sidebarWidth: number
+  getMaxSidebarResizeWidth?: (sidebarWidth: number) => number
   floatingControls?: ReactNode
   children: ReactNode
 }
@@ -41,6 +42,7 @@ export function AppWorkspaceShell({
   onSidebarResizeStateChange,
   sidebar,
   sidebarWidth,
+  getMaxSidebarResizeWidth,
   floatingControls,
   children,
 }: AppWorkspaceShellProps) {
@@ -134,6 +136,7 @@ export function AppWorkspaceShell({
         onSidebarResizeStateChange={onSidebarResizeStateChange}
         sidebar={sidebar}
         sidebarWidth={sidebarWidth}
+        getMaxResizeWidth={getMaxSidebarResizeWidth}
       >
         {children}
       </ResizableSidebarPanel>

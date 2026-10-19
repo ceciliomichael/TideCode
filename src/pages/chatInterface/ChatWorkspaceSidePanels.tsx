@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { BrowserWorkspacePanel } from '../../components/browser/BrowserWorkspacePanel'
 import { ConversationDiffPanel, type DiffPanelScope } from '../../components/chat/ConversationDiffPanel'
 import { SourceControlPanel } from '../../components/sourceControl/SourceControlPanel'
 import { WorkspaceExplorerPanel } from '../../components/workspaceExplorer/WorkspaceExplorerPanel'
@@ -12,6 +13,8 @@ import type { PlanReviewComment } from '../../lib/planContracts'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 
 interface ChatWorkspaceSidePanelsProps {
+  isBrowserOpen: boolean
+  onCloseBrowser: () => void
   diffPanelExpandedFilePaths: readonly string[]
   gitCommitModelSelection: GitCommitModelSelection
   diffPanelSelectedScope: DiffPanelScope
@@ -27,6 +30,8 @@ interface ChatWorkspaceSidePanelsProps {
 }
 
 export function ChatWorkspaceSidePanels({
+  isBrowserOpen,
+  onCloseBrowser,
   diffPanelExpandedFilePaths,
   gitCommitModelSelection,
   diffPanelSelectedScope,
@@ -80,7 +85,7 @@ export function ChatWorkspaceSidePanels({
         activeFilePath={workspaceState.activeWorkspaceFilePath}
         clipboardEntry={workspaceState.workspaceClipboard}
         gitFileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
-        isOpen={workspaceState.isExplorerOpen}
+        isOpen={!isBrowserOpen && workspaceState.isExplorerOpen}
         onCopyEntry={workspaceState.handleCopyWorkspaceEntry}
         onCreateEntry={workspaceState.handleCreateWorkspaceEntry}
         onCutEntry={workspaceState.handleCutWorkspaceEntry}
@@ -95,7 +100,15 @@ export function ChatWorkspaceSidePanels({
         width={workspaceState.workspaceExplorerWidth}
         workspaceRootPath={workspaceState.activeWorkspacePath}
       />
-      {interfaceController.isDiffPanelOpen ? (
+      <BrowserWorkspacePanel
+        active={isBrowserOpen}
+        onClose={onCloseBrowser}
+        projectKey={workspaceState.activeWorkspacePath ?? '__no-workspace__'}
+        width={workspaceState.conversationDiffPanelWidth}
+        onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
+        onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
+      />
+      {!isBrowserOpen && interfaceController.isDiffPanelOpen ? (
         <ConversationDiffPanel
           currentBranch={gitBranchState.branchState.currentBranch}
           expandedFilePaths={diffPanelExpandedFilePaths}
@@ -115,7 +128,7 @@ export function ChatWorkspaceSidePanels({
           selectedScope={diffPanelSelectedScope}
         />
       ) : null}
-      {interfaceController.isSourceControlPanelOpen ? (
+      {!isBrowserOpen && interfaceController.isSourceControlPanelOpen ? (
         <SourceControlPanel
           key={workspaceState.activeWorkspacePath?.trim() ?? 'no-workspace'}
           aheadCommitCount={gitBranchState.branchState.aheadCommitCount}

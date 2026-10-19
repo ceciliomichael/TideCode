@@ -381,7 +381,16 @@ export function useChatWorkspaceUiState({
   const isWorkspaceTabsPanelOpen =
     isWorkspaceTabsPanelVisible && workspaceFileTabs.length > 0;
 
+  const handleCloseSidePanels = useCallback(() => {
+    setIsExplorerOpen(false);
+    onRightPanelOpenChange(false);
+    if (isSidebarOpen) {
+      setIsWorkspaceTabsPanelVisible(false);
+    }
+  }, [isSidebarOpen, onRightPanelOpenChange]);
+
   return {
+    handleCloseSidePanels,
     activeWorkspaceFilePath,
     activeTerminalWorkspaceKey,
     activeWorkspaceTabKey,

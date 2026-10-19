@@ -1,5 +1,13 @@
 # Architecture
 
+## Distribution builds
+
+Renderer-only libraries and build tools are development dependencies: Vite bundles their runtime code and assets into `dist`, so electron-builder does not ship their original package trees. Packages imported externally by the Electron CLI/run service remain production dependencies, including `@xterm/xterm` for terminal screen modeling. Installer compression and native rebuilds retain their existing settings.
+
+`scripts/build-cli.mjs` creates the standalone CLI with its own Node executable and a filtered `node-pty` runtime: executable JavaScript, host-platform prebuilds, compiled Release binaries, and native helper executables/libraries. Source, tests, source maps, debug symbols and other-platform prebuilds are excluded. Nonoverlapping extra-resource mappings copy CLI code and its native runtime separately: electron-builder excludes nested `node_modules` from broad resource copies, so the explicit `node-pty` mapping is required.
+
+Icon and installer-artwork generation share `scripts/generated-assets-cache.mjs`. Fingerprints cover source assets, generator/helper code, the dependency lockfile and platform; missing or empty outputs invalidate the cache. Fingerprints are written only after generation succeeds. Caches live under ignored `build/` output and survive normal code-build cleaning. Vite skips gzip-size reporting for renderer, main and preload builds.
+
 ## Structured file editing
 
 Discovery audit update (2026-10-19): `available.list` and `available.search` share native/MCP namespace identification and short-description normalization in `ai/tools/available/discoveryCatalog.ts`. Search ranks exact name-token hits over incidental description hits, caps pages at ten, and rejects invalid runtime arguments. `available.get` continues to require discovery before MCP access.
@@ -48,7 +56,7 @@ New tabs render the local `BrowserNewTabPage.tsx` with an empty address. No webv
 
 `electron/browser/faviconCache.ts` tracks favicon URLs reported by native page WebContents. It downloads bounded images over HTTP/HTTPS with no credentials, limits and validates redirects, and deduplicates requests (including failures) in a bounded cache. The native preload favicon bridge accepts only a guest ID owned by the requesting application window, not an arbitrary URL. Results are associated with the current page and discarded after navigation or destruction. The history hook decodes these local data URLs into 32×32 PNGs; recent-site shortcuts render the persisted bytes without any network request.
 
-Closing the last tab calls the Browser panel's parent close action. `ChatConversationSurface.tsx` removes that project's initialized Browser session, unmounting its guests, and `ChatInterfaceContent.tsx` returns to chat. The renderer retains at most two recently active project Browser sessions so inactive guest WebContents cannot accumulate without bound; locally saved recent sites remain intact for every project. Reopening an evicted or explicitly closed Browser creates a fresh new tab.
+Closing the last tab calls the Browser panel's parent close action. `BrowserWorkspacePanel.tsx` removes that project's initialized Browser session, unmounting its guests, and `ChatInterfaceContent.tsx` closes the panel. The renderer retains at most two recently active project Browser sessions so inactive guest WebContents cannot accumulate without bound; locally saved recent sites remain intact for every project. Reopening an evicted or explicitly closed Browser creates a fresh new tab.
 
 The embedded Browser is desktop Electron-only. Remote web clients do not render the Browser control, do not expose a Browser RPC namespace, and do not create virtual BrowserWindows or screencast page frames on the host.
 
@@ -109,3 +117,9 @@ Diff file headers share `DiffFileHeader.tsx` across lightweight collapsed rows a
 The desktop/remote composer catalogs File, Folder, Attachments, Skills, and MCP. `chatMentions.ts` serializes selected references as `[[tools.read:path]]`, `[[tools.list:path]]`, `[[tools.skill.load:name]]`, or `[[tools.available.search:server-name]]`, retaining exact workspace/attachment aliases inside file and folder markers. The UI keeps compact labels and persisted mention maps. Attachment retention and image previews resolve the target inside the marker. Existing saved history is not rewritten. CLI file, folder, and skill completions emit the same tool prefixes.
 
 The mention hook reads enabled, connected MCP names from the existing MCP bridge and subscribes to state updates independently of workspace indexing, comparing event workspace paths with the shared path normalizer. Attachment suggestions merge current draft attachments immediately with independently loaded, conversation-scoped stored attachments; cancelled reads cannot populate a different chat. Neither source waits for the recursive workspace index. MCP mentions request server-specific discovery through `tools.available.search` with namespace `mcp`; contract retrieval and host permissions remain authoritative.
+
+## Workspace side panels
+
+Browser has one retained host in `ChatWorkspaceSidePanels.tsx`. It opens as a right sidebar and can expand across the workspace, like Diff. Opening Browser closes Explorer and the Git side panel; selecting another side panel hides Browser while retaining its live project sessions. Header actions and externally triggered panel changes both return Browser to its inactive state.
+
+`workspacePanelSizing.ts` budgets space for the chat minimum, the fixed chat width when an editor is open, the editor minimum, and other visible siblings. Browser, Diff, Source Control, and Explorer use this budget during resizing and observe workspace/chat size changes. Chat reserves its composer-safe width even without an editor; the left sidebar stops growing when chat and the editor reach their minimum widths. Drag release and cancellation commit the last rendered width.

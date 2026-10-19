@@ -14,6 +14,7 @@ interface ResizableSidebarPanelProps {
   onSidebarResizeStateChange?: (isResizing: boolean) => void
   sidebar: ReactNode
   sidebarWidth: number
+  getMaxResizeWidth?: (sidebarWidth: number) => number
   children: ReactNode
 }
 
@@ -27,6 +28,7 @@ export function ResizableSidebarPanel({
   onSidebarResizeStateChange,
   sidebar,
   sidebarWidth,
+  getMaxResizeWidth,
   children,
 }: ResizableSidebarPanelProps) {
   const isMobileViewport = useIsMobileViewport()
@@ -34,7 +36,7 @@ export function ResizableSidebarPanel({
     typeof window === 'undefined' ? sidebarWidth : clampSidebarWidth(sidebarWidth, window.innerWidth),
   )
   const [isResizing, setIsResizing] = useState(false)
-  const dragStateRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
+  const dragStateRef = useRef<{ pointerId: number; startX: number; startWidth: number; maxWidth: number } | null>(null)
   const sidebarWidthRef = useRef(renderedSidebarWidth)
 
   function updateRenderedSidebarWidth(nextWidth: number) {
@@ -61,7 +63,7 @@ export function ResizableSidebarPanel({
       if (!dragState) return
 
       const nextWidth = dragState.startWidth + (event.clientX - dragState.startX)
-      const clampedWidth = clampSidebarWidth(nextWidth, window.innerWidth)
+      const clampedWidth = Math.min(clampSidebarWidth(nextWidth, window.innerWidth), dragState.maxWidth)
       updateRenderedSidebarWidth(clampedWidth)
       onSidebarWidthPreview?.(clampedWidth)
     }
@@ -69,7 +71,7 @@ export function ResizableSidebarPanel({
     function handlePointerUp(event: PointerEvent) {
       if (dragStateRef.current?.pointerId !== event.pointerId) return
 
-      const finalWidth = clampSidebarWidth(sidebarWidthRef.current, window.innerWidth)
+      const finalWidth = sidebarWidthRef.current
       dragStateRef.current = null
       setIsResizing(false)
       onSidebarResizeStateChange?.(false)
@@ -83,10 +85,12 @@ export function ResizableSidebarPanel({
 
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
       setIsResizing(false)
       onSidebarResizeStateChange?.(false)
       document.body.style.cursor = ''
@@ -115,10 +119,16 @@ export function ResizableSidebarPanel({
   }, [isMobileViewport, isSidebarOpen, mobileSidebarPresentation, onMobileSidebarRequestClose])
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) {
+      return
+    }
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
     dragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startWidth: renderedSidebarWidth,
+      maxWidth: Math.max(renderedSidebarWidth, getMaxResizeWidth?.(renderedSidebarWidth) ?? Infinity),
     }
 
     setIsResizing(true)

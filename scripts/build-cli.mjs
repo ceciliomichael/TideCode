@@ -1,4 +1,4 @@
-import { access, chmod, copyFile, cp, mkdir, readdir, rm } from 'node:fs/promises'
+import { access, chmod, copyFile, cp, mkdir, readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
@@ -29,6 +29,30 @@ const promptsDestination = path.join(
 )
 const aiSource = path.join(workspaceRoot, 'electron', 'chat', 'shared', 'ai')
 const aiDestination = path.join(consoleRuntimeDirectory, 'electron', 'chat', 'shared', 'ai')
+
+async function isNodePtyRuntimeFile(source) {
+  const relativePath = path.relative(nodePtySource, source).split(path.sep).join('/')
+  if (relativePath === '' || relativePath === 'package.json' || relativePath === 'LICENSE') {
+    return true
+  }
+
+  if (relativePath === 'lib' || relativePath.startsWith('lib/')) {
+    const sourceStats = await stat(source)
+    return sourceStats.isDirectory() || (relativePath.endsWith('.js') && !relativePath.endsWith('.test.js'))
+  }
+
+  const nativeDirectories = ['build/Release', `prebuilds/${process.platform}-${process.arch}`]
+  for (const directory of nativeDirectories) {
+    if (directory.startsWith(`${relativePath}/`)) {
+      return true
+    }
+    if (relativePath === directory || relativePath.startsWith(`${directory}/`)) {
+      const sourceStats = await stat(source)
+      return sourceStats.isDirectory() || /\.(node|dll|exe)$/.test(relativePath) || path.basename(source) === 'spawn-helper'
+    }
+  }
+  return false
+}
 
 await rm(consoleRuntimeDirectory, { force: true, recursive: true })
 await Promise.all([
@@ -85,7 +109,7 @@ await Promise.all([
 
 await Promise.all([
   copyFile(process.execPath, consoleNodeExecutable),
-  cp(nodePtySource, nodePtyDestination, { recursive: true }),
+  cp(nodePtySource, nodePtyDestination, { recursive: true, filter: isNodePtyRuntimeFile }),
   cp(promptsSource, promptsDestination, { recursive: true }),
   cp(aiSource, aiDestination, { recursive: true, filter: (source) =>
     source === aiSource || !path.extname(source) || source.endsWith('.md') }),

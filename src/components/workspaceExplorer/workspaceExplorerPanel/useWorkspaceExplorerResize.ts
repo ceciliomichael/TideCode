@@ -6,7 +6,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { clampWorkspaceExplorerWidth } from '../../../lib/workspaceExplorerSizing'
+import { getMinWorkspaceExplorerWidth, getMaxWorkspaceExplorerWidth } from '../../../lib/workspaceExplorerSizing'
+import { clampWorkspacePanelWidth } from '../../../lib/workspacePanelSizing'
 
 interface UseWorkspaceExplorerResizeOptions {
   isOpen: boolean
@@ -27,11 +28,22 @@ export function useWorkspaceExplorerResize({
   onWidthCommit,
   width,
 }: UseWorkspaceExplorerResizeOptions) {
+  const panelRef = useRef<HTMLElement | null>(null)
+  const widthRef = useRef(width)
   const [renderedWidth, setRenderedWidth] = useState(width)
   const [isResizing, setIsResizing] = useState(false)
   const dragStateRef = useRef<WorkspaceExplorerResizeDragState | null>(null)
   const onWidthChangeRef = useRef(onWidthChange)
   const onWidthCommitRef = useRef(onWidthCommit)
+
+  function clampWidth(nextWidth: number) {
+    const panel = panelRef.current
+    if (!panel) {
+      return nextWidth
+    }
+    const parentWidth = panel.parentElement?.clientWidth ?? window.innerWidth
+    return clampWorkspacePanelWidth(panel, nextWidth, getMinWorkspaceExplorerWidth(parentWidth), getMaxWorkspaceExplorerWidth(parentWidth))
+  }
 
   useEffect(() => {
     onWidthChangeRef.current = onWidthChange
@@ -43,6 +55,7 @@ export function useWorkspaceExplorerResize({
       return
     }
     setRenderedWidth(width)
+    widthRef.current = width
   }, [isResizing, width])
 
   useLayoutEffect(() => {
@@ -51,7 +64,7 @@ export function useWorkspaceExplorerResize({
     }
 
     function handleWindowResize() {
-      const clampedWidth = clampWorkspaceExplorerWidth(renderedWidth, window.innerWidth)
+      const clampedWidth = clampWidth(renderedWidth)
       if (clampedWidth !== renderedWidth) {
         setRenderedWidth(clampedWidth)
         onWidthChange(clampedWidth)
@@ -59,8 +72,17 @@ export function useWorkspaceExplorerResize({
     }
 
     handleWindowResize()
+    const observer = new ResizeObserver(handleWindowResize)
+    if (panelRef.current?.parentElement) {
+      observer.observe(panelRef.current.parentElement)
+      const chat = panelRef.current.parentElement.querySelector('[data-chat-panel]')
+      if (chat) {
+        observer.observe(chat)
+      }
+    }
     window.addEventListener('resize', handleWindowResize)
     return () => {
+      observer.disconnect()
       window.removeEventListener('resize', handleWindowResize)
     }
   }, [isOpen, isResizing, onWidthChange, renderedWidth])
@@ -68,14 +90,12 @@ export function useWorkspaceExplorerResize({
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
       const dragState = dragStateRef.current
-      if (!dragState) {
+      if (!dragState || dragState.pointerId !== event.pointerId) {
         return
       }
 
-      const nextWidth = clampWorkspaceExplorerWidth(
-        dragState.startWidth - (event.clientX - dragState.startX),
-        window.innerWidth,
-      )
+      const nextWidth = clampWidth(dragState.startWidth - (event.clientX - dragState.startX))
+      widthRef.current = nextWidth
       setRenderedWidth(nextWidth)
     }
 
@@ -94,10 +114,7 @@ export function useWorkspaceExplorerResize({
         return
       }
 
-      const committedWidth = clampWorkspaceExplorerWidth(
-        dragState.startWidth - (event.clientX - dragState.startX),
-        window.innerWidth,
-      )
+      const committedWidth = widthRef.current
       setRenderedWidth(committedWidth)
       onWidthChangeRef.current(committedWidth)
       onWidthCommitRef.current(committedWidth)
@@ -105,9 +122,11 @@ export function useWorkspaceExplorerResize({
 
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
     return () => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
       dragStateRef.current = null
       setIsResizing(false)
       document.body.style.cursor = ''
@@ -121,6 +140,7 @@ export function useWorkspaceExplorerResize({
         return
       }
 
+      widthRef.current = renderedWidth
       dragStateRef.current = {
         pointerId: event.pointerId,
         startWidth: renderedWidth,
@@ -137,6 +157,7 @@ export function useWorkspaceExplorerResize({
   )
 
   return {
+    panelRef,
     handleResizePointerDown,
     isResizing,
     renderedWidth,

@@ -6,6 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from '../../lib/diffPanelSizing'
+import { clampWorkspacePanelWidth } from '../../lib/workspacePanelSizing'
 import {
   clampSourceControlHistoryHeight,
   getDefaultSourceControlHistoryHeight,
@@ -79,7 +80,7 @@ export function useSourceControlPanelSizing({
           return
         }
   
-        const clampedWidth = Math.min(getMaxDiffPanelWidth(parentWidth), Math.max(getMinDiffPanelWidth(parentWidth), renderedWidth))
+        const clampedWidth = clampWorkspacePanelWidth(panelRef.current!, renderedWidth, getMinDiffPanelWidth(parentWidth), getMaxDiffPanelWidth(parentWidth))
         if (clampedWidth !== renderedWidth) {
           setRenderedWidth(clampedWidth)
           onWidthChangeRef.current(clampedWidth)
@@ -87,22 +88,33 @@ export function useSourceControlPanelSizing({
       }
   
       clampPanelWidth()
+      const observer = new ResizeObserver(clampPanelWidth)
+      observer.observe(panelRef.current!.parentElement!)
+      const chat = panelRef.current!.parentElement!.querySelector('[data-chat-panel]')
+      if (chat) {
+        observer.observe(chat)
+      }
       window.addEventListener('resize', clampPanelWidth)
-      return () => window.removeEventListener('resize', clampPanelWidth)
+      return () => {
+        observer.disconnect()
+        window.removeEventListener('resize', clampPanelWidth)
+      }
     }, [isOpen, renderedWidth])
   
     useEffect(() => {
       function handlePointerMove(event: PointerEvent) {
         const dragState = dragStateRef.current
         const parentWidth = panelRef.current?.parentElement?.clientWidth
-        if (!dragState || !parentWidth) {
+        if (!dragState || dragState.pointerId !== event.pointerId || !parentWidth) {
           return
         }
   
         const nextWidth = dragState.startWidth - (event.clientX - dragState.startX)
-        const clampedWidth = Math.min(
+        const clampedWidth = clampWorkspacePanelWidth(
+          panelRef.current!,
+          nextWidth,
+          getMinDiffPanelWidth(parentWidth),
           getMaxDiffPanelWidth(parentWidth),
-          Math.max(getMinDiffPanelWidth(parentWidth), Math.round(nextWidth)),
         )
         widthRef.current = clampedWidth
         if (resizeAnimationFrameRef.current !== null) {
@@ -138,10 +150,12 @@ export function useSourceControlPanelSizing({
   
       window.addEventListener('pointermove', handlePointerMove)
       window.addEventListener('pointerup', handlePointerUp)
+      window.addEventListener('pointercancel', handlePointerUp)
   
       return () => {
         window.removeEventListener('pointermove', handlePointerMove)
         window.removeEventListener('pointerup', handlePointerUp)
+        window.removeEventListener('pointercancel', handlePointerUp)
         if (resizeAnimationFrameRef.current !== null) {
           window.cancelAnimationFrame(resizeAnimationFrameRef.current)
           resizeAnimationFrameRef.current = null

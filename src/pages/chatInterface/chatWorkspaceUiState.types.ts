@@ -46,6 +46,7 @@ export interface ChatWorkspaceUiState {
   activeWorkspaceTabKey: string | null;
   activeWorkspacePath: string | null;
   conversationDiffPanelWidth: number;
+  handleCloseSidePanels: () => void;
   handleCloseWorkspaceTab: (relativePath: string) => void;
   handleCloseWorkspaceTabsByPath: (relativePath: string) => void;
   handleConversationDiffPanelWidthChange: (nextWidth: number) => void;

@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense, useState, type ReactNode } from 'react'
 import { DiffFileHeader } from './DiffFileHeader'
 import { WorkspaceMonacoDiffLoadingView } from './diffViewer/WorkspaceMonacoDiffLoadingView'
-import { clampWorkspaceMonacoDiffHeight, resolveWorkspaceMonacoDiffMaxHeight } from './diffViewer/workspaceMonacoDiffConfig'
+import { estimateWorkspaceMonacoDiffHeight, resolveWorkspaceMonacoDiffMaxHeight } from './diffViewer/workspaceMonacoDiffConfig'
 import { preloadWorkspaceMonacoDiffView } from '../../lib/workspaceMonacoPreload'
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -40,7 +40,6 @@ interface DiffViewerProps {
 }
 
 const DEFAULT_DIFF_CONTEXT_LINES = 5
-const INITIAL_DIFF_HEIGHT_PX = 160
 
 function areDiffViewerPropsEqual(left: DiffViewerProps, right: DiffViewerProps) {
   return (
@@ -102,9 +101,12 @@ function DiffViewerComponent({
   const shouldRenderDiffContent = !collapsible || isExpanded || prewarm
   const isPrewarmOnly = prewarm && collapsible && !isExpanded
   const isStackedLayout = layout === 'stacked'
-  const initialBodyHeight = clampWorkspaceMonacoDiffHeight(
-    INITIAL_DIFF_HEIGHT_PX,
+  const initialBodyHeight = estimateWorkspaceMonacoDiffHeight(
+    oldContent,
+    newContent,
+    contextLines,
     resolveWorkspaceMonacoDiffMaxHeight(maxBodyHeightClassName),
+    viewOnly,
   )
   const header = (
     <DiffFileHeader

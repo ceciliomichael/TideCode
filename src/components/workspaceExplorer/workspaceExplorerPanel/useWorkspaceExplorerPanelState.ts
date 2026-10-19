@@ -94,6 +94,7 @@ export function useWorkspaceExplorerPanelState({
     treeContainerRef,
   })
   const {
+    panelRef,
     handleResizePointerDown,
     isResizing,
     renderedWidth,
@@ -523,6 +524,7 @@ export function useWorkspaceExplorerPanelState({
     handleExplorerDragLeave,
     handleExplorerDragOver,
     handleExplorerScrollbarDragOver,
+    panelRef,
     handleResizePointerDown,
     isDraggingExplorerEntry,
     isExplorerFocused,

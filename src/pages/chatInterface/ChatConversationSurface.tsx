@@ -4,7 +4,6 @@ import { EmptyState } from '../../components/EmptyState'
 import { MessageList } from '../../components/MessageList'
 import { ChatQueueBlock } from '../../components/chat/ChatQueueBlock'
 import type { ChatModeOption } from '../../components/chat/ChatModeSelectorField'
-import { BrowserPanel } from '../../components/browser/BrowserPanel'
 import type { ChatMessagesController } from '../../hooks/useChatMessages'
 import type { ChatRuntimeConfigState } from '../../hooks/useChatRuntimeConfig'
 import type { GitBranchStateController } from '../../hooks/useGitBranchState'
@@ -47,8 +46,6 @@ interface ChatConversationSurfaceProps {
   handleToolDecisionSubmit: MessageListProps['onToolDecisionSubmit']
   isCompressingChat: boolean
   liveCompaction: ChatCompactionLifecycleState | null
-  isBrowserOpen: boolean
-  onCloseBrowser: () => void
   isTerminalSurfaceOpen: boolean
   messageListBoundaryRef: RefObject<HTMLDivElement | null>
   onQueueMessage: (
@@ -81,8 +78,6 @@ interface ChatConversationSurfaceProps {
   workspaceState: ChatWorkspaceUiState
 }
 
-const MAX_RETAINED_BROWSER_PROJECT_SESSIONS = 2
-
 export function ChatConversationSurface({
   activeWorkspacePath,
   chatMessages,
@@ -105,8 +100,6 @@ export function ChatConversationSurface({
   handleToolDecisionSubmit,
   isCompressingChat,
   liveCompaction,
-  isBrowserOpen,
-  onCloseBrowser,
   isTerminalSurfaceOpen,
   messageListBoundaryRef,
   onQueueMessage,
@@ -126,22 +119,6 @@ export function ChatConversationSurface({
   workspaceState,
 }: ChatConversationSurfaceProps) {
   const [followLatestSignal, setFollowLatestSignal] = useState(0)
-  const browserProjectKey = activeWorkspacePath ?? '__no-workspace__'
-  const [initializedBrowserProjectKeys, setInitializedBrowserProjectKeys] = useState<string[]>([])
-
-  useEffect(() => {
-    if (!isBrowserOpen) return
-
-    setInitializedBrowserProjectKeys((currentKeys) => {
-      if (currentKeys.at(-1) === browserProjectKey) return currentKeys
-      const nextKeys = [...currentKeys.filter((key) => key !== browserProjectKey), browserProjectKey]
-      return nextKeys.slice(-MAX_RETAINED_BROWSER_PROJECT_SESSIONS)
-    })
-  }, [browserProjectKey, isBrowserOpen])
-  const handleCloseBrowser = useCallback((projectKey: string) => {
-    setInitializedBrowserProjectKeys((currentKeys) => currentKeys.filter((key) => key !== projectKey))
-    onCloseBrowser()
-  }, [onCloseBrowser])
   const requestFollowLatest = useCallback(() => {
     setFollowLatestSignal((currentSignal) => currentSignal + 1)
   }, [])
@@ -206,97 +183,80 @@ export function ChatConversationSurface({
   return (
     <div
       className="flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-hidden"
-            style={{ display: isTerminalSurfaceOpen ? 'none' : 'flex' }}
+      style={{ display: isTerminalSurfaceOpen ? 'none' : 'flex' }}
     >
-      <div className="flex min-h-0 w-full flex-1 flex-col">
-        {initializedBrowserProjectKeys.map((projectKey) => (
-          <div
-            key={projectKey}
-            className={isBrowserOpen && projectKey === browserProjectKey ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}
-          >
-            <BrowserPanel
-              active={isBrowserOpen && projectKey === browserProjectKey}
-              onClose={() => handleCloseBrowser(projectKey)}
-              projectKey={projectKey}
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+        {chatMessages.error ? (
+          <div className="chat-input-shell mx-auto rounded-2xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
+            {chatMessages.error}
+          </div>
+        ) : null}
+        {chatMessages.isLoading && !chatMessages.isOpeningEmptyConversation ? (
+          <div className="flex flex-1 items-center justify-center px-4 text-sm text-subtle-foreground">
+            Loading conversations...
+          </div>
+        ) : chatMessages.messages.length === 0 && !chatMessages.isSending ? (
+          <EmptyState folderName={emptyStateFolderName} />
+        ) : (
+          <div ref={messageListBoundaryRef} className="flex min-h-0 flex-1 flex-col">
+            <MessageList
+              conversationId={chatMessages.activeConversationId}
+              compactionMarkers={compactionMarkers}
+              liveCompaction={liveCompaction}
+              messages={chatMessages.messages}
+              chatModeOptions={chatModeOptions}
+              editingMessageId={chatMessages.editingMessageId}
+              followLatestSignal={followLatestSignal}
+              editComposerDirty={chatMessages.isEditComposerDirty}
+              editComposerMentionPathMap={chatMessages.editComposerMentionPathMap}
+              onChatModeChange={chatMessages.setSelectedChatMode}
+              onToolDecisionSubmit={handleToolDecisionSubmit}
+              onBranchAssistantMessage={chatMessages.branchConversationFromAssistantMessage}
+              onEditUserMessage={handleEditUserMessage}
+              onRevertUserMessage={handleRevertUserMessage}
+              composerAttachments={chatMessages.editComposerAttachments}
+              composerValue={chatMessages.editComposerValue}
+              onComposerAttachmentsChange={chatMessages.setEditComposerAttachments}
+              onComposerValueChange={chatMessages.setEditComposerValue}
+              onSendEditedMessage={handleSendEditedMessageAndFollow}
+              onAbortStreamingResponse={chatMessages.abortStreamingResponse}
+              onCancelEditingMessage={handleCancelEditingMessage}
+              composerFocusSignal={chatMessages.editComposerFocusSignal}
+              isSending={chatMessages.isSending}
+              modelOptions={selectorOptions}
+              modelOptionsLoading={chatRuntimeConfig.isModelOptionsLoading}
+              onModelChange={chatRuntimeConfig.setSelectedModelId}
+              onReasoningEffortChange={chatRuntimeConfig.setReasoningEffort}
+              reasoningEffort={chatRuntimeConfig.reasoningEffort}
+              reasoningEffortOptions={chatRuntimeConfig.availableReasoningEfforts}
+              revertAnchorMessageId={chatMessages.revertAnchorMessageId}
+              selectedChatMode={chatMessages.selectedChatMode}
+              selectedModelId={chatRuntimeConfig.selectedModelId}
+              sendMessageOnEnter={sendMessageOnEnter}
+              showReasoningEffortSelector={chatRuntimeConfig.showReasoningEffortSelector}
+              streamingAssistantMessageId={chatMessages.streamingAssistantMessageId}
+              streamingWaitingIndicatorVariant={chatMessages.streamingWaitingIndicatorVariant}
+              streamingTextActive={chatMessages.isStreamingTextActive}
+              workspaceRootPath={activeWorkspacePath}
             />
           </div>
-        ))}
-        {!isBrowserOpen && (
-          <>
-            {chatMessages.error ? (
-              <div className="chat-input-shell mx-auto rounded-2xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-                {chatMessages.error}
-              </div>
-            ) : null}
-            {chatMessages.isLoading && !chatMessages.isOpeningEmptyConversation ? (
-              <div className="flex flex-1 items-center justify-center px-4 text-sm text-subtle-foreground">
-                Loading conversations...
-              </div>
-            ) : chatMessages.messages.length === 0 && !chatMessages.isSending ? (
-              <EmptyState folderName={emptyStateFolderName} />
-            ) : (
-              <div ref={messageListBoundaryRef} className="flex min-h-0 flex-1 flex-col">
-                <MessageList
-                  conversationId={chatMessages.activeConversationId}
-                  compactionMarkers={compactionMarkers}
-                  liveCompaction={liveCompaction}
-                  messages={chatMessages.messages}
-                  chatModeOptions={chatModeOptions}
-                  editingMessageId={chatMessages.editingMessageId}
-                  followLatestSignal={followLatestSignal}
-                  editComposerDirty={chatMessages.isEditComposerDirty}
-                  editComposerMentionPathMap={chatMessages.editComposerMentionPathMap}
-                  onChatModeChange={chatMessages.setSelectedChatMode}
-                  onToolDecisionSubmit={handleToolDecisionSubmit}
-                  onBranchAssistantMessage={chatMessages.branchConversationFromAssistantMessage}
-                  onEditUserMessage={handleEditUserMessage}
-                  onRevertUserMessage={handleRevertUserMessage}
-                  composerAttachments={chatMessages.editComposerAttachments}
-                  composerValue={chatMessages.editComposerValue}
-                  onComposerAttachmentsChange={chatMessages.setEditComposerAttachments}
-                  onComposerValueChange={chatMessages.setEditComposerValue}
-                  onSendEditedMessage={handleSendEditedMessageAndFollow}
-                  onAbortStreamingResponse={chatMessages.abortStreamingResponse}
-                  onCancelEditingMessage={handleCancelEditingMessage}
-                  composerFocusSignal={chatMessages.editComposerFocusSignal}
-                  isSending={chatMessages.isSending}
-                  modelOptions={selectorOptions}
-                  modelOptionsLoading={chatRuntimeConfig.isModelOptionsLoading}
-                  onModelChange={chatRuntimeConfig.setSelectedModelId}
-                  onReasoningEffortChange={chatRuntimeConfig.setReasoningEffort}
-                  reasoningEffort={chatRuntimeConfig.reasoningEffort}
-                  reasoningEffortOptions={chatRuntimeConfig.availableReasoningEfforts}
-                  revertAnchorMessageId={chatMessages.revertAnchorMessageId}
-                  selectedChatMode={chatMessages.selectedChatMode}
-                  selectedModelId={chatRuntimeConfig.selectedModelId}
-                  sendMessageOnEnter={sendMessageOnEnter}
-                  showReasoningEffortSelector={chatRuntimeConfig.showReasoningEffortSelector}
-                  streamingAssistantMessageId={chatMessages.streamingAssistantMessageId}
-                  streamingWaitingIndicatorVariant={chatMessages.streamingWaitingIndicatorVariant}
-                  streamingTextActive={chatMessages.isStreamingTextActive}
-                  workspaceRootPath={activeWorkspacePath}
-                />
-              </div>
-            )}
-          </>
         )}
       </div>
-      {!isBrowserOpen ? (
-        <div className="flex w-full shrink-0 flex-col items-center pb-4">
-          <div className="chat-composer-shell">
-            {showQueueBlock ? (
-              <div className="chat-queue-shell">
-                <ChatQueueBlock
-                  conversationId={chatMessages.activeConversationId ?? chatMessages.draftAttachmentScopeId}
-                  queuedMessages={queuedMessages}
-                  editCancelBoundaryRef={messageListBoundaryRef}
-                  onRemove={removeQueuedMessage}
-                  onReorder={reorderQueuedMessages}
-                  onUpdate={updateQueuedMessage}
-                />
-              </div>
-            ) : null}
-            <div className="chat-input-shell relative">
+      <div className="flex w-full shrink-0 flex-col items-center pb-4">
+        <div className="chat-composer-shell">
+          {showQueueBlock ? (
+            <div className="chat-queue-shell">
+              <ChatQueueBlock
+                conversationId={chatMessages.activeConversationId ?? chatMessages.draftAttachmentScopeId}
+                queuedMessages={queuedMessages}
+                editCancelBoundaryRef={messageListBoundaryRef}
+                onRemove={removeQueuedMessage}
+                onReorder={reorderQueuedMessages}
+                onUpdate={updateQueuedMessage}
+              />
+            </div>
+          ) : null}
+          <div className="chat-input-shell relative">
             {showImplementPlanButton ? (
               <button
                 type="button"
@@ -358,10 +318,9 @@ export function ChatConversationSurface({
               onTerminalExecutionModeChange={onTerminalExecutionModeChange}
               workspaceRootPath={activeWorkspacePath}
             />
-            </div>
           </div>
         </div>
-      ) : null}
+      </div>
     </div>
   )
 }

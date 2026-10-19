@@ -11,6 +11,9 @@ const workspaceTypeScriptWorkerPath = path.resolve(
 )
 
 export default defineConfig({
+  build: {
+    reportCompressedSize: false,
+  },
   server: {
     watch: {
       ignored: [
@@ -39,6 +42,7 @@ export default defineConfig({
         entry: 'electron/main.ts',
         vite: {
           build: {
+            reportCompressedSize: false,
             rollupOptions: {
               // Keep native/optional Node dependencies external so their runtime loaders resolve from node_modules.
               external: ['node-pty', 'uiohook-napi', 'ws'],
@@ -50,6 +54,11 @@ export default defineConfig({
         // Shortcut of `build.rollupOptions.input`.
         // Preload scripts may contain Web assets, so use the `build.rollupOptions.input` instead `build.lib.entry`.
         input: path.join(import.meta.dirname, 'electron/preload.ts'),
+        vite: {
+          build: {
+            reportCompressedSize: false,
+          },
+        },
       },
       // Ployfill the Electron and Node.js API for Renderer process.
       // If you want use Node.js in Renderer process, the `nodeIntegration` needs to be enabled in the Main process.

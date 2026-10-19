@@ -42,6 +42,8 @@ interface BrowserLoadFailure {
 
 interface BrowserPanelProps {
   active: boolean
+  isFullScreen: boolean
+  onToggleFullScreen: () => void
   onClose: () => void
   projectKey: string
 }
@@ -783,7 +785,7 @@ function BrowserTabSession({
   )
 }
 
-export function BrowserPanel({ active, onClose, projectKey }: BrowserPanelProps) {
+export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose, projectKey }: BrowserPanelProps) {
   const initialTabRef = useRef<BrowserTab | null>(null)
   if (!initialTabRef.current) {
     initialTabRef.current = createBrowserTab()
@@ -829,6 +831,8 @@ export function BrowserPanel({ active, onClose, projectKey }: BrowserPanelProps)
         activeTabId={activeTabId}
         onCloseTab={handleCloseTab}
         onCreateTab={handleCreateTab}
+        isFullScreen={isFullScreen}
+        onToggleFullScreen={onToggleFullScreen}
         onSelectTab={setActiveTabId}
         tabs={tabs}
       />

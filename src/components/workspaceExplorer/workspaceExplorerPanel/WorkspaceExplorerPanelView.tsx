@@ -280,6 +280,7 @@ export function WorkspaceExplorerPanelView({
 
   return (
     <aside
+      ref={panelState.panelRef}
       className={[
         isMobilePresentation
           ? 'non-selectable-ui relative flex h-full min-w-0 flex-1 flex-col overflow-hidden border-t border-border bg-background md:hidden'

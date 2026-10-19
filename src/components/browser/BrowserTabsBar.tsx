@@ -1,6 +1,7 @@
-import { Globe2, Plus, X } from 'lucide-react'
+import { Globe2, Maximize, Minimize, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import type { WheelEvent as ReactWheelEvent } from 'react'
+import { Tooltip } from '../Tooltip'
 import type { BrowserTab } from './browserTabUtils'
 
 function BrowserTabFavicon({ faviconUrl }: { faviconUrl: string }) {
@@ -28,6 +29,8 @@ interface BrowserTabsBarProps {
   activeTabId: string
   onCloseTab: (tabId: string) => void
   onCreateTab: () => void
+  isFullScreen: boolean
+  onToggleFullScreen: () => void
   onSelectTab: (tabId: string) => void
   tabs: readonly BrowserTab[]
 }
@@ -36,6 +39,8 @@ export function BrowserTabsBar({
   activeTabId,
   onCloseTab,
   onCreateTab,
+  isFullScreen,
+  onToggleFullScreen,
   onSelectTab,
   tabs,
 }: BrowserTabsBarProps) {
@@ -94,15 +99,28 @@ export function BrowserTabsBar({
         })}
       </div>
 
-      <button
-        type="button"
-        onClick={onCreateTab}
-        className="flex h-full w-10 shrink-0 items-center justify-center border-l border-border text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
-        aria-label="New browser tab"
-        title="New tab"
-      >
-        <Plus size={16} />
-      </button>
+      <div className="flex shrink-0 items-center gap-1 px-2">
+        <Tooltip content="New browser tab" side="bottom" noWrap>
+          <button
+            type="button"
+            onClick={onCreateTab}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:rounded-xl hover:bg-surface-muted hover:text-foreground"
+            aria-label="New browser tab"
+          >
+            <Plus size={14} />
+          </button>
+        </Tooltip>
+        <Tooltip content={isFullScreen ? 'Show browser in sidebar' : 'Show browser full screen'} side="bottom" noWrap>
+          <button
+            type="button"
+            onClick={onToggleFullScreen}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:rounded-xl hover:bg-surface-muted hover:text-foreground"
+            aria-label={isFullScreen ? 'Show browser in sidebar' : 'Show browser full screen'}
+          >
+            {isFullScreen ? <Minimize size={14} /> : <Maximize size={14} />}
+          </button>
+        </Tooltip>
+      </div>
     </div>
   )
 }

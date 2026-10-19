@@ -1,14 +1,15 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
-  clampChatPanelWidth,
   getChatPanelBounds,
   type ChatPanelBounds,
 } from "../../lib/chatPanelSizing";
+import { clampWorkspacePanelWidth } from "../../lib/workspacePanelSizing";
 
 export function useResizableChatPanel() {
   const [chatPanelBounds, setChatPanelBounds] = useState<ChatPanelBounds>(() =>
@@ -27,30 +28,45 @@ export function useResizableChatPanel() {
   const chatPanelRef = useRef<HTMLDivElement | null>(null);
   const isChatResizingRef = useRef(false);
 
-  useEffect(() => {
-    function handleWindowResize() {
-      if (isChatResizingRef.current) return;
-
-      const nextBounds = getChatPanelBounds(window.innerWidth);
-      setChatPanelBounds(nextBounds);
-      setChatPanelWidth((width) =>
-        clampChatPanelWidth(width, window.innerWidth),
-      );
+  function clampWidth(width: number) {
+    const bounds = getChatPanelBounds(window.innerWidth);
+    const panel = chatPanelRef.current;
+    if (!panel) {
+      return Math.min(bounds.maxWidth, Math.max(bounds.minWidth, width));
     }
+    // Never compress the composer, even when a window is narrower than all panels.
+    return Math.max(bounds.minWidth, clampWorkspacePanelWidth(panel, width, bounds.minWidth, bounds.maxWidth));
+  }
 
+  useLayoutEffect(() => {
+    const parent = chatPanelRef.current?.parentElement;
+    function handleWindowResize() {
+      if (isChatResizingRef.current) {
+        return;
+      }
+      setChatPanelBounds(getChatPanelBounds(window.innerWidth));
+      setChatPanelWidth((width) => clampWidth(width));
+    }
+    handleWindowResize();
+    const observer = new ResizeObserver(handleWindowResize);
+    if (parent) {
+      observer.observe(parent);
+    }
     window.addEventListener("resize", handleWindowResize);
-    return () => window.removeEventListener("resize", handleWindowResize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", handleWindowResize);
+    };
   }, []);
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
       const drag = chatResizeDragStateRef.current;
-      if (!drag) return;
+      if (!drag || drag.pointerId !== event.pointerId) {
+        return;
+      }
 
-      chatPanelWidthRef.current = clampChatPanelWidth(
-        drag.startWidth + (event.clientX - drag.startX),
-        window.innerWidth,
-      );
+      chatPanelWidthRef.current = clampWidth(drag.startWidth + (event.clientX - drag.startX));
       if (chatResizeRafRef.current !== null) return;
 
       chatResizeRafRef.current = window.requestAnimationFrame(() => {
@@ -73,14 +89,23 @@ export function useResizableChatPanel() {
       }
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      if (chatPanelRef.current) {
+        chatPanelRef.current.style.width = `${chatPanelWidthRef.current}px`;
+      }
       setChatPanelWidth(chatPanelWidthRef.current);
     }
 
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      if (isChatResizingRef.current) {
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
       if (chatResizeRafRef.current !== null) {
         window.cancelAnimationFrame(chatResizeRafRef.current);
         chatResizeRafRef.current = null;

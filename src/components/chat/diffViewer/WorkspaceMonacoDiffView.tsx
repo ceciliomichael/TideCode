@@ -11,6 +11,7 @@ import {
 import '../../workspaceExplorer/workspaceFileEditor/workspaceMonacoEnvironment'
 import {
   clampWorkspaceMonacoDiffHeight,
+  estimateWorkspaceMonacoDiffHeight,
   createWorkspaceMonacoDiffOptions,
   createWorkspaceMonacoViewOptions,
   resolveWorkspaceMonacoDiffMaxHeight,
@@ -38,8 +39,6 @@ interface WorkspaceMonacoDiffViewProps {
   viewOnly: boolean
 }
 
-const INITIAL_DIFF_HEIGHT_PX = 160
-
 export function WorkspaceMonacoDiffView({
   contextLines,
   contentSignature,
@@ -54,7 +53,7 @@ export function WorkspaceMonacoDiffView({
 }: WorkspaceMonacoDiffViewProps) {
   const resolvedTheme = useResolvedDocumentTheme()
   const maxHeight = resolveWorkspaceMonacoDiffMaxHeight(maxBodyHeightClassName)
-  const [height, setHeight] = useState(() => clampWorkspaceMonacoDiffHeight(INITIAL_DIFF_HEIGHT_PX, maxHeight))
+  const [height, setHeight] = useState(() => estimateWorkspaceMonacoDiffHeight(oldContent, newContent, contextLines, maxHeight, viewOnly))
   const containerRef = useRef<HTMLDivElement | null>(null)
   const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null)
   const disposablesRef = useRef<IDisposable[]>([])

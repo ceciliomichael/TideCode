@@ -232,7 +232,7 @@ export function WorkspaceFileTabsPanel({
       : undefined
 
   return (
-    <section className="relative flex min-w-0 flex-1 flex-col border-l border-border bg-background">
+    <section data-workspace-editor className="relative flex min-w-[200px] flex-1 flex-col border-l border-border bg-background">
       <div className="non-selectable-ui group relative h-10 border-b border-border bg-background">
         <div
           ref={tabsViewportRef}

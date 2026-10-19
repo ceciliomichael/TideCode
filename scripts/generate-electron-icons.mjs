@@ -6,12 +6,38 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import pngToIco from 'png-to-ico'
 import sharp from 'sharp'
+import { generatedAssetsCache } from './generated-assets-cache.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
 const sourceSvgPath = path.join(rootDir, 'public', 'assets', 'tidecode-icon-light.svg')
 const publicAssetsDir = path.join(rootDir, 'public', 'assets')
 const outputDir = path.join(rootDir, 'build', 'icons')
+const pngSizes = [16, 24, 32, 48, 64, 128, 256, 512, 1024]
+const outputs = [
+  ...['light', 'dark'].map((theme) => path.join(publicAssetsDir, `tidecode-icon-${theme}.png`)),
+  ...pngSizes.map((size) => path.join(outputDir, `${size}x${size}.png`)),
+  path.join(outputDir, 'icon.png'),
+  path.join(outputDir, 'icon.ico'),
+]
+if (process.platform === 'darwin') {
+  outputs.push(path.join(outputDir, 'icon.icns'))
+}
+const cache = await generatedAssetsCache({
+  inputs: [
+    fileURLToPath(import.meta.url),
+    fileURLToPath(new URL('./generated-assets-cache.mjs', import.meta.url)),
+    path.join(rootDir, 'package-lock.json'),
+    ...['light', 'dark'].map((theme) => path.join(publicAssetsDir, `tidecode-icon-${theme}.svg`)),
+  ],
+  outputs,
+  cacheFile: path.join(outputDir, '.assets-fingerprint'),
+  context: process.platform,
+})
+if (cache.fresh) {
+  console.log('Electron icons are up to date.')
+  process.exit(0)
+}
 
 if (!existsSync(sourceSvgPath)) {
   throw new Error(`Icon source not found: ${sourceSvgPath}`)
@@ -33,8 +59,6 @@ for (const theme of ['light', 'dark']) {
     .png()
     .toFile(outputPath)
 }
-
-const pngSizes = [16, 24, 32, 48, 64, 128, 256, 512, 1024]
 
 for (const size of pngSizes) {
   const outputPath = path.join(outputDir, `${size}x${size}.png`)
@@ -83,4 +107,5 @@ if (process.platform === 'darwin') {
   await rm(iconsetDir, { recursive: true, force: true })
 }
 
+await cache.commit()
 console.log(`Electron icons generated from ${sourceSvgPath} -> ${outputDir}`)

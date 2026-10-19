@@ -9,6 +9,9 @@ import { WorkspacePanel } from '../../components/layout/WorkspacePanel'
 import { SidebarPanel } from '../../components/sidebar/SidebarPanel'
 import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID, CHATS_PROJECT_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
 import { WorkspaceTerminalPanel } from '../../components/chat/WorkspaceTerminalPanel'
+import { MIN_CHAT_PANEL_WIDTH } from '../../lib/chatPanelSizing'
+import { MIN_WORKSPACE_EDITOR_WIDTH } from '../../lib/workspaceEditorSizing'
+import { getMaxSidebarWidthForContent } from '../../lib/sidebarSizing'
 import { MobileWorkspaceExplorerSurface } from '../../components/workspaceExplorer/MobileWorkspaceExplorerSurface'
 import { useChatContextUsage } from '../../hooks/useChatContextUsage'
 import { useChatCompactionMarkers } from '../../hooks/useChatCompactionMarkers'
@@ -312,6 +315,18 @@ synchronizeDraftFolder,
     !isMobileViewport && workspaceState.isTerminalOpen && workspaceState.isTerminalFullScreen
   )
   const setIsSidebarOpen = interfaceController.setIsSidebarOpen
+  const { handleCloseSidePanels } = workspaceState
+
+  const handleCloseBrowser = useCallback(() => {
+    setWorkspaceViewMode('chat')
+  }, [])
+
+  // Panel actions also originate from keyboard shortcuts and file navigation.
+  useEffect(() => {
+    if (workspaceState.isExplorerOpen || interfaceController.isDiffPanelOpen || interfaceController.isSourceControlPanelOpen) {
+      setWorkspaceViewMode('chat')
+    }
+  }, [workspaceState.isExplorerOpen, interfaceController.isDiffPanelOpen, interfaceController.isSourceControlPanelOpen])
 
   useEffect(() => {
     if (!isMobileViewport) return
@@ -326,10 +341,12 @@ synchronizeDraftFolder,
       setWorkspaceViewMode('chat')
       return
     }
+    handleCloseSidePanels()
     setWorkspaceViewMode('browser')
   }, [
     isBrowserOpen,
     isRemoteBrowser,
+    handleCloseSidePanels,
   ])
   const isQueueAutoSendBlocked =
     chatMessages.isAbortInProgress ||
@@ -447,7 +464,6 @@ synchronizeDraftFolder,
   const messageListBoundaryRef = useRef<HTMLDivElement>(null)
 
   const {
-    chatPanelMaxWidth,
     chatPanelMinWidth,
     chatPanelRef,
     chatPanelWidth,
@@ -563,6 +579,12 @@ synchronizeDraftFolder,
       isSidebarOpen={interfaceController.isSidebarOpen}
       mobileSidebarPresentation={isMobileViewport ? 'drawer' : undefined}
       onMobileSidebarRequestClose={isMobileViewport ? handleCloseMobileSidebar : undefined}
+      getMaxSidebarResizeWidth={(currentWidth) => {
+        const chatWidth = chatPanelRef.current?.getBoundingClientRect().width ?? MIN_CHAT_PANEL_WIDTH
+        const editor = chatPanelRef.current?.parentElement?.querySelector<HTMLElement>('[data-workspace-editor]')
+        const editorGrowth = Math.max(0, (editor?.getBoundingClientRect().width ?? 0) - MIN_WORKSPACE_EDITOR_WIDTH)
+        return getMaxSidebarWidthForContent(currentWidth, chatWidth + editorGrowth, MIN_CHAT_PANEL_WIDTH)
+      }}
       onSidebarWidthChange={onSidebarWidthChange}
       onSidebarWidthPreview={setLiveSidebarWidth}
       onSidebarResizeStateChange={setIsSidebarResizing}
@@ -628,17 +650,26 @@ synchronizeDraftFolder,
               <ChatWorkspaceHeaderControls
                 addedLineCount={gitAddedLineCount}
                 hasRepository={hasRepository}
-                isDiffPanelOpen={interfaceController.isDiffPanelOpen}
-                isExplorerOpen={workspaceState.isExplorerOpen}
+                isDiffPanelOpen={!isBrowserOpen && interfaceController.isDiffPanelOpen}
+                isExplorerOpen={!isBrowserOpen && workspaceState.isExplorerOpen}
                 isBrowserOpen={isBrowserOpen}
-                isSourceControlPanelOpen={interfaceController.isSourceControlPanelOpen}
+                isSourceControlPanelOpen={!isBrowserOpen && interfaceController.isSourceControlPanelOpen}
                 isSourceControlButtonDisabled={isSourceControlButtonDisabled}
                 isTerminalOpen={workspaceState.isTerminalOpen}
                 isWorkspaceRepoHeaderControlDisabled={isWorkspaceRepoHeaderControlDisabled}
                 onOpenCommitModal={interfaceController.handleOpenCommitModal}
-                onOpenDiffPanel={workspaceState.handleOpenDiffPanel}
-                onOpenSourceControlPanel={workspaceState.handleOpenSourceControlPanel}
-                onToggleExplorerPanel={workspaceState.handleToggleExplorerPanel}
+                onOpenDiffPanel={() => {
+                  handleCloseBrowser()
+                  workspaceState.handleOpenDiffPanel()
+                }}
+                onOpenSourceControlPanel={() => {
+                  handleCloseBrowser()
+                  workspaceState.handleOpenSourceControlPanel()
+                }}
+                onToggleExplorerPanel={() => {
+                  handleCloseBrowser()
+                  workspaceState.handleToggleExplorerPanel()
+                }}
                 onToggleWorkspaceBrowser={handleToggleWorkspaceBrowser}
                 onToggleTerminalPanel={() => workspaceState.handleTerminalOpenChange(!workspaceState.isTerminalOpen)}
                 removedLineCount={gitRemovedLineCount}
@@ -658,14 +689,16 @@ synchronizeDraftFolder,
           {/* Chat panel — fixed width when file editor is open, flex-1 when alone */}
           <div
             ref={chatPanelRef}
+            data-chat-panel
+            data-fixed-width={isDesktopWorkspaceTabsPanelOpen ? 'true' : 'false'}
             className={[
-              'relative flex min-h-0 flex-col overflow-hidden',
+              'relative flex min-h-0 min-w-0 flex-col overflow-hidden',
               isDesktopWorkspaceTabsPanelOpen ? 'shrink-0' : 'flex-1',
             ].join(' ')}
             style={
               isDesktopWorkspaceTabsPanelOpen
-                ? { width: `${chatPanelWidth}px`, minWidth: `${chatPanelMinWidth}px`, maxWidth: `${chatPanelMaxWidth}px` }
-                : undefined
+                ? { width: `${chatPanelWidth}px`, minWidth: `${chatPanelMinWidth}px` }
+                : { minWidth: isMobileViewport ? 0 : MIN_CHAT_PANEL_WIDTH }
             }
           >
             {/* Chat resize handle — only shown when file editor is open */}
@@ -700,9 +733,7 @@ synchronizeDraftFolder,
               handleSendMainMessage={handleSendMainMessage}
               handleToolDecisionSubmit={handleToolDecisionSubmit}
               isCompressingChat={isCompressingChat}
-              isBrowserOpen={isBrowserOpen}
               isTerminalSurfaceOpen={isTerminalSurfaceOpen}
-              onCloseBrowser={() => setWorkspaceViewMode('chat')}
               messageListBoundaryRef={messageListBoundaryRef}
               onQueueMessage={enqueueMessage}
               onAlternateFollowUpMessage={enqueueAlternateFollowUpMessage}
@@ -754,6 +785,8 @@ synchronizeDraftFolder,
           </div>
           {!isMobileViewport ? (
             <ChatWorkspaceSidePanels
+              isBrowserOpen={isBrowserOpen}
+              onCloseBrowser={handleCloseBrowser}
               diffPanelExpandedFilePaths={diffPanelExpandedFilePaths}
               diffPanelSelectedScope={diffPanelSelectedScope}
               gitBranchState={gitBranchState}
@@ -768,7 +801,6 @@ synchronizeDraftFolder,
               workspaceState={workspaceState}
             />
           ) : null}
-
         </div>
       </WorkspacePanel>
 
