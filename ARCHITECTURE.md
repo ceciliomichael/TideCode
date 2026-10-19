@@ -123,3 +123,9 @@ The mention hook reads enabled, connected MCP names from the existing MCP bridge
 Browser has one retained host in `ChatWorkspaceSidePanels.tsx`. It opens as a right sidebar and can expand across the workspace, like Diff. Opening Browser closes Explorer and the Git side panel; selecting another side panel hides Browser while retaining its live project sessions. Header actions and externally triggered panel changes both return Browser to its inactive state.
 
 `workspacePanelSizing.ts` budgets space for the chat minimum, the fixed chat width when an editor is open, the editor minimum, and other visible siblings. Browser, Diff, Source Control, and Explorer use this budget during resizing and observe workspace/chat size changes. Chat reserves its composer-safe width even without an editor; the left sidebar stops growing when chat and the editor reach their minimum widths. Drag release and cancellation commit the last rendered width.
+
+## Terminal identity and recovery
+
+Workspace terminal tabs retain the broker session ID returned at creation and send it with input, resize, and close requests. Numeric IDs remain part of PTY transport and event indexing; broker identity validates events and asynchronous failures before they update a tab, preventing a reused numeric ID from targeting a replacement session.
+
+`terminalSessionLifecycle.ts` owns the shared asynchronous creation/replacement boundary. Each attempt uses a generation-specific creation key. Lost-session and service-disconnection input failures recover without replaying uncertain input; stale creation results release only their own session. Setup and service failures leave an error state from which Restart can retry. The broker distinguishes missing references from unknown numeric IDs, permits closing dead records, and keeps retained output readable after session loss.

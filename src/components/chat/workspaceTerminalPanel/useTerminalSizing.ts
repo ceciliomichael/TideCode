@@ -53,9 +53,14 @@ export function useTerminalSizing({
         return;
       }
 
+      const tab = terminalTabsRef.current.find((candidate) => candidate.key === tabKey);
+      if (tab?.sessionId !== sessionId) {
+        return;
+      }
       instance.lastSyncedSize = { cols: dimensions.cols, rows: dimensions.rows };
       void window.tidecodeTerminal
         .resizeSession({
+          brokerSessionId: tab.brokerSessionId ?? undefined,
           cols: dimensions.cols,
           rows: dimensions.rows,
           sessionId,
@@ -66,7 +71,7 @@ export function useTerminalSizing({
           console.error(`Failed to sync terminal size for tab ${tabKey}`, error);
         });
     },
-    [getWorkspaceRootPath, tabInstancesRef],
+    [getWorkspaceRootPath, tabInstancesRef, terminalTabsRef],
   );
 
   const syncTabSize = useCallback(

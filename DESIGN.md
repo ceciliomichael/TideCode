@@ -46,7 +46,7 @@ Literal colors remain appropriate where the color is part of the content or anot
 
 Browser opens as a resizable right sidebar. Browser, Diff, Source Control, and Explorer replace one another in that side-panel area. Browser and Diff can expand across the workspace and return to their sidebar width. Browser's new-tab and fullscreen actions and Diff's fullscreen action use the terminal's 28-pixel icon-button treatment; Browser's action row stays vertically centered and its new-tab action uses the shared Tooltip.
 
-The terminal header always reserves and shows its restart action. It is disabled while the active session connects or when no tab is selected, so the neighboring actions do not shift between terminal states.
+The terminal header always reserves and shows its restart action. It is disabled while the active session connects or when no tab is selected, so the neighboring actions do not shift between terminal states. A lost session reconnects without replaying the keystroke or command whose delivery is uncertain. Restart replaces the session with a fresh shell; if setup fails, the tab shows the error and remains restartable. Late output, exit notifications, and input errors from a previous session must not affect its replacement or another tab.
 
 Desktop panel resizing stops before the chat composer loses its 512-pixel panel minimum. Visible editor and side-panel widths participate in the available-space budget; dragging and releasing handles must preserve control alignment and avoid layout jumps. Remote/mobile chat retains its responsive width behavior.
 

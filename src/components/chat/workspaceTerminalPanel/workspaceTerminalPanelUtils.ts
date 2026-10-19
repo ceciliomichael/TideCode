@@ -1,3 +1,4 @@
+import type { TerminalTabState } from "./workspaceTerminalPanelTypes";
 import type { ITerminalOptions, Terminal } from "@xterm/xterm";
 import type { ResolvedTheme } from "../../../lib/theme";
 import { readThemeColor } from "../../../lib/themeColorTokens";
@@ -190,6 +191,20 @@ export function nextTerminalTabGeneration(generations: Map<string, number>, tabK
   const generation = (generations.get(tabKey) ?? 0) + 1;
   generations.set(tabKey, generation);
   return generation;
+}
+
+export function isTerminalSessionUnavailable(message: string) {
+  return /Unknown terminal (?:broker )?session id|A terminal session reference is required|terminal session .*has exited|terminal session .*is lost|already exited/i.test(message);
+}
+
+export function isTerminalSessionEventCurrent(
+  tab: TerminalTabState,
+  event: { sessionId: number; brokerSessionId?: string },
+) {
+  if (tab.sessionId !== event.sessionId) {
+    return false;
+  }
+  return !tab.brokerSessionId || tab.brokerSessionId === event.brokerSessionId;
 }
 
 export function isTerminalTransportDisconnected(message: string) {

@@ -4,11 +4,12 @@ import type { TabTerminalInstance } from "./terminalInstance";
 import type { TerminalWorkspaceState } from "./terminalSessionStateTypes";
 import type { TerminalTabState } from "./workspaceTerminalPanelTypes";
 import { appendTerminalReplayBuffer } from "./terminalOutputBuffer";
-import { getWorkspaceKeyFromTerminalTabKey } from "./workspaceTerminalPanelUtils";
+import { getWorkspaceKeyFromTerminalTabKey, isTerminalSessionEventCurrent } from "./workspaceTerminalPanelUtils";
 
 interface UseTerminalSessionEventsInput {
   activeWorkspaceKeyRef: MutableRefObject<string>;
   sessionIdToTabKeyRef: MutableRefObject<Map<number, string>>;
+  terminalTabsRef: MutableRefObject<TerminalTabState[]>;
   setTerminalTabs: Dispatch<SetStateAction<TerminalTabState[]>>;
   tabBuffersRef: MutableRefObject<Map<string, string>>;
   tabInstancesRef: MutableRefObject<Map<string, TabTerminalInstance>>;
@@ -19,14 +20,34 @@ export function useTerminalSessionEvents({
   activeWorkspaceKeyRef,
   sessionIdToTabKeyRef,
   setTerminalTabs,
+  terminalTabsRef,
   tabBuffersRef,
   tabInstancesRef,
   terminalWorkspaceStateRef,
 }: UseTerminalSessionEventsInput) {
   useEffect(() => {
-    const unsubscribeData = window.tidecodeTerminal.onData((event: TerminalDataEvent) => {
+    function findEventTab(event: TerminalDataEvent | TerminalExitEvent) {
       const tabKey = sessionIdToTabKeyRef.current.get(event.sessionId);
-      if (!tabKey) return;
+      if (!tabKey) {
+        return null;
+      }
+      const workspaceKey = getWorkspaceKeyFromTerminalTabKey(tabKey) ?? activeWorkspaceKeyRef.current;
+      const tabs = workspaceKey === activeWorkspaceKeyRef.current
+        ? terminalTabsRef.current
+        : terminalWorkspaceStateRef.current[workspaceKey]?.terminalTabs ?? [];
+      const tab = tabs.find((candidate) => candidate.key === tabKey);
+      if (!tab || !isTerminalSessionEventCurrent(tab, event)) {
+        return null;
+      }
+      return tab;
+    }
+
+    const unsubscribeData = window.tidecodeTerminal.onData((event: TerminalDataEvent) => {
+      const tab = findEventTab(event);
+      if (!tab) {
+        return;
+      }
+      const tabKey = tab.key;
 
       const currentBuffer = tabBuffersRef.current.get(tabKey) ?? "";
       tabBuffersRef.current.set(tabKey, appendTerminalReplayBuffer(currentBuffer, event.data));
@@ -34,8 +55,11 @@ export function useTerminalSessionEvents({
     });
 
     const unsubscribeExit = window.tidecodeTerminal.onExit((event: TerminalExitEvent) => {
-      const tabKey = sessionIdToTabKeyRef.current.get(event.sessionId);
-      if (!tabKey) return;
+      const tab = findEventTab(event);
+      if (!tab) {
+        return;
+      }
+      const tabKey = tab.key;
 
       const workspaceKey =
         getWorkspaceKeyFromTerminalTabKey(tabKey) ?? activeWorkspaceKeyRef.current;
@@ -47,12 +71,14 @@ export function useTerminalSessionEvents({
       );
 
       const markExited = (tabs: TerminalTabState[]) => tabs.map((tab) =>
-        tab.key === tabKey
-          ? { ...tab, exitCode: event.exitCode, sessionId: null, status: "exited" as const }
+        tab.key === tabKey && isTerminalSessionEventCurrent(tab, event)
+          ? { ...tab, brokerSessionId: null, errorMessage: null, exitCode: event.exitCode, sessionId: null, status: "exited" as const }
           : tab,
       );
       if (workspaceKey === activeWorkspaceKeyRef.current) {
-        setTerminalTabs(markExited);
+        const nextTabs = markExited(terminalTabsRef.current);
+        terminalTabsRef.current = nextTabs;
+        setTerminalTabs(nextTabs);
       }
 
       const instance = tabInstancesRef.current.get(tabKey);
@@ -73,6 +99,7 @@ export function useTerminalSessionEvents({
     activeWorkspaceKeyRef,
     sessionIdToTabKeyRef,
     setTerminalTabs,
+    terminalTabsRef,
     tabBuffersRef,
     tabInstancesRef,
     terminalWorkspaceStateRef,

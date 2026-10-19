@@ -6,6 +6,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { TerminalBroker } from '../../electron/terminal/broker/terminalBroker'
 import { sessions } from '../../electron/terminal/sessionRegistry'
+import type { PersistedTerminalBrokerState } from '../../electron/terminal/broker/persistence'
 
 test('broker retains an attached exited terminal, then releases output and owner state after detach', async (t) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-terminal-lifecycle-'))
@@ -69,4 +70,86 @@ test('broker operation retention keeps active work while bounding completed comm
   assert.equal(internals.operations.has('completed-0'), false)
   internals.pruneOperations(record, 400_000)
   assert.deepEqual(record.snapshot.operationIds, ['active'])
+})
+
+test('lost broker sessions report stale references and allow a fresh terminal without targeting a reused numeric ID', { timeout: 60_000 }, async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-terminal-recovery-'))
+  const createBroker = () => {
+    const broker = new TerminalBroker({ reaperIntervalMs: 60_000 })
+    const internals = broker as unknown as {
+      restore: (state: PersistedTerminalBrokerState) => void
+      persistence: { save: () => Promise<void>; flush: () => Promise<void> }
+    }
+    internals.persistence.save = async () => undefined
+    internals.persistence.flush = async () => undefined
+    return { broker, internals }
+  }
+  const original = createBroker()
+  const replacement = createBroker()
+  t.after(async () => {
+    await original.broker.shutdown()
+    await replacement.broker.shutdown()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+  const input = {
+    clientId: 'recovery-client', ownerKind: 'visible' as const,
+    workspaceRootPath: directory, sessionKey: 'terminal-tab-1', cols: 80, rows: 24,
+  }
+  const exitShell = async (broker: TerminalBroker, brokerSessionId: string) => {
+    const exited = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        unsubscribe()
+        reject(new Error('Recovery test terminal did not exit'))
+      }, 20_000)
+      const unsubscribe = broker.onEvent((event) => {
+        if (event.type === 'terminal_session_changed' && event.session.brokerSessionId === brokerSessionId && event.session.state === 'exited') {
+          clearTimeout(timeout)
+          unsubscribe()
+          resolve()
+        }
+      })
+    })
+    await broker.write({ clientId: input.clientId, brokerSessionId, data: 'exit\r' })
+    await exited
+  }
+  const old = await original.broker.createSession(input)
+  await exitShell(original.broker, old.brokerSessionId)
+  await original.broker.shutdown()
+  replacement.internals.restore({
+    schema: 'tidecode.terminal_broker_state/v1', savedAt: Date.now(), operations: [],
+    sessions: [{ sessionKey: input.sessionKey, snapshot: old.snapshot, output: { data: 'saved output', startCursor: 0, endCursor: 12 } }],
+  })
+  const oldReference = { clientId: input.clientId, brokerSessionId: old.brokerSessionId, workspaceRootPath: directory }
+  await assert.rejects(replacement.broker.write({ ...oldReference, data: 'must not execute\r' }), /is lost/)
+  await assert.rejects(replacement.broker.write({ clientId: input.clientId, legacySessionId: old.legacySessionId, data: 'x' }), /Unknown terminal session id/)
+  assert.throws(() => replacement.broker.getSession({ clientId: input.clientId }), /reference is required/)
+  await replacement.broker.terminate({ ...oldReference, provenance: {
+    policy: 'terminate', reason: 'user_stop', requestedAt: Date.now(), surface: 'desktop',
+  } })
+  replacement.broker.attach(oldReference)
+  assert.equal((await replacement.broker.read(oldReference)).output.data, 'saved output', 'lost-session output remains readable')
+  replacement.broker.detach(oldReference)
+  const fresh = await replacement.broker.createSession(input)
+  assert.notEqual(fresh.brokerSessionId, old.brokerSessionId)
+  assert.equal(fresh.isReused, false)
+  await assert.rejects(replacement.broker.write({ ...oldReference, legacySessionId: fresh.legacySessionId, data: 'must not execute\r' }), /is lost/)
+  const reference = { ...oldReference, brokerSessionId: fresh.brokerSessionId }
+  const marker = `RECOVERED_${Date.now()}`
+  const output = new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unsubscribe()
+      reject(new Error('Replacement terminal did not produce output'))
+    }, 20_000)
+    const unsubscribe = replacement.broker.onEvent((event) => {
+      if (event.type === 'terminal_output' && event.output.brokerSessionId === fresh.brokerSessionId && event.output.data.includes(marker)) {
+        clearTimeout(timeout)
+        unsubscribe()
+        resolve()
+      }
+    })
+  })
+  await replacement.broker.write({ ...reference, data: `echo ${marker}\r` })
+  await output
+  assert.equal(replacement.broker.getSession(reference).state, 'ready')
+  await exitShell(replacement.broker, fresh.brokerSessionId)
 })

@@ -12,6 +12,8 @@ import {
   getSessionDimensions,
   getTerminalTheme,
   isTerminalTransportDisconnected,
+  isTerminalSessionUnavailable,
+  isTerminalSessionEventCurrent,
 } from "./workspaceTerminalPanelUtils";
 
 export interface TabTerminalInstance {
@@ -34,7 +36,6 @@ interface CreateTerminalInstanceInput {
     sessionId: number,
     dimensions: { cols: number; rows: number },
   ) => void;
-  sessionIdToTabKeyRef: MutableRefObject<Map<number, string>>;
   setTerminalTabs: Dispatch<SetStateAction<TerminalTabState[]>>;
   tabKey: string;
   terminalTabsRef: MutableRefObject<TerminalTabState[]>;
@@ -62,7 +63,6 @@ export function createTerminalInstance({
   resolvedTheme,
   restartTab,
   sendTerminalSize,
-  sessionIdToTabKeyRef,
   setTerminalTabs,
   tabKey,
   terminalTabsRef,
@@ -114,15 +114,42 @@ export function createTerminalInstance({
   };
   container.addEventListener("contextmenu", handleTerminalContextMenu);
 
-  const writeSequence = (sequence: string) => {
+  const writeSequence = (data: string) => {
     clearTerminalInputSelection();
     const tab = terminalTabsRef.current.find((candidate) => candidate.key === tabKey);
-    if (tab?.sessionId === null || tab?.sessionId === undefined) return;
+    if (tab?.sessionId === null || tab?.sessionId === undefined) {
+      if (tab?.status === "exited" && (data === "\r" || data === "\n")) {
+        restartTab(tabKey);
+      }
+      return;
+    }
+    const reference = { sessionId: tab.sessionId, brokerSessionId: tab.brokerSessionId ?? undefined };
     void window.tidecodeTerminal.writeToSession({
-      data: sequence,
-      sessionId: tab.sessionId,
+      ...reference,
+      data,
       workspaceRootPath: getWorkspaceRootPath(tabKey),
-    }).catch(console.error);
+    }).catch((error: unknown) => {
+      const current = terminalTabsRef.current.find((candidate) => candidate.key === tabKey);
+      if (!current || !isTerminalSessionEventCurrent(current, reference)) {
+        return;
+      }
+      const errorMessage = getErrorMessage(error);
+      if (isTerminalTransportDisconnected(errorMessage) || isTerminalSessionUnavailable(errorMessage)) {
+        // The old service may have received the input. Recover the session,
+        // but never replay a command whose execution is uncertain.
+        restartTab(tabKey);
+        return;
+      }
+      console.error(`Failed to write terminal input for tab ${tabKey}`, error);
+      const nextTabs = terminalTabsRef.current.map((candidate) => {
+        if (candidate.key === tabKey && isTerminalSessionEventCurrent(candidate, reference)) {
+          return { ...candidate, errorMessage: `Terminal input failed: ${errorMessage}`, status: "error" as const };
+        }
+        return candidate;
+      });
+      terminalTabsRef.current = nextTabs;
+      setTerminalTabs(nextTabs);
+    });
   };
 
   terminal.attachCustomKeyEventHandler((event) => {
@@ -184,54 +211,7 @@ export function createTerminalInstance({
   });
 
   const disposables: IDisposable[] = [
-    terminal.onData((data) => {
-      // xterm keeps its selection visible after browser text input. Clear both
-      // xterm and native DOM selection before forwarding the input to the PTY.
-      clearTerminalInputSelection();
-      const tab = terminalTabsRef.current.find((candidate) => candidate.key === tabKey);
-      if (tab?.sessionId === null || tab?.sessionId === undefined) {
-        if (tab?.status === "exited" && (data === "\r" || data === "\n")) restartTab(tabKey);
-        return;
-      }
-      const sessionId = tab.sessionId;
-      void window.tidecodeTerminal.writeToSession({
-        data,
-        sessionId,
-        workspaceRootPath: getWorkspaceRootPath(tabKey),
-      }).catch((error: unknown) => {
-        const errorMessage = getErrorMessage(error);
-        if (isTerminalTransportDisconnected(errorMessage)) {
-          // The service may have restarted. Do not replay the input because
-          // we cannot know whether the previous service received it.
-          const current = terminalTabsRef.current.find((candidate) => candidate.key === tabKey);
-          if (current?.sessionId === sessionId && current.status === "ready") {
-            restartTab(tabKey);
-          }
-          return;
-        }
-        const sessionEnded = errorMessage.includes("Unknown terminal session id") ||
-          errorMessage.includes("already exited") || errorMessage.includes("does not belong");
-        if (!sessionEnded) {
-          console.error(`Failed to write terminal input for tab ${tabKey}`, error);
-          setTerminalTabs((currentTabs) => currentTabs.map((candidate) =>
-            candidate.key === tabKey && candidate.sessionId === sessionId
-              ? { ...candidate, errorMessage: `Terminal input failed: ${errorMessage}`, status: "error" }
-              : candidate,
-          ));
-          return;
-        }
-        sessionIdToTabKeyRef.current.delete(sessionId);
-        setTerminalTabs((currentTabs) => currentTabs.map((candidate) =>
-          candidate.key === tabKey && candidate.sessionId === sessionId
-            ? { ...candidate, errorMessage: null, exitCode: candidate.exitCode ?? 0,
-                sessionId: null, status: "exited" }
-            : candidate,
-        ));
-        terminal.writeln(
-          "\r\n\r\n[Terminal session ended. Press Enter or click Restart to reconnect.]",
-        );
-      });
-    }),
+    terminal.onData(writeSequence),
     terminal.onResize(() => {
       const tab = terminalTabsRef.current.find((candidate) => candidate.key === tabKey);
       if (tab?.sessionId !== null && tab?.sessionId !== undefined) {

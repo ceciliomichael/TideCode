@@ -267,6 +267,7 @@ export function registerChatGitTerminalIpcHandlers(
   )
   ipcMain.handle('terminal:writeToSession', async (_event, input: WriteTerminalSessionInput) =>
     (await getRunService()).terminalWrite({
+      brokerSessionId: input.brokerSessionId,
       data: input.data,
       legacySessionId: input.sessionId,
       workspaceRootPath: input.workspaceRootPath,
@@ -274,6 +275,7 @@ export function registerChatGitTerminalIpcHandlers(
   )
   ipcMain.handle('terminal:resizeSession', async (_event, input: ResizeTerminalSessionInput) =>
     (await getRunService()).terminalResize({
+      brokerSessionId: input.brokerSessionId,
       cols: input.cols,
       legacySessionId: input.sessionId,
       rows: input.rows,
@@ -282,6 +284,7 @@ export function registerChatGitTerminalIpcHandlers(
   )
   ipcMain.handle('terminal:closeSession', async (_event, input: CloseTerminalSessionInput) => {
     await (await getRunService()).terminalTerminate({
+      brokerSessionId: input.brokerSessionId,
       legacySessionId: input.sessionId,
       provenance: {
         policy: 'terminate',

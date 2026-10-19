@@ -334,10 +334,7 @@ export class TerminalBroker {
   }
 
   async write(input: TerminalBrokerWriteInput) {
-    const record = this.resolveAttachedSession(input)
-    if (record.snapshot.state === 'exited' || record.snapshot.state === 'terminated') {
-      throw new Error(`Terminal session ${record.snapshot.brokerSessionId} has exited.`)
-    }
+    const record = this.resolveLiveSession(input)
     await writeToTerminalSessionForWebContents(record.owner, {
       data: input.data,
       sessionId: record.snapshot.legacySessionId,
@@ -347,7 +344,7 @@ export class TerminalBroker {
   }
 
   async resize(input: TerminalBrokerResizeInput) {
-    const record = this.resolveAttachedSession(input)
+    const record = this.resolveLiveSession(input)
     await resizeTerminalSessionForWebContents(record.owner, {
       cols: input.cols,
       rows: input.rows,
@@ -428,6 +425,10 @@ export class TerminalBroker {
 
   async terminate(input: TerminalBrokerTerminateInput) {
     const record = this.resolveSession(input)
+    // Dead sessions have no process left to terminate, even after clients detach.
+    if (record.snapshot.state === 'session_lost' || record.snapshot.state === 'terminated') {
+      return cloneSession(record.snapshot)
+    }
     if (!record.snapshot.attachedClientIds.includes(input.clientId)) {
       throw new Error('Terminal client is not attached to this session.')
     }
@@ -643,6 +644,17 @@ export class TerminalBroker {
     this.schedulePersistence()
   }
 
+  private resolveLiveSession(input: TerminalBrokerSessionReference) {
+    const record = this.resolveSession(input)
+    if (record.snapshot.state === 'session_lost') {
+      throw new Error(`Terminal session ${record.snapshot.brokerSessionId} is lost.`)
+    }
+    if (record.snapshot.state === 'exited' || record.snapshot.state === 'terminated') {
+      throw new Error(`Terminal session ${record.snapshot.brokerSessionId} has exited.`)
+    }
+    return this.resolveAttachedSession(input)
+  }
+
   private resolveAttachedSession(input: TerminalBrokerSessionReference) {
     const record = this.resolveSession(input)
     const clientId = requireNonEmpty(input.clientId, 'Terminal client id')
@@ -657,7 +669,12 @@ export class TerminalBroker {
       || (typeof input.legacySessionId === 'number'
         ? this.brokerSessionIdByLegacyId.get(input.legacySessionId)
         : null)
-    if (!brokerSessionId) throw new Error('A terminal session reference is required.')
+    if (!brokerSessionId) {
+      if (typeof input.legacySessionId === 'number') {
+        throw new Error(`Unknown terminal session id: ${input.legacySessionId}`)
+      }
+      throw new Error('A terminal session reference is required.')
+    }
     const record = this.sessions.get(brokerSessionId)
     if (!record) throw new Error(`Unknown terminal broker session id: ${brokerSessionId}`)
     if (

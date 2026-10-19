@@ -194,6 +194,7 @@ export interface CreateTerminalSessionResult {
 }
 
 export interface WriteTerminalSessionInput {
+  brokerSessionId?: string
   data: string
   sessionId: number
   workspaceRootPath?: string | null
@@ -207,6 +208,7 @@ export interface TerminalSessionOutputInput {
 }
 
 export interface ResizeTerminalSessionInput {
+  brokerSessionId?: string
   cols: number
   rows: number
   sessionId: number
@@ -214,12 +216,14 @@ export interface ResizeTerminalSessionInput {
 }
 
 export interface CloseTerminalSessionInput {
+  brokerSessionId?: string
   sessionId: number
   tabKey?: string | null
   workspaceRootPath?: string | null
 }
 
 export interface TerminalTabClosedEvent {
+  brokerSessionId?: string
   sessionId: number
   tabKey: string | null
   workspaceRootPath?: string | null

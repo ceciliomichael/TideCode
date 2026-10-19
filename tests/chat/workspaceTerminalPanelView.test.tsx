@@ -10,7 +10,7 @@ test('terminal restart keeps its header slot when connecting or empty and is ena
     let tab: TerminalTabState | null = null
     if (status) {
       tab = {
-        key: 'terminal-1', label: 'Terminal 1', status,
+        brokerSessionId: null, key: 'terminal-1', label: 'Terminal 1', status,
         errorMessage: null, exitCode: null, sessionId: null, workspaceRootPath: null,
       }
     }

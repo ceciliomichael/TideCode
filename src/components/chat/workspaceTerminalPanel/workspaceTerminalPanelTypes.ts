@@ -20,6 +20,7 @@ export interface WorkspaceTerminalPanelProps {
 }
 
 export interface TerminalTabState {
+  brokerSessionId: string | null;
   errorMessage: string | null;
   exitCode: number | null;
   key: string;
