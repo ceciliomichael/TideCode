@@ -758,8 +758,9 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
             activeConversationId === null ||
             !suppressAbortRollbackPresentationConversationIdsRef.current.has(activeConversationId),
           shouldRestoreMainComposerOnAbort: () =>
-            activeConversationId === null ||
-            !suppressAbortComposerRestoreConversationIdsRef.current.has(activeConversationId),
+            options?.resetMainComposerAfterSend !== false &&
+            (activeConversationId === null ||
+              !suppressAbortComposerRestoreConversationIdsRef.current.has(activeConversationId)),
           isUserMessageReverted,
           clearUserMessageRevert,
           messageBatch,

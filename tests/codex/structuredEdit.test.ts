@@ -59,3 +59,78 @@ test('edit API is available in Agent Mode and Plan Mode but Plan Mode cannot edi
     await fs.rm(dir, { force: true, recursive: true })
   }
 })
+
+test('structured edits match LF reads against CRLF files while preserving CRLF and BOM', async () => {
+  const dir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-structured-line-endings-'))
+  const filename = path.join(dir, 'source.ts')
+  const resolve = (name: string) => ({ absolutePath: path.join(dir, name), relativePath: name })
+  try {
+    await fs.writeFile(filename, '\uFEFFfirst\r\nsecond\r\nthird\r\n')
+    await applyStructuredEdits([
+      { path: 'source.ts', oldText: 'first\nsecond', newText: 'FIRST\nSECOND' },
+      { path: 'source.ts', oldText: 'SECOND\r\nthird', newText: 'SECOND\nTHIRD' },
+    ], resolve, async () => {})
+    assert.equal(await fs.readFile(filename, 'utf8'), '\uFEFFFIRST\r\nSECOND\r\nTHIRD\r\n')
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('structured edits reject overlapping replacements without modifying files', async () => {
+  const dir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-structured-overlap-'))
+  const filename = path.join(dir, 'source.ts')
+  const resolve = (name: string) => ({ absolutePath: path.join(dir, name), relativePath: name })
+  try {
+    await fs.writeFile(filename, 'alpha\r\nbeta\r\n')
+    await assert.rejects(applyStructuredEdits([
+      { path: 'source.ts', oldText: 'alpha\nbeta', newText: 'updated' },
+      { path: 'source.ts', oldText: 'beta', newText: 'other' },
+    ], resolve, async () => {}), /removed or modified by an earlier change/)
+    assert.equal(await fs.readFile(filename, 'utf8'), 'alpha\r\nbeta\r\n')
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('structured edits select duplicate text using validated line and context hints', async () => {
+  const dir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-edit-context-'))
+  const target = path.join(dir, 'source.ts')
+  const resolve = (name: string) => ({ absolutePath: path.join(dir, name), relativePath: name })
+  try {
+    await fs.writeFile(target, 'first\nvalue\nsecond\nvalue\n')
+    await applyStructuredEdits([
+      { path: 'source.ts', oldText: 'value', newText: 'updated', line: 4, before: 'second\n' },
+    ], resolve, async () => {})
+    assert.equal(await fs.readFile(target, 'utf8'), 'first\nvalue\nsecond\nupdated\n')
+    await assert.rejects(applyStructuredEdits([
+      { path: 'source.ts', oldText: 'value', newText: 'wrong', line: 4 },
+    ], resolve, async () => {}), /not found/)
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('structured edits recover unique indentation differences but reject ambiguous candidates', async () => {
+  const dir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-edit-indent-'))
+  const target = path.join(dir, 'source.ts')
+  const resolve = (name: string) => ({ absolutePath: path.join(dir, name), relativePath: name })
+  try {
+    await fs.writeFile(target, '    if (ready) {\n        return true\n    }\n')
+    await applyStructuredEdits([
+      { path: 'source.ts', oldText: 'if (ready) {\n  return true\n}', newText: 'if (ready) {\n  return false\n}' },
+    ], resolve, async () => {})
+    assert.equal(await fs.readFile(target, 'utf8'), '    if (ready) {\n        return false\n    }\n')
+    await fs.writeFile(target, '    return true\n\treturn true\n')
+    await assert.rejects(applyStructuredEdits([
+      { path: 'source.ts', oldText: 'return true', newText: 'return false' },
+    ], resolve, async () => {}), /2 matches/)
+    assert.equal(await fs.readFile(target, 'utf8'), '    return true\n\treturn true\n')
+    await fs.writeFile(target, 'const value = left  +  right\n')
+    await assert.rejects(applyStructuredEdits([
+      { path: 'source.ts', oldText: 'const value = left + right', newText: 'const value = changed' },
+    ], resolve, async () => {}), /not found/)
+    assert.equal(await fs.readFile(target, 'utf8'), 'const value = left  +  right\n')
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true })
+  }
+})

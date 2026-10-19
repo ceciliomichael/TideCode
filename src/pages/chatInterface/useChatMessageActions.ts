@@ -135,6 +135,31 @@ export function useChatMessageActions({
     ],
   )
 
+  const handleTideUISend = useCallback(
+    async (message: string, sourceConversationId: string | null): Promise<boolean> => {
+      if (!sourceConversationId || sourceConversationId !== chatMessages.activeConversationId ||
+          chatMessages.isLoading || chatMessages.isEditingMessage) {
+        return false
+      }
+      if (chatMessages.isStreamingResponse || shouldQueueMainMessage({
+        isCompressingChat,
+        isAbortInProgress: chatMessages.isAbortInProgress,
+        isLoading: chatMessages.isLoading,
+        isSending: chatMessages.isSending,
+      })) {
+        enqueueMessage(message, [], new Map())
+        return true
+      }
+      const result = await chatMessages.sendNewMessage(runtimeSelection, message, [], {
+        resetMainComposerAfterSend: false,
+      })
+      onConversationHistoryChanged()
+      if (result.accepted) onMainTurnAccepted()
+      return result.accepted
+    },
+    [chatMessages, enqueueMessage, isCompressingChat, onConversationHistoryChanged, onMainTurnAccepted, runtimeSelection],
+  )
+
   const handleSendEditedMessage = useCallback(
     (value: string, attachments: ChatAttachment[], mentionPathMap: ReadonlyMap<string, string>) => {
       void chatMessages.sendEditedMessage(runtimeSelection, value, attachments, mentionPathMap).then(
@@ -273,6 +298,7 @@ export function useChatMessageActions({
     handleRevertUserMessage,
     handleSendEditedMessage,
     handleSendMainMessage,
+    handleTideUISend,
     handleToolDecisionSubmit,
     showImplementPlanButton,
   }

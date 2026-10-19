@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from 
 import {
   getScrollContainerMetrics,
   getScrollContainerSnapshot,
+  needsAutoFollowScroll,
   resolveScrollFollowing,
   shouldMeasureScrollContainerLayout,
   type ScrollContainerSnapshot,
@@ -37,6 +38,8 @@ function useScrollFollower({
   const scrollObservationFrameTypeRef = useRef<'animation' | 'timeout' | null>(null)
   const lastTouchYRef = useRef<number | null>(null)
   const userGestureActiveRef = useRef(false)
+  const programmaticScrollRef = useRef(false)
+  const clearProgrammaticScrollFrameRef = useRef<number | null>(null)
 
   isAutoFollowEnabledRef.current = isAutoFollowEnabled
 
@@ -79,24 +82,42 @@ function useScrollFollower({
     scrollObservationFrameTypeRef.current = null
   }, [])
 
+  const writeScrollPosition = useCallback((container: HTMLDivElement, scrollTop: number) => {
+    if (container.scrollTop !== scrollTop) {
+      programmaticScrollRef.current = true
+      container.scrollTop = scrollTop
+      if (typeof window !== 'undefined') {
+        if (clearProgrammaticScrollFrameRef.current !== null) {
+          window.cancelAnimationFrame(clearProgrammaticScrollFrameRef.current)
+        }
+        clearProgrammaticScrollFrameRef.current = window.requestAnimationFrame(() => {
+          programmaticScrollRef.current = false
+          clearProgrammaticScrollFrameRef.current = null
+        })
+      } else {
+        programmaticScrollRef.current = false
+      }
+    }
+    lastObservedSnapshotRef.current = getScrollContainerSnapshot(container)
+  }, [])
+
   const performInstantScrollToLatest = useCallback(() => {
     const container = scrollContainerRef.current
-    if (!container) {
-      return
+    if (container) {
+      writeScrollPosition(container, getScrollContainerMetrics(container).maxScrollTop)
     }
-
-    const { maxScrollTop } = getScrollContainerMetrics(container)
-    container.scrollTop = maxScrollTop
-    lastObservedSnapshotRef.current = getScrollContainerSnapshot(container)
-  }, [scrollContainerRef])
+  }, [scrollContainerRef, writeScrollPosition])
 
   const scheduleAutoScroll = useCallback(() => {
+    const container = scrollContainerRef.current
     if (
       !isAutoFollowEnabledRef.current ||
       !isFollowingLatestRef.current ||
       userGestureActiveRef.current ||
       scheduledFrameRef.current !== null ||
-      typeof window === 'undefined'
+      typeof window === 'undefined' ||
+      !container ||
+      !needsAutoFollowScroll(container)
     ) {
       return
     }
@@ -105,7 +126,7 @@ function useScrollFollower({
       scheduledFrameRef.current = null
       scheduledFrameTypeRef.current = null
 
-      if (!isAutoFollowEnabledRef.current || !isFollowingLatestRef.current) {
+      if (!isAutoFollowEnabledRef.current || !isFollowingLatestRef.current || userGestureActiveRef.current) {
         return
       }
 
@@ -119,8 +140,8 @@ function useScrollFollower({
     }
 
     scheduledFrameTypeRef.current = 'timeout'
-    scheduledFrameRef.current = window.setTimeout(runScroll, 0)
-  }, [performInstantScrollToLatest])
+    scheduledFrameRef.current = window.setTimeout(runScroll, 16)
+  }, [performInstantScrollToLatest, scrollContainerRef])
 
   const processScrollObservation = useCallback(() => {
     const container = scrollContainerRef.current
@@ -131,6 +152,17 @@ function useScrollFollower({
     const previousSnapshot = lastObservedSnapshotRef.current
     const currentScrollTop = container.scrollTop
     const wasFollowingLatest = isFollowingLatestRef.current
+
+    if (programmaticScrollRef.current) {
+      lastObservedSnapshotRef.current = getScrollContainerSnapshot(container)
+      return
+    }
+
+    if (wasFollowingLatest && !userGestureActiveRef.current) {
+      lastObservedSnapshotRef.current = getScrollContainerSnapshot(container)
+      scheduleAutoScroll()
+      return
+    }
 
     if (
       previousSnapshot &&
@@ -193,6 +225,18 @@ function useScrollFollower({
       pauseFollowingLatest()
     }
   }, [pauseFollowingLatest])
+
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (event.key === 'ArrowUp' || event.key === 'PageUp' || event.key === 'Home') {
+      pauseFollowingLatest()
+      return
+    }
+    if (event.key === 'End') {
+      cancelScheduledFollow()
+      updateFollowingLatest(true)
+      performInstantScrollToLatest()
+    }
+  }, [cancelScheduledFollow, pauseFollowingLatest, performInstantScrollToLatest, updateFollowingLatest])
 
   const handleUserInteractionStart = useCallback(() => {
     userGestureActiveRef.current = true
@@ -260,6 +304,15 @@ function useScrollFollower({
       return
     }
 
+    if (!isAutoFollowEnabled) {
+      cancelScheduledFollow()
+      return
+    }
+    if (isFollowingLatestRef.current && !userGestureActiveRef.current) {
+      // Keep the newest content above the viewport edge before it is painted.
+      // Following is immediate; there is no easing or animated catch-up.
+      performInstantScrollToLatest()
+    }
     scheduleAutoScroll()
   }, [
     cancelScheduledFollow,
@@ -283,7 +336,9 @@ function useScrollFollower({
     const resizeObserver =
       typeof ResizeObserver === 'function'
         ? new ResizeObserver(() => {
-            scheduleAutoScroll()
+            if (isAutoFollowEnabledRef.current && isFollowingLatestRef.current && !userGestureActiveRef.current) {
+              performInstantScrollToLatest()
+            }
           })
         : null
 
@@ -312,9 +367,10 @@ function useScrollFollower({
 
     container.addEventListener('scroll', handleScroll, { passive: true })
     container.addEventListener('wheel', handleWheel, { passive: true })
+    container.addEventListener('keydown', handleKeyDown)
     container.addEventListener('pointerdown', handleUserInteractionStart, { passive: true })
-    container.addEventListener('pointerup', handleUserInteractionEnd, { passive: true })
-    container.addEventListener('pointercancel', handleUserInteractionEnd, { passive: true })
+    window.addEventListener('pointerup', handleUserInteractionEnd, { passive: true })
+    window.addEventListener('pointercancel', handleUserInteractionEnd, { passive: true })
     container.addEventListener('touchstart', handleTouchStart, { passive: true })
     container.addEventListener('touchmove', handleTouchMove, { passive: true })
     container.addEventListener('touchend', handleTouchEnd, { passive: true })
@@ -323,9 +379,10 @@ function useScrollFollower({
     return () => {
       container.removeEventListener('scroll', handleScroll)
       container.removeEventListener('wheel', handleWheel)
+      container.removeEventListener('keydown', handleKeyDown)
       container.removeEventListener('pointerdown', handleUserInteractionStart)
-      container.removeEventListener('pointerup', handleUserInteractionEnd)
-      container.removeEventListener('pointercancel', handleUserInteractionEnd)
+      window.removeEventListener('pointerup', handleUserInteractionEnd)
+      window.removeEventListener('pointercancel', handleUserInteractionEnd)
       container.removeEventListener('touchstart', handleTouchStart)
       container.removeEventListener('touchmove', handleTouchMove)
       container.removeEventListener('touchend', handleTouchEnd)
@@ -334,17 +391,24 @@ function useScrollFollower({
       resizeObserver?.disconnect()
       cancelScheduledFollow()
       cancelScheduledScrollObservation()
+      if (clearProgrammaticScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(clearProgrammaticScrollFrameRef.current)
+        clearProgrammaticScrollFrameRef.current = null
+      }
+      programmaticScrollRef.current = false
     }
   }, [
     cancelScheduledFollow,
     cancelScheduledScrollObservation,
     handleScroll,
+    handleKeyDown,
     handleUserInteractionEnd,
     handleUserInteractionStart,
     handleTouchEnd,
     handleTouchMove,
     handleTouchStart,
     handleWheel,
+    performInstantScrollToLatest,
     scheduleAutoScroll,
     scrollContainerRef,
   ])

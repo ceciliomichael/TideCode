@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { persistStagedChatImages } from '../src/lib/chatAttachmentPersistence'
 import type { ChatAttachment } from '../src/types/chat'
+import { getStagedChatImagePath } from '../src/lib/chatStagedImageMentions'
 
 test('pasted images remain staged until submission and become durable image mentions on send', async () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
@@ -71,6 +72,7 @@ test('a failed image submission cleans up only files saved during that attempt',
       },
     },
   })
+
   const attachments: ChatAttachment[] = ['first', 'second'].map((id) => ({
     dataUrl: 'data:image/png;base64,YQ==',
     fileName: `${id}.png`,
@@ -87,6 +89,63 @@ test('a failed image submission cleans up only files saved during that attempt',
     )
     assert.deepEqual(removed, [['@attachments/first.png']])
     assert.equal(attachments.every((attachment) => !('path' in attachment)), true)
+  } finally {
+    if (previousWindow) {
+      Object.defineProperty(globalThis, 'window', previousWindow)
+    } else {
+      Reflect.deleteProperty(globalThis, 'window')
+    }
+  }
+})
+
+test('normal @attachment mention converts to the real stored path when submitted', async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const calls: string[] = []
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      tidecodeHistory: {
+        storeChatImageAttachment: async ({ fileName }: { fileName: string }) => {
+          calls.push(fileName)
+          return { fileName: 'clipboard (2).png', path: '@attachments/clipboard (2).png' }
+        },
+        cleanupUnreferencedChatAttachments: async () => undefined,
+      },
+    },
+  })
+
+  try {
+    const image: ChatAttachment = {
+      dataUrl: 'data:image/png;base64,YQ==',
+      fileName: 'clipboard.png',
+      id: 'draft-image-1',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 1,
+    }
+    const stagedPath = getStagedChatImagePath(image)
+    const mentionPathMap = { 'clipboard.png': stagedPath }
+    const original = { attachments: [image], mentionPathMap, text: 'Review @clipboard.png please' }
+    const result = await persistStagedChatImages('conversation-1', [original])
+
+    assert.deepEqual(calls, ['clipboard.png'])
+    assert.equal(result.messages[0].text, 'Review [[tools.read:@attachments/clipboard (2).png]] please')
+    assert.deepEqual(result.messages[0].mentionPathMap, {
+      'clipboard.png': '@attachments/clipboard (2).png',
+    })
+    assert.equal('path' in original.attachments[0], false)
+    assert.equal(original.mentionPathMap['clipboard.png'], stagedPath)
+    assert.equal(result.messages[0].attachments[0].fileName, 'clipboard (2).png')
+    assert.doesNotMatch(JSON.stringify(result.messages[0]), /\.staged/u)
+
+    const canonical = `Review [[tools.read:${stagedPath}]] please`
+    const canonicalResult = await persistStagedChatImages('conversation-1', [{
+      attachments: [image],
+      mentionPathMap,
+      text: canonical,
+    }])
+    assert.equal(canonicalResult.messages[0].text, 'Review [[tools.read:@attachments/clipboard (2).png]] please')
+    assert.doesNotMatch(canonicalResult.messages[0].text, /\[Image #1\]/u)
   } finally {
     if (previousWindow) {
       Object.defineProperty(globalThis, 'window', previousWindow)

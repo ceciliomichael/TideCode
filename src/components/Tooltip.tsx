@@ -14,6 +14,8 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport'
+import { useOverlayContainer, useOverlayMobileViewport } from './ui/OverlayContainerContext'
+import { getOverlayViewport } from '../lib/overlayViewport'
 
 interface TooltipChildProps {
   className?: string
@@ -97,7 +99,10 @@ export function Tooltip({
   triggerClassName,
   triggerLayout = fullWidthTrigger ? 'flex' : 'inline-flex',
 }: TooltipProps) {
-  const isMobileViewport = useIsMobileViewport()
+  const overlayContainer = useOverlayContainer()
+  const detectedMobileViewport = useIsMobileViewport()
+  const overlayMobileViewport = useOverlayMobileViewport()
+  const isMobileViewport = overlayMobileViewport ?? detectedMobileViewport
   const tooltipId = useId()
   const triggerRef = useRef<HTMLSpanElement | null>(null)
   const tooltipRef = useRef<HTMLDivElement | null>(null)
@@ -205,7 +210,7 @@ export function Tooltip({
       if (!(target instanceof Node)) {
         return
       }
-      if (triggerRef.current?.contains(target) || tooltipRef.current?.contains(target)) {
+      if (triggerRef.current?.contains(target) || tooltipRef.current?.contains(target) || event.composedPath().includes(triggerRef.current as EventTarget) || event.composedPath().includes(tooltipRef.current as EventTarget)) {
         return
       }
       hideTooltipImmediate()
@@ -240,13 +245,7 @@ export function Tooltip({
 
     const triggerRect = triggerRef.current.getBoundingClientRect()
     const tooltipRect = tooltipRef.current.getBoundingClientRect()
-    const visualViewport = window.visualViewport
-    const viewportLeft = visualViewport?.offsetLeft ?? 0
-    const viewportTop = visualViewport?.offsetTop ?? 0
-    const viewportWidth = visualViewport?.width ?? window.innerWidth
-    const viewportHeight = visualViewport?.height ?? window.innerHeight
-    const viewportRight = viewportLeft + viewportWidth
-    const viewportBottom = viewportTop + viewportHeight
+    const { left: viewportLeft, top: viewportTop, right: viewportRight, bottom: viewportBottom } = getOverlayViewport(tooltipRef.current)
     const preferredSide = side
     const fitsTop =
       triggerRect.top - viewportTop >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
@@ -397,7 +396,7 @@ export function Tooltip({
             >
               {content}
             </div>,
-            document.body,
+            overlayContainer ?? document.body,
           )
         : null}
     </>
@@ -413,7 +412,10 @@ export function AnchoredTooltip({
   side = 'top',
   visible,
 }: AnchoredTooltipProps) {
-  const isMobileViewport = useIsMobileViewport()
+  const overlayContainer = useOverlayContainer()
+  const detectedMobileViewport = useIsMobileViewport()
+  const overlayMobileViewport = useOverlayMobileViewport()
+  const isMobileViewport = overlayMobileViewport ?? detectedMobileViewport
   const tooltipId = useId()
   const tooltipRef = useRef<HTMLDivElement | null>(null)
   const [tooltipStyle, setTooltipStyle] = useState<CSSProperties>({
@@ -431,12 +433,11 @@ export function AnchoredTooltip({
     const resolvedAnchorRect = anchorRect ?? anchorElement?.getBoundingClientRect()
     if (!resolvedAnchorRect) return
     const tooltipRect = tooltipRef.current.getBoundingClientRect()
-    const viewportWidth = window.innerWidth
-    const viewportHeight = window.innerHeight
-    const fitsTop = resolvedAnchorRect.top >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
-    const fitsBottom = viewportHeight - resolvedAnchorRect.bottom >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
-    const fitsLeft = resolvedAnchorRect.left >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
-    const fitsRight = viewportWidth - resolvedAnchorRect.right >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const viewport = getOverlayViewport(tooltipRef.current)
+    const fitsTop = resolvedAnchorRect.top - viewport.top >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsBottom = viewport.bottom - resolvedAnchorRect.bottom >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsLeft = resolvedAnchorRect.left - viewport.left >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsRight = viewport.right - resolvedAnchorRect.right >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
     const resolvedSide = side === 'top'
       ? fitsTop || !fitsBottom ? 'top' : 'bottom'
       : side === 'bottom'
@@ -444,10 +445,10 @@ export function AnchoredTooltip({
         : side === 'left'
           ? fitsLeft || !fitsRight ? 'left' : 'right'
           : fitsRight || !fitsLeft ? 'right' : 'left'
-    const minLeft = TOOLTIP_EDGE_PADDING
-    const maxLeft = Math.max(TOOLTIP_EDGE_PADDING, viewportWidth - tooltipRect.width - TOOLTIP_EDGE_PADDING)
-    const minTop = TOOLTIP_EDGE_PADDING
-    const maxTop = Math.max(TOOLTIP_EDGE_PADDING, viewportHeight - tooltipRect.height - TOOLTIP_EDGE_PADDING)
+    const minLeft = viewport.left + TOOLTIP_EDGE_PADDING
+    const maxLeft = Math.max(minLeft, viewport.right - tooltipRect.width - TOOLTIP_EDGE_PADDING)
+    const minTop = viewport.top + TOOLTIP_EDGE_PADDING
+    const maxTop = Math.max(minTop, viewport.bottom - tooltipRect.height - TOOLTIP_EDGE_PADDING)
     const centeredLeft = resolvedAnchorRect.left + resolvedAnchorRect.width / 2 - tooltipRect.width / 2
     const centeredTop = resolvedAnchorRect.top + resolvedAnchorRect.height / 2 - tooltipRect.height / 2
     const left = resolvedSide === 'left'
@@ -502,6 +503,6 @@ export function AnchoredTooltip({
     >
       {content}
     </div>,
-    document.body,
+    overlayContainer ?? document.body,
   )
 }

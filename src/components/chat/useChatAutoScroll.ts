@@ -40,12 +40,22 @@ export function useChatAutoScroll({
   scrollContainerRef,
 }: UseChatAutoScrollOptions): void {
   const latestUserMessageId = [...messages].reverse().find((message) => message.role === 'user')?.id ?? 'no-user-message'
+  const latestMessage = messages[messages.length - 1]
+  const latestContentRevision = latestMessage
+    ? [
+        messages.length,
+        latestMessage.id,
+        latestMessage.content.length,
+        latestMessage.reasoningContent?.length ?? 0,
+        latestMessage.toolInvocations?.length ?? 0,
+      ].join(':')
+    : 'empty'
   const resetSignal = `${conversationId ?? 'no-conversation'}:${latestUserMessageId}:${followLatestSignal}`
   const resetAnchorMessagePresent = resetAnchorMessageId !== null && messages.some((message) => message.id === resetAnchorMessageId)
 
   const { pauseFollowingLatest } = useScrollFollower({
     anchorOnReset: true,
-    contentRevision: messages,
+    contentRevision: latestContentRevision,
     // Transcript following is a viewport preference, not a transport state.
     // Provider lifecycle flags can briefly clear while reasoning closes, draft
     // messages rotate, or a completed stream is persisted. Keeping the follower

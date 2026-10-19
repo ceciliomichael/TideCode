@@ -1,6 +1,7 @@
 import { File, Folder, Paperclip, Plug, Wand2 } from 'lucide-react'
 import type { McpState } from '../../types/mcp'
 import type { ChatAttachment } from '../../types/chat'
+import { getStagedChatImagePath } from '../../lib/chatStagedImageMentions'
 
 export type ChatMentionMenuType = 'file' | 'folder' | 'attachment' | 'skill' | 'mcp'
 
@@ -62,19 +63,23 @@ export function getMcpMentionEntries(state: McpState): ChatMentionMenuItem[] {
 }
 
 export function getAttachmentMentionEntries(
-  attachments: readonly (Pick<ChatAttachment, 'fileName' | 'kind'> & { path?: string })[],
+  attachments: readonly (Pick<ChatAttachment, 'fileName' | 'kind'> & { path?: string; id?: string })[],
 ): ChatMentionMenuItem[] {
   const entries = new Map<string, ChatMentionMenuItem>()
   for (const attachment of attachments) {
-    if (!attachment.path) {
+    const path = attachment.path
+      ?? (attachment.kind === 'image' && attachment.id
+        ? getStagedChatImagePath({ id: attachment.id })
+        : null)
+    if (!path) {
       continue
     }
-    entries.set(attachment.path, {
-      description: attachment.path,
+    entries.set(path, {
+      description: attachment.kind === 'image' && !attachment.path ? 'Pasted image (not sent yet)' : path,
       isDirectory: attachment.kind === 'folder',
       kind: 'attachment',
       label: attachment.fileName,
-      relativePath: attachment.path,
+      relativePath: path,
     })
   }
   return [...entries.values()]

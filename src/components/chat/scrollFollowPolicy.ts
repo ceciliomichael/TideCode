@@ -44,6 +44,20 @@ export function getScrollContainerSnapshot(container: ScrollContainerMetricsSour
   }
 }
 
+/** Do not write scrollTop for every token when the viewport is already at bottom. */
+export function needsAutoFollowScroll(container: ScrollContainerMetricsSource): boolean {
+  return getScrollContainerMetrics(container).distanceFromBottom > SCROLL_DIRECTION_EPSILON_PX
+}
+
+/** Content growth can reposition the viewport without the user scrolling up. */
+export function isLayoutDrivenUpwardShift(
+  previous: ScrollContainerSnapshot,
+  current: ScrollContainerSnapshot,
+): boolean {
+  return current.scrollTop < previous.scrollTop - SCROLL_DIRECTION_EPSILON_PX &&
+    current.scrollHeight > previous.scrollHeight + SCROLL_DIRECTION_EPSILON_PX
+}
+
 export function isNearScrollBottom(
   container: ScrollContainerMetricsSource,
   thresholdPx = DEFAULT_SCROLL_BOTTOM_THRESHOLD_PX,

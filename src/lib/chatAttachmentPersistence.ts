@@ -1,5 +1,7 @@
 import type { ChatAttachment } from '../types/chat'
 import { findChatImageReferenceMatches } from './chatImageReferences'
+import { expandChatMentions } from './chatMentions'
+import { getStagedChatImagePath } from './chatStagedImageMentions'
 
 interface StagedImageSubmission {
   attachments: ChatAttachment[]
@@ -35,6 +37,7 @@ export async function persistStagedChatImages(
 
       const storedById = new Map<string, ChatAttachment>()
       const references: string[] = []
+      const persistedPaths = new Map<string, string>()
       for (const image of stagedImages) {
         if (image.kind !== 'image') {
           continue
@@ -50,29 +53,46 @@ export async function persistStagedChatImages(
           fileName: stored.fileName,
           path: stored.path,
         })
+        persistedPaths.set(getStagedChatImagePath(image), stored.path)
         references.push(`[[tools.read:${stored.path}]]`)
       }
 
-      const matches = findChatImageReferenceMatches(message.text, references.length)
+      // The composer presents unsaved images as ordinary @attachment mentions.
+      // The temporary alias is UI-only and must never enter saved history.
+      const mentionPathMap = { ...message.mentionPathMap }
+      for (const [label, path] of Object.entries(mentionPathMap)) {
+        const persistedPath = persistedPaths.get(path)
+        if (persistedPath) mentionPathMap[label] = persistedPath
+      }
+      let expandedText = message.text
+      for (const [stagedPath, persistedPath] of persistedPaths) {
+        expandedText = expandedText.split(stagedPath).join(persistedPath)
+      }
+      expandedText = expandChatMentions(expandedText, new Map(Object.entries(mentionPathMap)))
+
+      // Older drafts may still contain [Image #N] instead of @attachment.
+      const matches = findChatImageReferenceMatches(expandedText, references.length)
       const referencedIndices = new Set(matches.map((match) => match.imageIndex))
       let text = ''
       let cursor = 0
       for (const match of matches) {
-        text += message.text.slice(cursor, match.start)
+        text += expandedText.slice(cursor, match.start)
         text += references[match.imageIndex]
         cursor = match.end
       }
-      text += message.text.slice(cursor)
+      text += expandedText.slice(cursor)
       for (let index = 0; index < references.length; index += 1) {
-        if (!referencedIndices.has(index)) {
+        const path = references[index].slice('[[tools.read:'.length, -2)
+        if (!referencedIndices.has(index) && !text.includes(path)) {
           text += `${text && !/\s$/u.test(text) ? ' ' : ''}${references[index]}`
         }
       }
 
-      const mentionPathMap = { ...message.mentionPathMap }
       for (const stored of storedById.values()) {
         if (stored.kind === 'image' && stored.path) {
-          mentionPathMap[stored.fileName] = stored.path
+          if (!Object.values(mentionPathMap).includes(stored.path)) {
+            mentionPathMap[stored.fileName] = stored.path
+          }
         }
       }
       preparedMessages.push({

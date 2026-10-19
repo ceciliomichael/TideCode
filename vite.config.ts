@@ -3,6 +3,7 @@ import path from 'node:path'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { tideuiHtmlRuntimePlugin } from './scripts/tideuiHtmlRuntimePlugin'
 
 // https://vitejs.dev/config/
 const workspaceTypeScriptWorkerPath = path.resolve(
@@ -34,6 +35,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    tideuiHtmlRuntimePlugin(),
     react(),
     tailwindcss(),
     electron({

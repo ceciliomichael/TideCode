@@ -33,7 +33,6 @@ import { ReasoningEffortBlock } from './chat/ReasoningEffortBlock'
 import { RuntimeTargetSelectorField } from './chat/RuntimeTargetSelectorField'
 import { TerminalExecutionModeSelectorField } from './chat/TerminalExecutionModeSelectorField'
 import {
-  ensureChatImageReferences,
   findChatImageReferenceForDeletion,
   getChatImageAttachments,
   removeChatImageReference,
@@ -43,6 +42,7 @@ import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPat
 import { collectRemoteAttachmentSelections, type RemoteAttachmentSelection } from '../lib/remoteAttachmentEntries'
 import { isRemoteBrowserRuntime } from '../remote/webBridge'
 import { uploadRemoteAttachmentSelection } from '../remote/remoteAttachmentUpload'
+import { getChatAttachmentMentionPath } from '../lib/chatStagedImageMentions'
 
 interface ChatInputProps {
   actionButtonMode?: 'auto' | 'abort' | 'send'
@@ -408,8 +408,8 @@ export function ChatInput({
       onAttachmentsChange?.([...attachments, ...nextNewAttachments])
       mentionMenu.insertMentionReferences(
         nextNewAttachments
-          .filter((attachment): attachment is Extract<ChatAttachment, { path: string }> => 'path' in attachment && Boolean(attachment.path))
-          .map((attachment) => ({ label: attachment.fileName, path: attachment.path })),
+          .map((attachment) => ({ label: attachment.fileName, path: getChatAttachmentMentionPath(attachment) }))
+          .filter((reference): reference is { label: string; path: string } => Boolean(reference.path)),
         initialInsertionPosition,
       )
     }
@@ -477,11 +477,8 @@ export function ChatInput({
       onAttachmentsChange?.(nextAttachments)
       mentionMenu.insertMentionReferences(
         nextNewAttachments
-          .filter((attachment): attachment is Extract<ChatAttachment, { path: string }> => 'path' in attachment && Boolean(attachment.path))
-          .map((attachment) => ({
-            label: attachment.fileName,
-            path: attachment.path,
-          })),
+          .map((attachment) => ({ label: attachment.fileName, path: getChatAttachmentMentionPath(attachment) }))
+          .filter((reference): reference is { label: string; path: string } => Boolean(reference.path)),
         insertionPosition,
       )
     }
@@ -537,13 +534,8 @@ export function ChatInput({
       onAttachmentsChange?.([...attachments, ...nextAttachments])
       mentionMenu.insertMentionReferences(
         nextAttachments
-          .filter((attachment): attachment is Extract<ChatAttachment, { kind: 'file' | 'folder' }> => (
-            attachment.kind === 'file' || attachment.kind === 'folder'
-          ))
-          .map((attachment) => ({
-          label: attachment.fileName,
-          path: attachment.path,
-          })),
+          .map((attachment) => ({ label: attachment.fileName, path: getChatAttachmentMentionPath(attachment) }))
+          .filter((reference): reference is { label: string; path: string } => Boolean(reference.path)),
       )
     }
     setAttachmentError(errors[0] ?? null)
@@ -804,13 +796,6 @@ export function ChatInput({
   }, [clearMentionPathMap, disabled, value])
 
   useEffect(() => {
-    const nextValue = ensureChatImageReferences(value, attachments)
-    if (nextValue !== value) {
-      onValueChange(nextValue)
-    }
-  }, [attachments, onValueChange, value])
-
-  useEffect(() => {
     if (!canManageAttachments || attachments.length === 0) {
       return
     }
@@ -820,10 +805,11 @@ export function ChatInput({
         .filter((path): path is string => Boolean(path)),
     )
     const nextAttachments = attachments.filter((attachment) => {
-      if (!('path' in attachment) || !attachment.path) {
+      const path = getChatAttachmentMentionPath(attachment)
+      if (!path) {
         return true
       }
-      return activeMentionPaths.has(attachment.path)
+      return activeMentionPaths.has(path)
     })
     if (nextAttachments.length !== attachments.length) {
       onAttachmentsChange?.(nextAttachments)

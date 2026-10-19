@@ -72,7 +72,7 @@ The prompt includes current execution-mode context. When execution mode changes,
 
 ## Context usage estimates
 
-`ContextUsageEstimate` separates system prompt, tool schema, chat history, injected context, and tool-result token counts. The idle context estimate and live compaction budget share model-message accounting, and the chat context indicator presents injected tokens in a distinct **Injection** row. User-message `<hidden_user_context ...>` XML blocks are extracted from model-facing content and counted separately from the surrounding chat text.
+`ContextUsageEstimate` separates system prompt, tool schema, chat history, injected context, and tool-result token counts. The idle context estimate and live compaction budget share model-message accounting, and the chat context indicator presents injected tokens in a distinct **Injection** row. User-message `<hidden_user_context ...>` XML blocks are extracted from model-facing content and counted separately from the surrounding chat text. Blank-chat estimates omit the synthetic workspace-instructions user message; that injection is counted once a real user message is present.
 
 ## Change guidance
 

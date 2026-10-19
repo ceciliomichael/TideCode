@@ -929,7 +929,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
     return getPlanPathsCreatedByRevertedUserMessage(messages, editingMessageId)
   })()
-  const revertAnchorMessageId = historyCutoffMessageId
+  const revertAnchorMessageId = activeOptimisticEditedPresentation ? null : historyCutoffMessageId
   const renderedEditingMessageId =
     activeOptimisticEditedPresentation?.messageId === editingMessageId
       ? null

@@ -1,3 +1,3 @@
 # tools.patch
 
-Apply an atomic raw Codex patch. Read exact source before constructing a patch. In Plan Mode, edits are restricted to the active plan.
+Apply an atomic raw Codex patch. Read exact source before constructing a patch. Use complete source lines in contextual hunks, order hunks top-to-bottom, and include a distinctive `@@` context or appropriate line position when similar blocks repeat. The matcher normalizes line endings and supports contextual whitespace differences, but do not rely on fuzzy matching to select ambiguous blocks. Updates preserve source line endings and UTF-8 BOM. All hunks are staged before writing and recoverable failures roll back committed files. If a hunk fails, reread the reported source lines and reconstruct the failed hunk; do not repeatedly submit the same invalid patch. Use `exec.payloads` for raw multiline patch strings rather than manually escaping long JavaScript strings. In Plan Mode, edits are restricted to the active plan.

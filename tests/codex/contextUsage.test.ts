@@ -90,6 +90,41 @@ test('context usage separates injected XML from chat history', async () => {
   )
 })
 
+test('workspace instructions are not counted as injection before a user message', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-context-usage-empty-chat-'))
+
+  try {
+    await fs.writeFile(path.join(workspaceRootPath, 'AGENTS.md'), 'Follow these workspace rules.')
+    const estimateInput = {
+      agentContextRootPath: workspaceRootPath,
+      chatMode: 'agent' as const,
+      contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+      modelId: 'test-model',
+      providerId: 'codex' as const,
+      terminalExecutionMode: 'sandbox' as const,
+    }
+
+    const emptyChatUsage = await estimateToolEnabledContextUsage({
+      ...estimateInput,
+      messages: [],
+    })
+    assert.equal(emptyChatUsage.injectionTokens, 0)
+
+    const sentMessageUsage = await estimateToolEnabledContextUsage({
+      ...estimateInput,
+      messages: [{
+        content: 'First message.',
+        id: 'first-user-message',
+        role: 'user',
+        timestamp: 1,
+      }],
+    })
+    assert.ok(sentMessageUsage.injectionTokens > 0)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('cached lightweight tool-schema counts match runtime provider-visible schemas', async () => {
   for (const providerId of ['openai', 'anthropic'] as const) {
     const workspaceRootPath = process.cwd()

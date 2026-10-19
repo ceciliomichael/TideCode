@@ -1,5 +1,5 @@
 import { Check, Copy, GitBranch, MoreHorizontal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { chatMessageContentWidthClassName } from "../lib/chatStyles";
 import { copyTextToClipboard } from "../lib/clipboard";
 import {
@@ -10,7 +10,7 @@ import type {
   AssistantWaitingIndicatorVariant,
   ToolInvocationTrace,
 } from "../types/chat";
-import { MarkdownRenderer } from "./chat/MarkdownRenderer";
+import { TideUIMessageBody } from "./tideui/TideUIMessageBody";
 import { ThinkingBlock } from "./chat/ThinkingBlock";
 import { ThinkingIndicator } from "./chat/ThinkingIndicator";
 import { resolveAssistantWaitingIndicatorVariant } from "./chat/assistantWaitingIndicator";
@@ -25,6 +25,8 @@ import type { ToolDecisionSubmission } from "./chat/ToolDecisionRequestCard";
 
 interface AssistantMessageProps {
   conversationId?: string | null;
+  onTideUIDraft?: (message: string, conversationId: string | null) => void;
+  onTideUISend?: (message: string, conversationId: string | null) => Promise<boolean> | boolean;
   content: string;
   finalizeToolGroups?: boolean;
   hasSubsequentAssistantText?: boolean;
@@ -105,6 +107,8 @@ function buildRenderedToolBlocks(entries: readonly ToolInvocationDisplayEntry[])
 
 export function AssistantMessage({
   conversationId = null,
+  onTideUIDraft,
+  onTideUISend,
   content,
   finalizeToolGroups = false,
   hasSubsequentAssistantText = false,
@@ -125,6 +129,10 @@ export function AssistantMessage({
   const [isCopied, setIsCopied] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const actionsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const tideUIActions = useMemo(() => ({
+    onDraft: onTideUIDraft ? (message: string) => onTideUIDraft(message, conversationId) : undefined,
+    onSend: (message: string) => onTideUISend?.(message, conversationId) ?? false,
+  }), [conversationId, onTideUIDraft, onTideUISend]);
   const normalizedContent = normalizeAssistantMessageContent({
     content,
     reasoningContent,
@@ -227,11 +235,10 @@ export function AssistantMessage({
       ) : null}
 
       {hasContent ? (
-        <MarkdownRenderer
+        <TideUIMessageBody
           content={normalizedContent.content}
-          className="text-left text-[15px]"
           isStreaming={isStreaming}
-          preserveLineBreaks
+          actions={tideUIActions}
         />
       ) : null}
 

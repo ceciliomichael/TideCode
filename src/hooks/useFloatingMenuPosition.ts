@@ -1,4 +1,5 @@
 import { useLayoutEffect, useState, type CSSProperties, type RefObject } from 'react'
+import { getOverlayViewport } from '../lib/overlayViewport'
 
 interface UseFloatingMenuPositionInput {
   anchorRef: RefObject<HTMLElement | null>
@@ -79,13 +80,7 @@ export function useFloatingMenuPosition({
         return
       }
 
-      const visualViewport = window.visualViewport
-      const viewportLeft = visualViewport?.offsetLeft ?? 0
-      const viewportTop = visualViewport?.offsetTop ?? 0
-      const viewportWidth = visualViewport?.width ?? window.innerWidth
-      const viewportHeight = visualViewport?.height ?? window.innerHeight
-      const viewportRight = viewportLeft + viewportWidth
-      const viewportBottom = viewportTop + viewportHeight
+      const { left: viewportLeft, top: viewportTop, right: viewportRight, bottom: viewportBottom } = getOverlayViewport(menuElement ?? null)
       const menuWidth = menuRect?.width ?? anchorRect.width
       // Use scrollHeight (intrinsic content height) for both placement and the
       // initial top calculation so the menu does not need a visible correction.

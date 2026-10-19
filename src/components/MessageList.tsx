@@ -33,6 +33,8 @@ import type { ModelSelectorOption } from "./chat/ModelSelectorField";
 import type { ToolDecisionSubmission } from "./chat/ToolDecisionRequestCard";
 
 interface MessageListProps {
+  onTideUIDraft?: (message: string, conversationId: string | null) => void;
+  onTideUISend?: (message: string, conversationId: string | null) => Promise<boolean> | boolean;
   chatModeOptions?: readonly ChatModeOption[];
   chatModeSelectorDisabled?: boolean;
   compactionMarkers?: readonly ChatCompactionMarker[];
@@ -82,6 +84,8 @@ interface MessageListProps {
 }
 
 interface MessageRowProps {
+  onTideUIDraft?: (message: string, conversationId: string | null) => void;
+  onTideUISend?: (message: string, conversationId: string | null) => Promise<boolean> | boolean;
   chatModeOptions?: readonly ChatModeOption[];
   chatModeSelectorDisabled?: boolean;
   composerAttachments: ChatAttachment[];
@@ -156,6 +160,8 @@ const MessageRow = memo(
     onCancelEditingMessage,
     onChatModeChange,
     onToolDecisionSubmit,
+    onTideUIDraft,
+    onTideUISend,
     onComposerAttachmentsChange,
     onComposerValueChange,
     onEditUserMessage,
@@ -249,6 +255,8 @@ const MessageRow = memo(
         ) : (
           <AssistantMessage
             conversationId={conversationId}
+            onTideUIDraft={onTideUIDraft}
+            onTideUISend={onTideUISend}
             content={message.content}
             finalizeToolGroups={finalizeToolGroups}
             hasSubsequentAssistantText={hasSubsequentAssistantText}
@@ -279,6 +287,8 @@ const MessageRow = memo(
   (previousProps, nextProps) => {
     if (
       previousProps.message !== nextProps.message ||
+      previousProps.onTideUIDraft !== nextProps.onTideUIDraft ||
+      previousProps.onTideUISend !== nextProps.onTideUISend ||
       previousProps.finalizeToolGroups !== nextProps.finalizeToolGroups ||
       previousProps.hasSubsequentAssistantText !== nextProps.hasSubsequentAssistantText ||
       previousProps.isCompactionInProgress !== nextProps.isCompactionInProgress ||
@@ -344,6 +354,8 @@ export function MessageList({
   onCancelEditingMessage,
   onChatModeChange,
   onToolDecisionSubmit,
+  onTideUIDraft,
+  onTideUISend,
   composerFocusSignal,
   isSending = false,
   selectedChatMode,
@@ -709,6 +721,8 @@ export function MessageList({
         onCancelEditingMessage={onCancelEditingMessage}
         onChatModeChange={onChatModeChange}
         onToolDecisionSubmit={onToolDecisionSubmit}
+        onTideUIDraft={onTideUIDraft}
+        onTideUISend={onTideUISend}
         onComposerAttachmentsChange={onComposerAttachmentsChange}
         onComposerValueChange={onComposerValueChange}
         onEditUserMessage={onEditUserMessage}

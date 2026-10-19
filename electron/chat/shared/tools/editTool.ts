@@ -13,7 +13,7 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createEditTool(context: WorkspaceToolContext, runtimeState?: PlanRuntimeState) {
   return tool({
-    description: 'Preferred tool for exact text replacement. Supply an ordered array of { path, oldText, newText, replace_all? }. Each replacement must match exactly once unless replace_all is true, which replaces every occurrence. All files are validated before any writes; failures leave files unchanged. For complex patch hunks, use tools.patch.',
+    description: 'Precise text replacement, matching exact text first and recovering a unique indentation-only mismatch. Use optional line (1-based start line), before, and after to disambiguate duplicates. Ambiguous matches reject without writing; replace_all intentionally replaces every candidate. Sequential changes may target earlier replacements. For complex contextual hunks use tools.patch.',
     inputSchema: jsonSchema({
       type: 'object',
       additionalProperties: false,
@@ -31,6 +31,9 @@ export function createEditTool(context: WorkspaceToolContext, runtimeState?: Pla
               oldText: { type: 'string', minLength: 1 },
               newText: { type: 'string' },
               replace_all: { type: 'boolean' },
+              line: { type: 'integer', minimum: 1 },
+              before: { type: 'string' },
+              after: { type: 'string' },
             },
           },
         },

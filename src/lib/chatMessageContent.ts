@@ -1,4 +1,5 @@
 import type { Message } from '../types/chat'
+import { findIncompleteTideFenceStart, findTideFences } from './tideui/segments'
 
 export interface AssistantMessageContentParts {
   content: string
@@ -91,6 +92,16 @@ export function normalizeMarkdownText(input: string) {
     .replace(/(?<=\w)([.!?])(?=[A-Z])/g, '$1\n\n')
 
   const codeFenceLineCount = countMarkdownCodeFenceLines(normalized)
+
+  if (findIncompleteTideFenceStart(normalized) !== null) {
+    return normalized
+  }
+
+  // TideUI owns incremental commitment and preview isolation. A synthetic
+  // closing fence would incorrectly mark a still-streaming widget as complete.
+  if (normalized.includes('```tide') && findTideFences(normalized).some(fence => !fence.closed)) {
+    return normalized
+  }
 
   if (codeFenceLineCount % 2 === 1 && /``\s*$/.test(normalized) && !/```\s*$/.test(normalized)) {
     return normalized.replace(/``(\s*)$/, '```$1')

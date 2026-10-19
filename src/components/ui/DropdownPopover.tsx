@@ -6,6 +6,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
+import { useOverlayContainer } from './OverlayContainerContext'
 
 interface DropdownPopoverProps extends Omit<
   HTMLAttributes<HTMLDivElement>,
@@ -31,6 +32,7 @@ export function DropdownPopover({
   className,
   ...props
 }: DropdownPopoverProps) {
+  const overlayContainer = useOverlayContainer()
   const style = useFloatingMenuPosition({
     anchorRef,
     menuRef: panelRef,
@@ -46,7 +48,9 @@ export function DropdownPopover({
       if (
         event.target instanceof Node &&
         !anchorRef.current?.contains(event.target) &&
-        !panelRef.current?.contains(event.target)
+        !panelRef.current?.contains(event.target) &&
+        !event.composedPath().includes(anchorRef.current as EventTarget) &&
+        !event.composedPath().includes(panelRef.current as EventTarget)
       ) {
         onClose()
       }
@@ -84,6 +88,6 @@ export function DropdownPopover({
     >
       {children}
     </div>,
-    document.body,
+    overlayContainer ?? document.body,
   )
 }

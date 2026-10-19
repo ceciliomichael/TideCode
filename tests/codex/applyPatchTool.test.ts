@@ -11,6 +11,18 @@ function standardPatch(body: string) {
   return `*** Begin Patch\n${body}\n*** End Patch`
 }
 
+test('apply_patch preserves CRLF and BOM when matching normalized source lines', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-line-endings-'))
+  const targetPath = path.join(workspaceRootPath, 'value.txt')
+  try {
+    await fs.writeFile(targetPath, '\uFEFFfirst\r\nsecond\r\nthird\r\n')
+    await applyPatchInWorkspace(workspaceRootPath, standardPatch('*** Update File: value.txt\n@@\n-second\n+changed'))
+    assert.equal(await fs.readFile(targetPath, 'utf8'), '\uFEFFfirst\r\nchanged\r\nthird\r\n')
+  } finally {
+    await fs.rm(workspaceRootPath, { recursive: true, force: true })
+  }
+})
+
 test('apply_patch explains context-only update hunks without changing the file', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-noop-'))
   const targetPath = path.join(workspaceRootPath, 'value.txt')

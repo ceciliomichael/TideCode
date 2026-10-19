@@ -498,6 +498,7 @@ synchronizeDraftFolder,
     handleRevertUserMessage,
     handleSendEditedMessage,
     handleSendMainMessage,
+    handleTideUISend,
     handleToolDecisionSubmit,
     showImplementPlanButton,
   } = useChatMessageActions({
@@ -731,6 +732,7 @@ synchronizeDraftFolder,
               handleRevertUserMessage={handleRevertUserMessage}
               handleSendEditedMessage={handleSendEditedMessage}
               handleSendMainMessage={handleSendMainMessage}
+              handleTideUISend={handleTideUISend}
               handleToolDecisionSubmit={handleToolDecisionSubmit}
               isCompressingChat={isCompressingChat}
               isTerminalSurfaceOpen={isTerminalSurfaceOpen}

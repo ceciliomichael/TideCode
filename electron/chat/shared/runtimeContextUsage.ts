@@ -113,7 +113,9 @@ export async function estimateToolEnabledContextUsage(input: {
   if (!promptOptions.includeImageAttachments) {
     modelMessages = stripImageAttachmentsFromModelMessages(modelMessages)
   }
-  modelMessages = applyWorkspaceInstructionsContext(modelMessages, normalizedWorkspaceRootPath)
+  if (modelMessages.some((message) => message.role === 'user')) {
+    modelMessages = applyWorkspaceInstructionsContext(modelMessages, normalizedWorkspaceRootPath)
+  }
   const systemPrompt = prompt.system
   const messageUsage = estimateModelMessageContextUsage(modelMessages)
   const toolSchemaTokens = normalizedWorkspaceRootPath

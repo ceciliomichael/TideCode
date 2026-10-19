@@ -4,9 +4,11 @@ import {
   didScrollableRangeShrink,
   getScrollContainerMetrics,
   getScrollContainerSnapshot,
+  isLayoutDrivenUpwardShift,
   isNearScrollBottom,
   isScrollingDown,
   isScrollingUp,
+  needsAutoFollowScroll,
   resolveScrollFollowing,
   shouldMeasureScrollContainerLayout,
 } from '../src/components/chat/scrollFollowPolicy'
@@ -22,6 +24,19 @@ function createScrollContainer(scrollTop: number) {
 function createSnapshot(scrollTop: number, scrollHeight = 1_000, clientHeight = 400) {
   return getScrollContainerSnapshot({ clientHeight, scrollHeight, scrollTop })
 }
+
+test('auto-follow writes only when new content extends beyond the viewport', () => {
+  assert.equal(needsAutoFollowScroll(createScrollContainer(600)), false)
+  assert.equal(needsAutoFollowScroll(createScrollContainer(599.5)), false)
+  assert.equal(needsAutoFollowScroll(createScrollContainer(590)), true)
+  assert.equal(needsAutoFollowScroll({ clientHeight: 400, scrollHeight: 1_200, scrollTop: 600 }), true)
+})
+
+test('streamed layout shifts are distinguishable from intentional upward scrolling', () => {
+  assert.equal(isLayoutDrivenUpwardShift(createSnapshot(600), createSnapshot(590, 1100)), true)
+  assert.equal(isLayoutDrivenUpwardShift(createSnapshot(600), createSnapshot(590)), false)
+  assert.equal(isLayoutDrivenUpwardShift(createSnapshot(600), createSnapshot(600, 1100)), false)
+})
 
 test('scroll metrics clamp the bottom position and distance to zero', () => {
   assert.deepEqual(getScrollContainerMetrics(createScrollContainer(700)), {

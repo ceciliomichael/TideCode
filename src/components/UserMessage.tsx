@@ -21,6 +21,7 @@ import {
   getChatImageAttachments,
 } from "../lib/chatImageReferences";
 import { restoreChatMentionPathMap } from "../lib/chatMentions";
+import { hasStagedChatImageMention } from "../lib/chatStagedImageMentions";
 
 interface UserMessageProps {
   attachments?: readonly ChatAttachment[];
@@ -36,7 +37,9 @@ export function UserMessage({ attachments = [], content, mentionPathMap, onEdit,
   const [isImageReferenceHovered, setIsImageReferenceHovered] = useState(false);
   const trimmedContent = content.trim();
   const imageAttachments = getChatImageAttachments(attachments);
-  const renderedContent = ensureChatImageReferences(content, attachments);
+  const renderedContent = hasStagedChatImageMention(attachments, mentionPathMap)
+    ? content
+    : ensureChatImageReferences(content, attachments);
   const renderedMentionPathMap = useMemo(
     () => restoreChatMentionPathMap(mentionPathMap),
     [mentionPathMap],

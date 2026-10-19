@@ -11,6 +11,7 @@ import { handleMarkdownLinkClick, preprocessMarkdown } from '../../lib/markdown'
 import { detectRawHtmlDocument } from '../../lib/markdownCodeDetection'
 import { MarkdownListItem, MarkdownOrderedList } from '../markdown/MarkdownList'
 import { CodeBlock } from './CodeBlock'
+import { markdownTableComponents } from '../markdown/markdownTableComponents'
 
 interface MarkdownRendererProps {
   content: string
@@ -216,19 +217,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           {children}
         </a>
       ),
-      table: (props: React.ComponentPropsWithoutRef<'table'>) => (
-        <div className="my-2 overflow-x-auto rounded-xl border border-border">
-          <table {...props} className="w-full border-collapse text-left text-[14px]" />
-        </div>
-      ),
-      thead: (props: React.ComponentPropsWithoutRef<'thead'>) => <thead {...props} className="bg-surface-muted" />,
-      tr: (props: React.ComponentPropsWithoutRef<'tr'>) => <tr {...props} className="border-b border-border last:border-0" />,
-      th: (props: React.ComponentPropsWithoutRef<'th'>) => (
-        <th {...props} className="px-3 py-2 text-left text-[13px] font-semibold text-foreground" />
-      ),
-      td: (props: React.ComponentPropsWithoutRef<'td'>) => (
-        <td {...props} className="px-3 py-2 align-top text-left text-foreground" />
-      ),
+      ...markdownTableComponents,
       hr: (props: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className="my-2 border-border" />,
     }),
     [isStreaming],

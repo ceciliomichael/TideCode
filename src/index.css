@@ -1,4 +1,5 @@
 @import '@fontsource-variable/google-sans-flex';
+@import './components/tideui/tideui.css';
 @import "tailwindcss";
 
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));

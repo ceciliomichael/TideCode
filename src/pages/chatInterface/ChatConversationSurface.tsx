@@ -43,6 +43,7 @@ interface ChatConversationSurfaceProps {
   handleRevertUserMessage: MessageListProps['onRevertUserMessage']
   handleSendEditedMessage: MessageListProps['onSendEditedMessage']
   handleSendMainMessage: ChatInputProps['onSend']
+  handleTideUISend: (message: string, sourceConversationId: string | null) => Promise<boolean>
   handleToolDecisionSubmit: MessageListProps['onToolDecisionSubmit']
   isCompressingChat: boolean
   liveCompaction: ChatCompactionLifecycleState | null
@@ -97,6 +98,7 @@ export function ChatConversationSurface({
   handleRevertUserMessage,
   handleSendEditedMessage,
   handleSendMainMessage,
+  handleTideUISend,
   handleToolDecisionSubmit,
   isCompressingChat,
   liveCompaction,
@@ -136,6 +138,14 @@ export function ChatConversationSurface({
     },
     [handleSendEditedMessage, requestFollowLatest],
   )
+  const handleTideUIDraft = useCallback((message: string, sourceConversationId: string | null) => {
+    if (!sourceConversationId || sourceConversationId !== chatMessages.activeConversationId ||
+        chatMessages.isEditingMessage) {
+      return
+    }
+    const existing = chatMessages.mainComposerValue
+    chatMessages.setMainComposerValue(existing.trim() ? `${existing}\n\n${message}` : message)
+  }, [chatMessages])
   const latestPlanPresentation = getLatestCompletedPlanPresentation(chatMessages.messages)
   const latestPlanKey = latestPlanPresentation
     ? `${latestPlanPresentation.relativePath}:${latestPlanPresentation.updatedAt}`
@@ -211,6 +221,8 @@ export function ChatConversationSurface({
               editComposerMentionPathMap={chatMessages.editComposerMentionPathMap}
               onChatModeChange={chatMessages.setSelectedChatMode}
               onToolDecisionSubmit={handleToolDecisionSubmit}
+              onTideUIDraft={handleTideUIDraft}
+              onTideUISend={handleTideUISend}
               onBranchAssistantMessage={chatMessages.branchConversationFromAssistantMessage}
               onEditUserMessage={handleEditUserMessage}
               onRevertUserMessage={handleRevertUserMessage}

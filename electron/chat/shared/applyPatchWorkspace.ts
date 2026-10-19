@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { getSafeWorkspaceTargetPath } from '../../workspace/paths'
-import { retryTransientFilesystemOperation, writeTextFileAtomically } from './tools/workspaceMutationSafety'
+import { preserveExistingTextFormat, retryTransientFilesystemOperation, writeTextFileAtomically } from './tools/workspaceMutationSafety'
 import { enqueueWorkspaceMutations } from './tools/workspaceMutationQueue'
 import { resolveWorkspaceAliasRelativePath } from './tools/workspaceToolPaths'
 import { applyUpdateChunks, normalizeContentLineEndings } from './applyPatchMatcher'
@@ -161,14 +161,17 @@ export async function applyPatchInWorkspace(
       )
     }
 
-    stagedFiles.set(writeTarget.absolutePath, { content: nextContent, target: writeTarget })
+    // Patch matching uses normalized line endings. Serialize updates using the
+    // source format so a small patch does not rewrite unrelated lines or BOMs.
+    const formattedContent = preserveExistingTextFormat(nextContent, existingContent)
+    stagedFiles.set(writeTarget.absolutePath, { content: formattedContent, target: writeTarget })
     if (nextTarget && nextTarget.absolutePath !== sourceTarget.absolutePath) {
       stagedFiles.set(sourceTarget.absolutePath, { content: null, target: sourceTarget })
     }
 
     changes.push({
       absolutePath: sourceTarget.absolutePath,
-      newContent: nextContent,
+      newContent: formattedContent,
       ...(nextTarget ? { nextAbsolutePath: nextTarget.absolutePath } : {}),
       oldContent: existingContent,
       relativePath: writeTarget.relativePath,

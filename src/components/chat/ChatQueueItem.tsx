@@ -35,6 +35,7 @@ import {
 import { useChatMentionNavigation } from '../../hooks/useChatMentionNavigation'
 import { isRemoteBrowserRuntime } from '../../remote/webBridge'
 import { uploadRemoteAttachmentSelection } from '../../remote/remoteAttachmentUpload'
+import { getChatAttachmentMentionPath, hasStagedChatImageMention } from '../../lib/chatStagedImageMentions'
 
 interface ChatQueueItemProps {
   conversationId?: string | null
@@ -230,23 +231,24 @@ export function ChatQueueItem({
       let nextContent = draftContentRef.current
       let nextCursorPosition = insertionPosition
       for (const attachment of nextAttachments) {
-        if (!('path' in attachment) || !attachment.path) {
+        const path = getChatAttachmentMentionPath(attachment)
+        if (!path) {
           continue
         }
         let label = attachment.fileName
         let suffix = 2
-        while (nextMentionMap.has(label) && nextMentionMap.get(label) !== attachment.path) {
+        while (nextMentionMap.has(label) && nextMentionMap.get(label) !== path) {
           label = `${attachment.fileName} (${suffix})`
           suffix += 1
         }
-        nextMentionMap.set(label, attachment.path)
+        nextMentionMap.set(label, path)
         const insertion = insertChatMentionAtPosition(nextContent, nextCursorPosition, label)
         nextContent = insertion.nextValue
         nextCursorPosition = insertion.nextCursorPosition
       }
       setDraftMentionPathMap(nextMentionMap)
       setDraftAttachments((currentValue) => [...currentValue, ...nextAttachments])
-      setDraftContent(ensureChatImageReferences(nextContent, [...draftAttachments, ...nextAttachments]))
+      setDraftContent(nextContent)
       window.requestAnimationFrame(() => {
         textareaRef.current?.focus()
         textareaRef.current?.setSelectionRange(nextCursorPosition, nextCursorPosition)
@@ -330,13 +332,6 @@ export function ChatQueueItem({
   }, [editCancelBoundaryRef, handleCancel, isEditing])
 
   useEffect(() => {
-    const nextContent = ensureChatImageReferences(draftContent, draftAttachments)
-    if (nextContent !== draftContent) {
-      setDraftContent(nextContent)
-    }
-  }, [draftAttachments, draftContent])
-
-  useEffect(() => {
     if (!isEditing || draftAttachments.length === 0) {
       return
     }
@@ -346,10 +341,11 @@ export function ChatQueueItem({
         .filter((path): path is string => Boolean(path)),
     )
     const nextAttachments = draftAttachments.filter((attachment) => {
-      if (!('path' in attachment) || !attachment.path) {
+      const path = getChatAttachmentMentionPath(attachment)
+      if (!path) {
         return true
       }
-      return activeMentionPaths.has(attachment.path)
+      return activeMentionPaths.has(path)
     })
     if (nextAttachments.length !== draftAttachments.length) {
       setDraftAttachments(nextAttachments)
@@ -427,7 +423,9 @@ export function ChatQueueItem({
 
   const messageAttachments = message.attachments ?? []
   const messageImageAttachments = getChatImageAttachments(messageAttachments)
-  const renderedMessageContent = ensureChatImageReferences(message.content, messageAttachments)
+  const renderedMessageContent = hasStagedChatImageMention(messageAttachments, message.mentionPathMap)
+    ? message.content
+    : ensureChatImageReferences(message.content, messageAttachments)
   const messageMentionPathMap = restoreChatMentionPathMap(message.mentionPathMap)
   const visibleMessageContent = collapseChatMentionMarkup(message.content, messageMentionPathMap)
 
