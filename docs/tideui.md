@@ -4,7 +4,9 @@ TideUI is TideCode's first-party, AI-generated interface language. It uses exist
 
 ## When to use
 
-Prefer ordinary Markdown for normal answers. Use TideUI for charts, controls, small dashboards, visual explanations, tables, and follow-up buttons that offer significant value. Use one or two modest-sized blocks rather than large nested interfaces. The entire grammar is deterministic; native blocks contain no JavaScript or arbitrary HTML.
+Choose the presentation that makes the answer easiest to understand and use, respecting the user's requested format. Prefer native TideUI for structured comparisons, meaningful options, timelines, metrics, progress, and useful interactions without requiring an explicit visual request. Use Markdown for explanations, code, commands, and short answers. Mix prose and UI naturally without presenting the same information twice, and keep interfaces proportional to the answer rather than adding decorative dashboards or controls to routine replies.
+
+Prefer native components for supported presentations. Use custom HTML when its layout or local interaction capabilities materially improve the response beyond native components. Controls must have working, supported behavior, and follow-up buttons must clearly describe the intended action. Use supported facts and evidence; never invent chart values, completion states, or capabilities. The native grammar is deterministic and contains no JavaScript or arbitrary HTML.
 
 ## Syntax
 

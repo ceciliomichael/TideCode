@@ -1,5 +1,7 @@
 # Durable project knowledge
 
+- On 2026-10-21 the user approved proactive generative UI in AI responses while retaining Markdown. Prefer native TideUI for useful structured comparisons, options, timelines, metrics, progress and interactions without requiring an explicit visual request. Keep explanations, code, commands and short answers in Markdown, combine formats without duplication, and use custom HTML when its layout or local interaction capabilities add value beyond native components. Avoid decorative interfaces and fabricated data or functionality.
+
 - On 2026-10-20 the user explicitly asked for every application error to follow the browser screenshot toast's visual language and use plain, actionable wording rather than technical exception text. Preserve technical output in tool/terminal diagnostics where it is useful, not in ordinary user notifications.
 
 - On 2026-10-20 the user clarified that branching should copy the chat through the selected point, including applicable compression and durable memory. Reverting after several compactions should reuse the latest safe earlier compaction and retained messages instead of loading the raw transcript from the first message. Preserve separate per-chat ownership after branching. Tests may use isolated copies of chat `22fa05ff-8b2a-47b9-ae29-dd346763c9be`; do not rewrite its live saved history for verification.
