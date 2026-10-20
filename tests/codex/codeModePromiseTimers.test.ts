@@ -8,15 +8,15 @@ const registry = {
   search: () => [],
 }
 
-test('Promise construction and timers work in restricted Code Mode', async () => {
+test('native Promise resolvers, timer callbacks and String conversion work in Code Mode', async () => {
   const executor = new CodeModeExecutor(registry)
   try {
-    const result = await executor.run('const a = await new Promise(resolve => setTimeout(() => resolve(42), 5)); return await Promise.all([a, Promise.resolve(2)])')
+    const result = await executor.run('await new Promise(resolve => setTimeout(resolve, 5)); const a = await new Promise(resolve => setTimeout(resolve, 5, 42)); return await Promise.all([String(a), Promise.resolve(2)])')
     assert.equal(result.status, 'success', String(result.error))
-    assert.deepEqual(result.output, [42, 2])
-    const invalid = await executor.run('setTimeout(() => 1, 31000)')
+    assert.deepEqual(result.output, ['42', 2])
+    const invalid = await executor.run('setTimeout(() => 1, 31000)', { limits: { timeoutMs: 1000 } })
     assert.equal(invalid.status, 'error')
-    assert.match(String(invalid.error), /30000ms/)
+    assert.match(String(invalid.error), /execution limit/)
   } finally {
     await executor.dispose()
   }

@@ -29,6 +29,7 @@ const promptsDestination = path.join(
 )
 const aiSource = path.join(workspaceRoot, 'electron', 'chat', 'shared', 'ai')
 const aiDestination = path.join(consoleRuntimeDirectory, 'electron', 'chat', 'shared', 'ai')
+const codeModeWorkerSource = path.join(workspaceRoot, 'electron/chat/shared/codeMode/v8/worker.mjs')
 
 async function isNodePtyRuntimeFile(source) {
   const relativePath = path.relative(nodePtySource, source).split(path.sep).join('/')
@@ -113,6 +114,24 @@ await Promise.all([
   cp(promptsSource, promptsDestination, { recursive: true }),
   cp(aiSource, aiDestination, { recursive: true, filter: (source) =>
     source === aiSource || !path.extname(source) || source.endsWith('.md') }),
+  copyFile(codeModeWorkerSource, path.join(consoleRuntimeDirectory, 'code-mode-worker.mjs')),
+  copyFile(codeModeWorkerSource, path.join(workspaceRoot, 'dist-electron', 'code-mode-worker.mjs')),
+  copyFile(codeModeWorkerSource, path.join(electronOutputDirectory, 'code-mode-worker.mjs')),
+  copyFile(codeModeWorkerSource, path.join(electronRunServiceDirectory, 'code-mode-worker.mjs')),
+  // isolated-vm is a build dependency shipped only with this Node runtime. It
+  // must not be rebuilt against Electron or loaded into Electron's main process.
+  ...['isolated-vm', 'node-gyp-build'].map((name) => cp(
+    path.join(workspaceRoot, 'node_modules', name),
+    path.join(consoleRuntimeDirectory, 'node_modules', name),
+    { recursive: true, filter: (source) => {
+      const relative = path.relative(path.join(workspaceRoot, 'node_modules', name), source).split(path.sep).join('/')
+      if (relative.startsWith('prebuilds/')) {
+        const target = `prebuilds/${process.platform}-${process.arch}`
+        return relative === target || relative.startsWith(`${target}/`)
+      }
+      return !/^(src|tests|vendor|\.github)(\/|$)/.test(relative)
+    } },
+  )),
 ])
 
 async function verifyPackagedAiInstructions(sourceDirectory, relativePath = '') {

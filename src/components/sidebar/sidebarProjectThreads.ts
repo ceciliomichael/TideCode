@@ -10,6 +10,8 @@ export interface SidebarProjectOption {
   conversationCount: number
   id: string
   name: string
+  path?: string | null
+  description?: string
 }
 
 export interface SidebarThreadRow {
@@ -88,6 +90,7 @@ export function buildSidebarProjectOptions(
     conversationCount: conversationCounts.get(group.folder.id as string) ?? 0,
     id: group.folder.id as string,
     name: group.folder.name,
+    path: group.folder.path,
   }))
 }
 

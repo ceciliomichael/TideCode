@@ -32,12 +32,12 @@ export function useConversationNavigationActions({
   setWorkspaceViewMode,
 }: UseConversationNavigationActionsInput) {
   const handleCreateConversation = useCallback(
-    async (folderId?: string | null) => {
+    async (folderId?: string | null, projectFilterId = selectedProjectId) => {
       clearQueuedMessages()
       setWorkspaceViewMode('chat')
 
       const targetFolderId = folderId ?? null
-      if (shouldResetProjectFilterToAllProjects(selectedProjectId, targetFolderId)) {
+      if (shouldResetProjectFilterToAllProjects(projectFilterId, targetFolderId)) {
         setSelectedProjectId(ALL_PROJECTS_FILTER_ID)
         void onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID, selectedProjectName: null })
       }
@@ -74,7 +74,7 @@ export function useConversationNavigationActions({
         return
       }
       if (action.type === 'create_new_conversation') {
-        void handleCreateConversation(action.folderId)
+        void handleCreateConversation(action.folderId, projectId)
       }
     },
     [chatMessages, clearQueuedMessages, handleCreateConversation, onUpdateSettings, setSelectedProjectId, setWorkspaceViewMode],

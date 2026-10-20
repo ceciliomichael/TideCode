@@ -42,6 +42,16 @@
       ]
     },
     {
+      "from": "dist-cli-runtime/node_modules/isolated-vm",
+      "to": "cli/node_modules/isolated-vm",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "dist-cli-runtime/node_modules/node-gyp-build",
+      "to": "cli/node_modules/node-gyp-build",
+      "filter": ["**/*"]
+    },
+    {
       "from": "bin",
       "to": "bin",
       "filter": [

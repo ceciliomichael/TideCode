@@ -1,4 +1,4 @@
-import { Archive, Check, Folder, ListFilter, MessageSquareText } from 'lucide-react'
+import { Check, ListFilter } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
@@ -20,12 +20,10 @@ const historyFilters = [
   {
     id: ALL_PROJECTS_FILTER_ID,
     label: 'All projects',
-    Icon: Folder,
   },
   {
     id: CHATS_PROJECT_FILTER_ID,
     label: 'Chats',
-    Icon: MessageSquareText,
   },
 ] as const
 
@@ -96,7 +94,6 @@ export function SidebarHistoryFilter({
         {
           id: ARCHIVED_PROJECT_FILTER_ID,
           label: 'Archived',
-          Icon: Archive,
         },
       ]
     : historyFilters
@@ -125,10 +122,10 @@ export function SidebarHistoryFilter({
               role="menu"
               aria-label="Filter chats"
               onMouseLeave={() => setHighlightedFilterId(selectedProjectId)}
-              className="fixed z-[1700] min-w-[12rem] space-y-0.5 overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-soft"
+              className="fixed z-[1700] min-w-[9rem] space-y-0.5 overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-soft"
               style={menuStyle}
             >
-              {filters.map(({ id, label, Icon }) => {
+              {filters.map(({ id, label }) => {
                 const isSelected = selectedProjectId === id
                 const isHighlighted = highlightedFilterId === id
 
@@ -141,11 +138,10 @@ export function SidebarHistoryFilter({
                     onMouseEnter={() => setHighlightedFilterId(id)}
                     onClick={() => selectFilter(id)}
                     className={[
-                      'flex h-10 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm transition-[background-color,color,box-shadow]',
-                      getDropdownOptionStateClassName(isSelected, isHighlighted),
+                      'flex h-10 w-full items-center justify-between gap-2 rounded-lg px-2.5 text-left text-sm transition-[background-color,color,box-shadow]',
+                      getDropdownOptionStateClassName(isHighlighted),
                     ].join(' ')}
                   >
-                    <Icon size={16} strokeWidth={2} className="shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
                     {isSelected ? <Check size={16} strokeWidth={2.2} className="shrink-0" /> : null}
                   </button>

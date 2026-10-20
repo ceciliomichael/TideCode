@@ -1,5 +1,7 @@
 # Durable project knowledge
 
+- On 2026-10-20 the user approved replacing Code Mode's custom interpreter with isolated native V8 execution so AI programs can use ordinary JavaScript without language-specific workarounds. Preserve registered-tool authority, discovery, validation, permissions and execution limits; do not retain the custom interpreter as a fallback.
+
 - On 2026-10-20 the user requested native tool namespace guidance in TideCode's existing mode-transition hidden user context rather than the stable exec tool description. Plan Mode should receive planning-safe namespace guidance and a later Agent Mode implementation turn should receive Agent-native namespace guidance without inventing plan approval. Root tool discovery remains MCP-only, while native discovery requires an explicitly named namespace or exact contract lookup.
 
 - On 2026-10-20 the user required AI-created browser tabs to be visible in TideCode's existing browser panel so they can watch and interact with the same live page. The user also approved replacing the single `native` discovery namespace with five descriptively named native groups (`native_browser`, `native_files`, `native_terminal`, `native_skills`, `native_plan`) while preserving callable tool paths. Connected MCP namespaces should display their own server descriptions when available, otherwise a neutral fallback; every listed tool retains a concise description.
@@ -11,6 +13,8 @@
 - For the RAM/CPU optimization work discussed on 2026-10-17, the user prefers improving the current Electron app first. Rust is an option to evaluate against measured remaining bottlenecks, not an approved migration.
 - Resource/speed optimizations must retain existing UX and user state. The user specifically wants desktop Send to display the bubble immediately; preserve editing, queues, cancellation, attachments and navigation when making presentation optimistic.
 - Distinguish current checkout behavior, installed application measurements, and historical profiling reports. Do not attribute installed-process resource use to a source change without establishing artifact parity.
+
+- For the sidebar project selector, preserve two-row project items, let hover highlighting follow the pointer, and keep the ellipsis action's hover separate from the project row. Do not show checkmarks in the project dropdown. Choosing a project should immediately filter history to it and retain that filter while its new conversation is created. Keep Chats in the history filter, not the project dropdown.
 
 - Opening/reopening Diff must show its known changed-file list immediately; refresh metadata and hydrate previews without clearing the list while full file contents load. This includes accurate Staged/Unstaged +/− counts alongside file names; do not defer counts until preview contents arrive.
 

@@ -36,6 +36,7 @@ import { useChatMentionNavigation } from '../../hooks/useChatMentionNavigation'
 import { isRemoteBrowserRuntime } from '../../remote/webBridge'
 import { uploadRemoteAttachmentSelection } from '../../remote/remoteAttachmentUpload'
 import { getChatAttachmentMentionPath, hasStagedChatImageMention } from '../../lib/chatStagedImageMentions'
+import { nameStagedChatImages } from '../../lib/chatAttachmentNames'
 
 interface ChatQueueItemProps {
   conversationId?: string | null
@@ -227,10 +228,17 @@ export function ChatQueueItem({
     }
 
     if (nextAttachments.length > 0) {
+      let namedAttachments: ChatAttachment[]
+      try {
+        namedAttachments = await nameStagedChatImages(conversationId, draftAttachments, nextAttachments)
+      } catch (error) {
+        setAttachmentError(error instanceof Error ? error.message : 'Unable to check attachment filenames.')
+        return
+      }
       const nextMentionMap = new Map(draftMentionPathMap)
       let nextContent = draftContentRef.current
       let nextCursorPosition = insertionPosition
-      for (const attachment of nextAttachments) {
+      for (const attachment of namedAttachments) {
         const path = getChatAttachmentMentionPath(attachment)
         if (!path) {
           continue
@@ -247,7 +255,7 @@ export function ChatQueueItem({
         nextCursorPosition = insertion.nextCursorPosition
       }
       setDraftMentionPathMap(nextMentionMap)
-      setDraftAttachments((currentValue) => [...currentValue, ...nextAttachments])
+      setDraftAttachments((currentValue) => [...currentValue, ...namedAttachments])
       setDraftContent(nextContent)
       window.requestAnimationFrame(() => {
         textareaRef.current?.focus()

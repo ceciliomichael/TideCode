@@ -276,7 +276,7 @@ export function DropdownField({
         panelRef={listboxRef}
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
-        preferredPlacement={variant === 'text' ? 'above' : 'below'}
+        preferredPlacement="below"
         id={listboxId}
         role="listbox"
         tabIndex={-1}
@@ -313,10 +313,7 @@ export function DropdownField({
                       variant === 'text'
                         ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
                         : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
-                      getDropdownOptionStateClassName(
-                        isSelected,
-                        isHighlighted,
-                      ),
+                      getDropdownOptionStateClassName(isHighlighted),
                       isSelected ? selectedOptionClassName : undefined,
                     )}
                   >
@@ -367,7 +364,7 @@ export function DropdownField({
                     variant === 'text'
                       ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
                       : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
-                    getDropdownOptionStateClassName(isSelected, isHighlighted),
+                    getDropdownOptionStateClassName(isHighlighted),
                     isSelected ? selectedOptionClassName : undefined,
                   )}
                 >

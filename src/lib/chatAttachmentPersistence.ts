@@ -38,6 +38,7 @@ export async function persistStagedChatImages(
       const storedById = new Map<string, ChatAttachment>()
       const references: string[] = []
       const persistedPaths = new Map<string, string>()
+      const persistedFileNames = new Map<string, string>()
       for (const image of stagedImages) {
         if (image.kind !== 'image') {
           continue
@@ -54,21 +55,33 @@ export async function persistStagedChatImages(
           path: stored.path,
         })
         persistedPaths.set(getStagedChatImagePath(image), stored.path)
+        persistedFileNames.set(getStagedChatImagePath(image), stored.fileName)
         references.push(`[[tools.read:${stored.path}]]`)
       }
 
       // The composer presents unsaved images as ordinary @attachment mentions.
       // The temporary alias is UI-only and must never enter saved history.
       const mentionPathMap = { ...message.mentionPathMap }
+      const renamedLabels: { original: string; stored: string; path: string }[] = []
       for (const [label, path] of Object.entries(mentionPathMap)) {
         const persistedPath = persistedPaths.get(path)
-        if (persistedPath) mentionPathMap[label] = persistedPath
+        if (persistedPath) {
+          mentionPathMap[label] = persistedPath
+          const storedFileName = persistedFileNames.get(path)
+          if (storedFileName && storedFileName !== label) {
+            renamedLabels.push({ original: label, stored: storedFileName, path: persistedPath })
+          }
+        }
       }
       let expandedText = message.text
       for (const [stagedPath, persistedPath] of persistedPaths) {
         expandedText = expandedText.split(stagedPath).join(persistedPath)
       }
       expandedText = expandChatMentions(expandedText, new Map(Object.entries(mentionPathMap)))
+      for (const rename of renamedLabels) {
+        delete mentionPathMap[rename.original]
+        mentionPathMap[rename.stored] = rename.path
+      }
 
       // Older drafts may still contain [Image #N] instead of @attachment.
       const matches = findChatImageReferenceMatches(expandedText, references.length)

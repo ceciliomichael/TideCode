@@ -1,14 +1,14 @@
 import { realpath } from 'node:fs/promises'
 import path from 'node:path'
-import type { AgentToolExecutionResult } from '../../toolTypes'
-import type { AgentToolRegistry, AgentToolRegistryEntry } from '../../tools/registry'
-import { getCodeModeToolCallStatus } from '../toolCallStatus'
-import type { CodeModeExecutionLimits, CodeModeToolCallRecord } from '../types'
-import { CodeModeRuntimeError, CodePromise, ToolReference, type AstNode } from './model'
+import type { AgentToolExecutionResult } from '../toolTypes'
+import type { AgentToolRegistry, AgentToolRegistryEntry } from '../tools/registry'
+import { getCodeModeToolCallStatus } from './toolCallStatus'
+import type { CodeModeExecutionLimits, CodeModeToolCallRecord } from './types'
+import { CodeModeRuntimeError } from './diagnostics'
 import { copyBoundaryValue } from './values'
-import { formatAvailableApiSearch, searchAvailableApis } from '../../ai/tools/available/search/search'
-import { getAvailableApi } from '../../ai/tools/available/get/get'
-import { formatAvailableApiList, listAvailableApis } from '../../ai/tools/available/list/list'
+import { formatAvailableApiSearch, searchAvailableApis } from '../ai/tools/available/search/search'
+import { getAvailableApi } from '../ai/tools/available/get/get'
+import { formatAvailableApiList, listAvailableApis } from '../ai/tools/available/list/list'
 
 const HIDDEN_MODEL_SEMANTIC_KEYS = new Set([
   'active',
@@ -219,89 +219,70 @@ export class ToolRuntime {
     )
   }
 
-  root(): ToolReference {
-    return new ToolReference([])
+  paths(): string[] {
+    return [...this.projectedByPath.keys(), 'available.list', 'available.search', 'available.get']
   }
 
-  member(reference: ToolReference, name: string, node: AstNode): ToolReference {
-    if (RESERVED_SEGMENTS.has(name)) {
-      throw new CodeModeRuntimeError('TypeError', `Property '${name}' is not available in Code Mode.`, node)
+  call(key: string, args: unknown[]): Promise<unknown> {
+    if (this.options.abortSignal.aborted) {
+      throw new CodeModeRuntimeError('Cancelled', 'Code Mode execution was aborted.')
     }
-    const next = [...reference.path, name]
-    const key = next.join('.')
-    if (this.projectedByPath.has(key) || this.childNames.has(key) || key === 'available.list' || key === 'available.search' || key === 'available.get') {
-      return new ToolReference(next)
-    }
-    const parentPath = reference.path.join('.')
-    const available = parentPath === 'mcp'
-      ? []
-      : [...(this.childNames.get(parentPath) ?? [])].slice(0, 8)
-    throw new CodeModeRuntimeError(
-      'UnknownTool',
-      `Unknown Code Mode capability tools.${key}.`,
-      node,
-      available.length > 0 ? [`Available here: ${available.join(', ')}. Use tools.available.search(...) for discovery.`] : ['Use tools.available.search(...) for discovery.'],
-    )
-  }
-
-  keys(reference: ToolReference): string[] {
-    const parentPath = reference.path.join('.')
-    if (parentPath === 'mcp') {
-      return [...this.options.discoveredMcpTools].map((name) => name.slice('tools.mcp.'.length)).sort()
-    }
-    return [...(this.childNames.get(parentPath) ?? [])].sort()
-  }
-
-  call(reference: ToolReference, args: unknown[], node: AstNode): CodePromise {
-    const key = reference.path.join('.')
     if (key === 'available.list') {
-      const result = this.list(args[0], node)
+      const result = this.list(args[0])
       this.recordDiscovery('available.list', args[0], result, 'Listed tools')
       return this.track(Promise.resolve(result))
     }
     if (key === 'available.search') {
-      const result = this.search(args[0], node)
+      const result = this.search(args[0])
       this.recordDiscovery('available.search', args[0], result, 'Searched tools')
       return this.track(Promise.resolve(result))
     }
     if (key === 'available.get') {
-      const result = this.get(args[0], node)
+      const result = this.get(args[0])
       this.recordDiscovery('available.get', args[0], result, 'Retrieved tools')
       return this.track(Promise.resolve(result))
     }
     const tool = this.projectedByPath.get(key)
-    if (!tool) throw new CodeModeRuntimeError('UnknownTool', `tools.${key} is not callable.`, node)
+    if (!tool) throw new CodeModeRuntimeError('UnknownTool', `tools.${key} is not callable.`)
     if (!this.options.obtainedTools.has(key)) {
       if (tool.entry.namespace === 'mcp' && !this.options.discoveredMcpTools.has(tool.expression)) {
-        throw new CodeModeRuntimeError('UnknownTool', `Discover this MCP capability with tools.available.list or tools.available.search before using it.`, node)
+        throw new CodeModeRuntimeError('UnknownTool', `Discover this MCP capability with tools.available.list or tools.available.search before using it.`)
       }
-      const contract = this.get({ name: tool.expression }, node)
+      const contract = this.get({ name: tool.expression })
       this.recordDiscovery('available.get', { name: tool.expression }, contract, 'Retrieved tools')
       throw new CodeModeRuntimeError(
         'ToolContractRequired',
         `The attempted ${tool.expression} call was not executed because its instructions had not been retrieved. TideCode retrieved them now. Review this complete tools.available.get result and retry the operation with the correct arguments:\n${JSON.stringify(contract, null, 2)}`,
-        node,
+        undefined,
       )
     }
     if (args.length !== 1) {
-      throw new CodeModeRuntimeError('InvalidToolArguments', `${tool.expression} expects exactly one input value.`, node)
+      throw new CodeModeRuntimeError('InvalidToolArguments', `${tool.expression} expects exactly one input value.`)
     }
-    const input = copyBoundaryValue(args[0], `Arguments for ${tool.expression}`, node)
+    const input = copyBoundaryValue(args[0], `Arguments for ${tool.expression}`)
     return this.track(this.execute(tool, input))
   }
 
   async drain(): Promise<void> {
-    if (this.pending.size === 0) return
-    await Promise.allSettled([...this.pending])
+    while (this.pending.size > 0 && !this.options.abortSignal.aborted) {
+      await new Promise<void>((resolve) => {
+        const complete = () => {
+          this.options.abortSignal.removeEventListener('abort', complete)
+          resolve()
+        }
+        this.options.abortSignal.addEventListener('abort', complete, { once: true })
+        void Promise.allSettled([...this.pending]).then(complete)
+      })
+    }
   }
 
-  private track(promise: Promise<unknown>): CodePromise {
+  private track(promise: Promise<unknown>): Promise<unknown> {
     this.pending.add(promise)
     void promise.then(
       () => this.pending.delete(promise),
       () => this.pending.delete(promise),
     )
-    return new CodePromise(promise)
+    return promise
   }
 
   private recordDiscovery(name: string, input: unknown, result: unknown, summary: string): void {
@@ -315,11 +296,11 @@ export class ToolRuntime {
     })
   }
 
-  private search(input: unknown, node: AstNode): string {
-    const raw = input === undefined ? Object.create(null) : copyBoundaryValue(input, 'Code Mode search input', node)
+  private search(input: unknown): string {
+    const raw = input === undefined ? Object.create(null) : copyBoundaryValue(input, 'Code Mode search input')
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)
       || Object.keys(raw).some((key) => !['query', 'namespace', 'limit', 'offset'].includes(key))) {
-      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.search expects an object.', node)
+      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.search expects an object.')
     }
 
     const value = raw as ToolSearchInput
@@ -327,7 +308,7 @@ export class ToolRuntime {
       || (value.namespace !== undefined && (typeof value.namespace !== 'string' || !value.namespace.trim()))
       || (value.limit !== undefined && (!Number.isSafeInteger(value.limit) || Number(value.limit) < 1 || Number(value.limit) > 10))
       || (value.offset !== undefined && (!Number.isSafeInteger(value.offset) || Number(value.offset) < 0))) {
-      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.search requires string query/namespace, limit from 1 to 10, and nonnegative integer offset.', node)
+      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.search requires string query/namespace, limit from 1 to 10, and nonnegative integer offset.')
     }
     const query = typeof value.query === 'string' ? value.query.trim().toLowerCase() : ''
     const namespace = typeof value.namespace === 'string' ? value.namespace.trim().toLowerCase() : undefined
@@ -345,19 +326,19 @@ export class ToolRuntime {
     return formatAvailableApiSearch(result, { query, namespace, limit, offset })
   }
 
-  private list(input: unknown, node: AstNode) {
-    const raw = input === undefined ? {} : copyBoundaryValue(input, 'Available list input', node)
+  private list(input: unknown) {
+    const raw = input === undefined ? {} : copyBoundaryValue(input, 'Available list input')
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)
       || Object.keys(raw).some((key) => key !== 'page' && key !== 'namespace')) {
-      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.list expects { namespace?: string, page?: number }.', node)
+      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.list expects { namespace?: string, page?: number }.')
     }
     const page = (raw as { page?: unknown }).page ?? 1
     if (!Number.isSafeInteger(page) || Number(page) < 1) {
-      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.list page must be a positive integer.', node)
+      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.list page must be a positive integer.')
     }
     const namespaceValue = (raw as { namespace?: unknown }).namespace
     if (namespaceValue !== undefined && (typeof namespaceValue !== 'string' || !namespaceValue.trim())) {
-      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.list namespace must be a non-empty string.', node)
+      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.list namespace must be a non-empty string.')
     }
     const namespace = typeof namespaceValue === 'string' ? namespaceValue.trim().toLowerCase() : 'root'
     const result = listAvailableApis([...this.projectedByPath.values()]
@@ -368,18 +349,18 @@ export class ToolRuntime {
     return formatAvailableApiList(result)
   }
 
-  private get(input: unknown, node: AstNode): string {
-    const raw = copyBoundaryValue(input, 'Available get input', node)
+  private get(input: unknown): string {
+    const raw = copyBoundaryValue(input, 'Available get input')
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)
       || Object.keys(raw).some((key) => key !== 'name')
       || typeof (raw as Record<string, unknown>).name !== 'string') {
-      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.get requires exactly { name: string }.', node)
+      throw new CodeModeRuntimeError('InvalidToolArguments', 'tools.available.get requires exactly { name: string }.')
     }
     const name = (raw as { name: string }).name
     const tool = [...this.projectedByPath.values()].find((item) => item.expression === name)
-    if (!tool) throw new CodeModeRuntimeError('UnknownTool', `Unknown or unauthorized API: ${name}.`, node)
+    if (!tool) throw new CodeModeRuntimeError('UnknownTool', `Unknown or unauthorized API: ${name}.`)
     if (tool.entry.namespace === 'mcp' && !this.options.discoveredMcpTools.has(name)) {
-      throw new CodeModeRuntimeError('PermissionDenied', `Discover MCP API ${name} using tools.available.list or tools.available.search before get.`, node)
+      throw new CodeModeRuntimeError('PermissionDenied', `Discover MCP API ${name} using tools.available.list or tools.available.search before get.`)
     }
     this.options.obtainedTools.add(tool.path.join('.'))
     return getAvailableApi(tool.entry, tool.expression)
@@ -419,7 +400,7 @@ export class ToolRuntime {
       if (this.options.abortSignal.aborted) throw new CodeModeRuntimeError('Cancelled', 'Code Mode execution was aborted.')
       return tool.entry.execute(input, {
         abortSignal: this.options.abortSignal,
-        toolCallId: `${this.options.executionId}-v2-${callIndex + 1}`,
+        toolCallId: `${this.options.executionId}-v8-${callIndex + 1}`,
       })
     }
     let result: AgentToolExecutionResult

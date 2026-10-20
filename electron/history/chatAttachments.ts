@@ -7,6 +7,7 @@ import type {
   StoredChatAttachment,
 } from '../../src/types/chat'
 import { CHAT_ATTACHMENT_MAX_IMAGE_BYTES } from '../../src/lib/chatAttachments'
+import { resolveUniqueChatAttachmentFileName } from '../../src/lib/chatAttachmentNames'
 import {
   ensureAttachmentsDirectory,
   getConversationAttachmentsPath,
@@ -37,11 +38,6 @@ function getAttachmentRoot(conversationId?: string | null) {
     : getDraftAttachmentsPath()
 }
 
-function sanitizeAttachmentName(fileName: string) {
-  const normalized = path.basename(fileName.trim()).replace(/[<>:"/\\|?*\p{Cc}]/gu, '_')
-  return normalized.length > 0 ? normalized : 'attachment'
-}
-
 async function pathExists(targetPath: string) {
   try {
     await fs.access(targetPath)
@@ -52,15 +48,11 @@ async function pathExists(targetPath: string) {
 }
 
 async function resolveUniqueTargetPath(rootPath: string, requestedName: string, isDirectory: boolean) {
-  const safeName = sanitizeAttachmentName(requestedName)
-  const extension = isDirectory ? '' : path.extname(safeName)
-  const stem = extension.length > 0 ? safeName.slice(0, -extension.length) : safeName
-  let candidateName = safeName
-  let suffix = 2
-  while (await pathExists(path.join(rootPath, candidateName))) {
-    candidateName = `${stem} (${suffix})${extension}`
-    suffix += 1
-  }
+  const candidateName = await resolveUniqueChatAttachmentFileName(
+    requestedName,
+    isDirectory,
+    (name) => pathExists(path.join(rootPath, name)),
+  )
   return {
     absolutePath: path.join(rootPath, candidateName),
     aliasPath: `${ATTACHMENTS_ALIAS}/${candidateName.replace(/\\/gu, '/')}${isDirectory ? '/' : ''}`,

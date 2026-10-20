@@ -1,10 +1,8 @@
-/** Keep the selected surface stable while pointer/keyboard highlight moves. */
-export function getDropdownOptionStateClassName(isSelected: boolean, isHighlighted: boolean): string {
-  if (isSelected) {
-    return 'bg-[var(--dropdown-option-active-surface)] text-foreground'
+/** Keep the active surface on the highlighted option; selection remains indicated separately. */
+export function getDropdownOptionStateClassName(isHighlighted: boolean): string {
+  if (isHighlighted) {
+    return 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
   }
 
-  return isHighlighted
-    ? 'bg-[var(--dropdown-option-hover-surface)] text-foreground'
-    : 'text-foreground hover:bg-[var(--dropdown-option-hover-surface)]'
+  return 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]'
 }

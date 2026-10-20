@@ -27,10 +27,15 @@ function updateDirectoryHash(hash: Hash, rootPath: string, relativePath = '') {
 }
 
 export function computeRunServiceBuildId(entryPath: string) {
-  return createHash('sha256')
-    .update('tidecode-run-service-bundle/v1\0')
+  const hash = createHash('sha256')
+    .update('tidecode-run-service-bundle/v2\0')
     .update(readFileSync(entryPath))
-    .digest('hex')
+  const workerPath = path.join(path.dirname(entryPath), 'code-mode-worker.mjs')
+  if (existsSync(workerPath)) {
+    hash.update('\0code-mode-worker.mjs\0')
+    hash.update(readFileSync(workerPath))
+  }
+  return hash.digest('hex')
 }
 
 export function computeSourceRunServiceBuildId(runtimeRoot: string) {

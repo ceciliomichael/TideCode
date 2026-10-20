@@ -131,7 +131,7 @@ test('normal @attachment mention converts to the real stored path when submitted
     assert.deepEqual(calls, ['clipboard.png'])
     assert.equal(result.messages[0].text, 'Review [[tools.read:@attachments/clipboard (2).png]] please')
     assert.deepEqual(result.messages[0].mentionPathMap, {
-      'clipboard.png': '@attachments/clipboard (2).png',
+      'clipboard (2).png': '@attachments/clipboard (2).png',
     })
     assert.equal('path' in original.attachments[0], false)
     assert.equal(original.mentionPathMap['clipboard.png'], stagedPath)

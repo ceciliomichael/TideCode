@@ -1,5 +1,9 @@
 # Design
 
+## Sidebar project selector (2026-10-20)
+
+Project rows keep the title above the path or description, with hover highlighting following the pointer and the ellipsis action's neutral button hover kept separate from the row. The project dropdown shows no checkmarks. Choosing a project immediately filters history to that project and keeps the filter selected while its new conversation is created. Chats belongs in the history filter, not the project dropdown. The reasoning-effort dropdown prefers opening below and flips only when viewport space requires it.
+
 ## TideUI component language and visual system (2026-10-20)
 
 HTML embeds visually into chat without an outer card, border, title, toolbar, manual resize handle or Expand control. Height follows actual rendered content, including subsequent growth and shrinkage, with no fixed height or cap. Wheel scrolling over HTML uses native browser movement, momentum and scroll chaining. The bridge only relays intent so upward scrolling pauses following; it never cancels wheel input or manually applies wheel movement. One `tidehtml` format accepts HTML with optional CSS and/or JavaScript. Completed blocks render and run automatically, including on saved-message remount. Running JavaScript state survives surrounding chat streaming. Preview document defaults have zero outer margin, transparent backgrounds, adaptive text colors and a thin scrollbar; authored styles can override the presentation. Sandboxed iframe isolation is retained.
@@ -38,7 +42,9 @@ Tool rows present discovery search/get, skill operations, and nested MCP calls u
 
 Internal discovery operations emit UI-visible nested receipts even when no external tool executes. Contract retrieval uses the shared label `Retrieved tools` rather than an individual tool name, so multi-contract exec programs no longer fall back to `Ran code`.
 
-When a model attempts an authorized API without retrieving its contract first, the interpreter fetches and records the exact `available.get` contract, stops that exec program before the attempted operation, and returns the contract with retry guidance to the model. The renderer shows only the successful `Retrieved tools` entry. MCP capabilities still require discovery by search first; mode and workspace authorization are unchanged.
+When a model attempts an authorized API without retrieving its contract first, the host tool bridge fetches and records the exact `available.get` contract, stops that exec program before the attempted operation, and returns the contract with retry guidance to the model. The renderer shows only the successful `Retrieved tools` entry. MCP capabilities still require discovery by search first; mode and workspace authorization are unchanged.
+
+Code Mode accepts native JavaScript rather than a custom language subset. Standard functions, classes, collections, Promises, callbacks and error handling follow V8 semantics. Programs use top-level await/return, copied JSON-compatible tool inputs/results, bounded timers and captured console output. Machine access stays behind registered `tools.*` calls. Each execution has a fresh isolate and a disposable worker; cancellation and resource failures end that execution without blocking TideCode's UI.
 
 ## Light and dark color system
 

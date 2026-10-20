@@ -10,7 +10,7 @@ import {
   RUN_SERVICE_BUILD_ID_ENV,
 } from '../electron/runService/buildIdentity'
 
-test('run-service bundle identity changes when the built service changes', async () => {
+test('run-service bundle identity includes both the service and its V8 worker', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'tidecode-run-service-build-'))
   const entry = path.join(root, 'run-service.mjs')
 
@@ -22,6 +22,13 @@ test('run-service bundle identity changes when the built service changes', async
     await writeFile(entry, 'export const version = 2\n')
     const second = computeRunServiceBuildId(entry)
     assert.notEqual(second, first)
+
+    const worker = path.join(root, 'code-mode-worker.mjs')
+    await writeFile(worker, 'export const worker = 1\n')
+    const third = computeRunServiceBuildId(entry)
+    assert.notEqual(third, second)
+    await writeFile(worker, 'export const worker = 2\n')
+    assert.notEqual(computeRunServiceBuildId(entry), third)
   } finally {
     await rm(root, { force: true, recursive: true })
   }

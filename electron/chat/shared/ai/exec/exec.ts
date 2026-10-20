@@ -11,7 +11,7 @@ const EXEC_INPUT_SCHEMA = {
     code: {
       type: 'string',
       minLength: 1,
-      description: 'A TideCode restricted JavaScript-like program using only the documented tools.* APIs.',
+      description: 'A JavaScript program executed in an isolated V8 runtime, with host access through documented tools.* APIs.',
     },
     payloads: {
       type: 'object',
@@ -110,10 +110,9 @@ export function createExecTool(
         subject: { kind: 'code_mode', path: 'local' },
         semantics: {
           execution_id: result.executionId,
-          engine: result.engine ?? 'v2',
+          engine: result.engine ?? 'v8',
           operation: 'exec',
           output_limited: result.outputTruncated ?? false,
-          steps: result.steps ?? 0,
           ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}),
           tool_call_count: result.toolCalls.length,
           tool_calls: result.toolCalls.map((call) => ({

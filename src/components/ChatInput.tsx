@@ -43,6 +43,7 @@ import { collectRemoteAttachmentSelections, type RemoteAttachmentSelection } fro
 import { isRemoteBrowserRuntime } from '../remote/webBridge'
 import { uploadRemoteAttachmentSelection } from '../remote/remoteAttachmentUpload'
 import { getChatAttachmentMentionPath } from '../lib/chatStagedImageMentions'
+import { nameStagedChatImages } from '../lib/chatAttachmentNames'
 
 interface ChatInputProps {
   actionButtonMode?: 'auto' | 'abort' | 'send'
@@ -405,9 +406,16 @@ export function ChatInput({
       errors.push(`You can attach up to ${CHAT_ATTACHMENT_MAX_COUNT} items per message.`)
     }
     if (nextNewAttachments.length > 0) {
-      onAttachmentsChange?.([...attachments, ...nextNewAttachments])
+      let namedAttachments: ChatAttachment[]
+      try {
+        namedAttachments = await nameStagedChatImages(conversationId, attachments, nextNewAttachments)
+      } catch (error) {
+        setAttachmentError(error instanceof Error ? error.message : 'Unable to check attachment filenames.')
+        return
+      }
+      onAttachmentsChange?.([...attachments, ...namedAttachments])
       mentionMenu.insertMentionReferences(
-        nextNewAttachments
+        namedAttachments
           .map((attachment) => ({ label: attachment.fileName, path: getChatAttachmentMentionPath(attachment) }))
           .filter((reference): reference is { label: string; path: string } => Boolean(reference.path)),
         initialInsertionPosition,
@@ -472,11 +480,18 @@ export function ChatInput({
     }
 
     if (nextNewAttachments.length > 0) {
-      const nextAttachments = [...attachments, ...nextNewAttachments]
+      let namedAttachments: ChatAttachment[]
+      try {
+        namedAttachments = await nameStagedChatImages(conversationId, attachments, nextNewAttachments)
+      } catch (error) {
+        setAttachmentError(error instanceof Error ? error.message : 'Unable to check attachment filenames.')
+        return
+      }
+      const nextAttachments = [...attachments, ...namedAttachments]
       const insertionPosition = textareaRef.current?.selectionStart ?? initialInsertionPosition
       onAttachmentsChange?.(nextAttachments)
       mentionMenu.insertMentionReferences(
-        nextNewAttachments
+        namedAttachments
           .map((attachment) => ({ label: attachment.fileName, path: getChatAttachmentMentionPath(attachment) }))
           .filter((reference): reference is { label: string; path: string } => Boolean(reference.path)),
         insertionPosition,
@@ -531,9 +546,16 @@ export function ChatInput({
       errors.push(`You can attach up to ${CHAT_ATTACHMENT_MAX_COUNT} items per message.`)
     }
     if (nextAttachments.length > 0) {
-      onAttachmentsChange?.([...attachments, ...nextAttachments])
+      let namedAttachments: ChatAttachment[]
+      try {
+        namedAttachments = await nameStagedChatImages(conversationId, attachments, nextAttachments)
+      } catch (error) {
+        setAttachmentError(error instanceof Error ? error.message : 'Unable to check attachment filenames.')
+        return
+      }
+      onAttachmentsChange?.([...attachments, ...namedAttachments])
       mentionMenu.insertMentionReferences(
-        nextAttachments
+        namedAttachments
           .map((attachment) => ({ label: attachment.fileName, path: getChatAttachmentMentionPath(attachment) }))
           .filter((reference): reference is { label: string; path: string } => Boolean(reference.path)),
       )

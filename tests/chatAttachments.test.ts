@@ -16,6 +16,7 @@ import {
 } from '../electron/history/chatAttachments'
 import { writeConversationFile } from '../electron/history/conversationFileStore'
 import { replaceStoredMessages } from '../electron/history/store'
+import { nameStagedChatImages } from '../src/lib/chatAttachmentNames'
 import type { ConversationRecord, Message } from '../src/types/chat'
 import {
   getConversationAttachmentsPath,
@@ -160,6 +161,49 @@ test('clipboard image files can be read into a draft without being copied to att
     assert.deepEqual(await fs.readdir(sourceRoot), ['clipboard.png'])
   } finally {
     await fs.rm(sourceRoot, { recursive: true, force: true })
+  }
+})
+
+test('staged image name matches the eventual stored name when earlier attachments exist', async () => {
+  const scopeId = uniqueScope('attachment-name-collision')
+  const attachmentRoot = getConversationAttachmentsPath(scopeId)
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  try {
+    const first = await storeChatImageAttachment({
+      conversationId: scopeId,
+      dataUrl: 'data:image/png;base64,YQ==',
+      fileName: 'image.png',
+    })
+    assert.equal(first.fileName, 'image.png')
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { tidecodeHistory: { listChatAttachments } },
+    })
+    const image = {
+      id: 'draft-image-1',
+      dataUrl: 'data:image/png;base64,Yg==',
+      fileName: 'image.png',
+      kind: 'image' as const,
+      mimeType: 'image/png',
+      sizeBytes: 1,
+    }
+    const staged = await nameStagedChatImages(scopeId, [], [image])
+    assert.equal(staged[0].fileName, 'image (2).png')
+    assert.deepEqual((await fs.readdir(attachmentRoot)), ['image.png'])
+    const stored = await storeChatImageAttachment({
+      conversationId: scopeId,
+      dataUrl: image.dataUrl,
+      fileName: staged[0].fileName,
+    })
+    assert.equal(stored.fileName, staged[0].fileName)
+    assert.equal(stored.path, '@attachments/image (2).png')
+  } finally {
+    if (previousWindow) {
+      Object.defineProperty(globalThis, 'window', previousWindow)
+    } else {
+      Reflect.deleteProperty(globalThis, 'window')
+    }
+    await fs.rm(attachmentRoot, { force: true, recursive: true })
   }
 })
 

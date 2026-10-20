@@ -1,15 +1,10 @@
-import { Check, ChevronDown, Folder, MoreHorizontal, Search } from 'lucide-react'
+import { ChevronDown, Folder, MoreHorizontal, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
-import { getDropdownOptionStateClassName } from '../ui/dropdownOptionStyles'
 import { RemoveProjectFolderDialog } from './RemoveProjectFolderDialog'
 import type { SidebarProjectOption } from './sidebarProjectThreads'
-import {
-  ALL_PROJECTS_FILTER_ID,
-  ARCHIVED_PROJECT_FILTER_ID,
-  CHATS_PROJECT_FILTER_ID,
-} from './sidebarProjectThreads'
+import { resolveSidebarProjectLabel } from './sidebarProjectThreads'
 
 interface ProjectThreadSelectorProps {
   cachedSelectedProjectName?: string | null
@@ -34,7 +29,7 @@ export function ProjectThreadSelector({
 }: ProjectThreadSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
-  const [highlightedProjectId, setHighlightedProjectId] = useState(selectedProjectId)
+  const [highlightedProjectId, setHighlightedProjectId] = useState<string | null>(selectedProjectId)
   const [actionsProject, setActionsProject] = useState<SidebarProjectOption | null>(null)
   const [projectPendingRemoval, setProjectPendingRemoval] = useState<SidebarProjectOption | null>(null)
   const [isRemovingProject, setIsRemovingProject] = useState(false)
@@ -44,14 +39,11 @@ export function ProjectThreadSelector({
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const actionsButtonRef = useRef<HTMLButtonElement | null>(null)
   const actionsMenuRef = useRef<HTMLDivElement | null>(null)
-  const selectedProject = projects.find((project) => project.id === selectedProjectId)
-  const isHistoryFilterSelected =
-    selectedProjectId === ALL_PROJECTS_FILTER_ID ||
-    selectedProjectId === CHATS_PROJECT_FILTER_ID ||
-    selectedProjectId === ARCHIVED_PROJECT_FILTER_ID
-  const cachedProjectName = cachedSelectedProjectName?.trim()
-  const selectedLabel =
-    selectedProject?.name ?? (isHistoryFilterSelected ? 'Projects' : cachedProjectName || 'Projects')
+  const selectedLabel = resolveSidebarProjectLabel(
+    selectedProjectId,
+    projects,
+    cachedSelectedProjectName,
+  )
   const normalizedSearch = normalizeSearch(searchValue)
   const filteredProjects = useMemo(() => {
     if (normalizedSearch.length === 0) {
@@ -188,7 +180,7 @@ export function ProjectThreadSelector({
               data-floating-menu-root="true"
               role="menu"
               aria-label="Projects"
-              className="fixed z-[1500] w-[min(18rem,calc(100vw-1rem))] min-w-[10rem] overflow-hidden rounded-xl border border-border bg-surface shadow-soft"
+              className="fixed z-[1500] w-[min(20rem,calc(100vw-1rem))] min-w-[12rem] overflow-hidden rounded-xl border border-border bg-surface shadow-soft"
               style={menuStyle}
             >
               <div className="border-b border-border px-2 py-2">
@@ -210,7 +202,11 @@ export function ProjectThreadSelector({
               </div>
 
               <div
-                onMouseLeave={() => setHighlightedProjectId(selectedProjectId)}
+                onMouseLeave={() => {
+                  if (actionsProject === null) {
+                    setHighlightedProjectId(selectedProjectId)
+                  }
+                }}
                 className="max-h-56 space-y-0.5 overflow-y-auto p-1"
               >
                 {filteredProjects.length > 0 ? (
@@ -222,10 +218,11 @@ export function ProjectThreadSelector({
                       <div
                         key={project.id}
                         role="none"
-                        onMouseEnter={() => setHighlightedProjectId(project.id)}
                         className={[
-                          'group/project flex min-h-10 items-center rounded-xl transition-[background-color,color,box-shadow]',
-                          getDropdownOptionStateClassName(isSelected, isHighlighted),
+                          'group/project flex min-h-14 items-center rounded-xl transition-[background-color,color,box-shadow]',
+                          isHighlighted
+                            ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
+                            : 'text-foreground',
                         ].join(' ')}
                       >
                         <button
@@ -234,13 +231,19 @@ export function ProjectThreadSelector({
                           aria-checked={isSelected}
                           onMouseEnter={() => setHighlightedProjectId(project.id)}
                           onClick={() => selectProject(project.id)}
-                          className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-xl px-2.5 py-2 text-left text-foreground"
+                          className="flex min-h-14 min-w-0 flex-1 items-start gap-2 rounded-xl px-2.5 py-2 text-left text-foreground"
                         >
-                          <Folder size={16} strokeWidth={2} className="shrink-0 text-muted-foreground" />
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium">{project.name}</span>
-                          {isSelected ? (
-                            <Check size={16} strokeWidth={2.2} className="shrink-0 text-foreground" />
-                          ) : null}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[15px] leading-5">{project.name}</span>
+                            {(project.description ?? project.path) ? (
+                              <span
+                                title={project.description ?? project.path ?? undefined}
+                                className="mt-0.5 block truncate text-[11px] font-medium text-muted-foreground"
+                              >
+                                {project.description ?? project.path}
+                              </span>
+                            ) : null}
+                          </span>
                         </button>
                         <button
                           type="button"
@@ -248,13 +251,14 @@ export function ProjectThreadSelector({
                           aria-label={`Project actions for ${project.name}`}
                           aria-haspopup="menu"
                           aria-expanded={actionsProject?.id === project.id}
+                          onMouseEnter={() => setHighlightedProjectId(null)}
                           onClick={(event) => {
                             actionsButtonRef.current = event.currentTarget
                             setActionsProject((currentValue) =>
                               currentValue?.id === project.id ? null : project,
                             )
                           }}
-                          className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:rounded-xl hover:bg-[var(--dropdown-option-active-surface)] hover:text-foreground"
+                          className="mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:rounded-xl hover:bg-surface-muted hover:text-foreground"
                         >
                           <MoreHorizontal size={16} strokeWidth={2.1} />
                         </button>
