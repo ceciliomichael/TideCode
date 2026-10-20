@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import type { McpServerConfig, McpServerStatus } from '../../../types/mcp'
 import { Tooltip } from '../../Tooltip'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { McpRemoveDialog } from './McpRemoveDialog'
 
 interface McpServerCardProps {
@@ -149,11 +150,7 @@ export function McpServerCard({
       </div>
 
       {statusErrorMessage ? (
-        <div
-          className="rounded-lg border border-danger-border bg-danger-surface px-3 py-2 text-xs break-words overflow-hidden text-danger-foreground"
-        >
-          {statusErrorMessage}
-        </div>
+        <AppNoticeSurface title="Could not connect to server" message={statusErrorMessage} fallbackMessage="Check the server connection and try again." />
       ) : null}
 
       <div className="flex items-end justify-between gap-3">

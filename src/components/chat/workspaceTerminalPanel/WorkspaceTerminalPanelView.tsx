@@ -1,6 +1,7 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { LoaderCircle, Plus, X, Maximize, Minimize, RotateCw } from "lucide-react";
 import { Tooltip } from "../../Tooltip";
+import { AppNoticeSurface } from "../../ui/AppNoticeSurface";
 import type { WorkspaceTerminalPanelState } from "./workspaceTerminalPanelTypes";
 import { useWorkspaceTerminalTabDragDrop } from "./useWorkspaceTerminalTabDragDrop";
 
@@ -186,15 +187,13 @@ export function WorkspaceTerminalPanelView({
       </div>
       {activeTerminalTab?.status === "error" &&
       activeTerminalTab.errorMessage ? (
-        <div className="flex items-center justify-between border-t border-danger-border bg-danger-surface px-4 py-1.5 text-xs text-danger-foreground">
-          <span>{activeTerminalTab.errorMessage}</span>
-          <button
-            type="button"
-            onClick={() => void panelState.restartTerminalTab(activeTerminalTab.key)}
-            className="rounded bg-danger-foreground/10 px-2 py-0.5 font-medium transition-colors hover:bg-danger-foreground/20"
-          >
-            Restart
-          </button>
+        <div className="border-t border-border p-2">
+          <AppNoticeSurface
+            title="Terminal unavailable"
+            message={activeTerminalTab.errorMessage}
+            fallbackMessage="The terminal session could not be started. Restart it to try again."
+            action={{ label: "Restart", onClick: () => void panelState.restartTerminalTab(activeTerminalTab.key) }}
+          />
         </div>
       ) : null}
       {activeTerminalTab?.status === "exited" ? (

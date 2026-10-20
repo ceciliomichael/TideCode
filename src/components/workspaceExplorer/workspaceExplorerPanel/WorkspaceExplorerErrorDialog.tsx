@@ -1,4 +1,4 @@
-import { AlertTriangle, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import type { WorkspaceExplorerErrorDialogState } from './workspaceExplorerPanelTypes'
@@ -39,9 +39,6 @@ export function WorkspaceExplorerErrorDialog({ onClose, state }: WorkspaceExplor
       >
         <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-5">
           <div className="flex min-w-0 items-start gap-3">
-            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-danger-border bg-danger-surface text-danger-foreground">
-              <AlertTriangle size={18} aria-hidden="true" />
-            </span>
             <div className="min-w-0">
               <h2 id="workspace-explorer-error-dialog-title" className="text-lg font-semibold text-foreground">
                 {state.title}

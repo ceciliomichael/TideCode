@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Loader2, Plus, Unplug, X } from 'lucide-react'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import type { CodexProviderConnectionStatus } from '../../../types/chat'
 import { CodexAccountDropdown } from './CodexAccountDropdown'
 import { CodexUsagePills } from './CodexUsagePills'
@@ -106,7 +107,7 @@ export function CodexProviderDialog({
               <p className="mt-1 text-sm leading-6 text-muted-foreground">Sign in through the browser to load Codex models and usage.</p>
             </div>
           )}
-          {localError ? <p className="mt-5 rounded-xl border border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger-foreground">{localError}</p> : null}
+          {localError ? <AppNoticeSurface className="mt-5" title="Codex action failed" message={localError} fallbackMessage="The account action could not be completed. Try again." /> : null}
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-border px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">

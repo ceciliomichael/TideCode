@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Loader2, Plus, Save, X } from 'lucide-react'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { DropdownField, type DropdownOption } from '../../ui/DropdownField'
 import { PRIMARY_ACTION_BUTTON_CLASS_NAME } from '../shared/actionButtonStyles'
 import { LineNumberedTextarea } from '../shared/LineNumberedTextarea'
@@ -373,9 +374,7 @@ export function McpServerDialog({
             </p>
 
             {localError || errorMessage ? (
-              <div className="mt-4 rounded-xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-                {errorMessage ?? localError}
-              </div>
+              <AppNoticeSurface className="mt-4" title="Could not save server" message={errorMessage ?? localError} fallbackMessage="Check the server details and try again." />
             ) : null}
           </div>
 

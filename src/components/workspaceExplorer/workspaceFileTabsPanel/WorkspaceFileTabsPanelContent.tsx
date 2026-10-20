@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { WorkspaceFileEditor } from '../WorkspaceFileEditor'
 import { WorkspaceDocxPreview } from '../workspaceDocxPreview/WorkspaceDocxPreview'
 import { WorkspaceImagePreview } from '../workspaceImagePreview/WorkspaceImagePreview'
@@ -91,8 +92,8 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 
     if (activeTab.status === 'error' && !sourceTab) {
       return (
-        <div className="h-full border-t border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-          {getTabErrorMessage(activeTab.errorMessage, 'The preview could not be loaded.')}
+        <div className="h-full p-3">
+          <AppNoticeSurface title="Preview unavailable" message={getTabErrorMessage(activeTab.errorMessage, 'The preview could not be loaded.')} fallbackMessage="The preview could not be loaded. Try reopening the file." />
         </div>
       )
     }
@@ -119,8 +120,8 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 
     if (activeTab.status === 'error') {
       return (
-        <div className="h-full border-t border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-          {getTabErrorMessage(activeTab.errorMessage, 'The plan could not be loaded.')}
+        <div className="h-full p-3">
+          <AppNoticeSurface title="Plan unavailable" message={getTabErrorMessage(activeTab.errorMessage, 'The plan could not be loaded.')} fallbackMessage="The plan could not be loaded. Try reopening it." />
         </div>
       )
     }
@@ -164,8 +165,8 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 
     if (sourceTab.status === 'error') {
       return (
-        <div className="h-full border-t border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-          {getTabErrorMessage(sourceTab.errorMessage, 'The file could not be opened.')}
+        <div className="h-full p-3">
+          <AppNoticeSurface title="File unavailable" message={getTabErrorMessage(sourceTab.errorMessage, 'The file could not be opened.')} fallbackMessage="The file could not be opened. Try again." />
         </div>
       )
     }
@@ -195,8 +196,8 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 
   if (activeTab.status === 'error') {
     return (
-      <div className="h-full border-t border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-        {getTabErrorMessage(activeTab.errorMessage, 'The file could not be opened.')}
+      <div className="h-full p-3">
+        <AppNoticeSurface title="File unavailable" message={getTabErrorMessage(activeTab.errorMessage, 'The file could not be opened.')} fallbackMessage="The file could not be opened. Try again." />
       </div>
     )
   }

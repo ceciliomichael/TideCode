@@ -2,6 +2,7 @@ import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { McpServerDialog } from './McpAddDialog'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { McpServerList } from './McpServerList'
 import { McpServersSettingsSkeleton } from './McpServersSettingsSkeleton'
 import type { McpAddServerInput, McpServerConfig, McpState } from '../../../types/mcp'
@@ -93,9 +94,7 @@ export function McpServersSettingsPanel({
         </header>
 
         {visibleErrorMessage ? (
-          <div className="rounded-xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-            {visibleErrorMessage}
-          </div>
+          <AppNoticeSurface title="Could not update servers" message={visibleErrorMessage} fallbackMessage="Check the server configuration and try again." />
         ) : null}
 
         <McpServerList

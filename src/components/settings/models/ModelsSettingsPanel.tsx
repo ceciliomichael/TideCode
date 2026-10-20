@@ -1,6 +1,7 @@
 import { Brain, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { resolveModelReasoningProfile } from '../../../lib/modelReasoningProfiles'
 import type {
   CustomModelConfig,
@@ -173,12 +174,7 @@ export function ModelsSettingsPanel({ launchRequest, onLaunchRequestHandled, pro
       {[customModelsErrorMessage, providerModelsErrorMessage, operationError]
         .filter((message): message is string => Boolean(message))
         .map((message) => (
-          <div
-            key={message}
-            className="rounded-xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground"
-          >
-            {message}
-          </div>
+          <AppNoticeSurface key={message} title="Model action failed" message={message} fallbackMessage="The models could not be updated. Try again." />
         ))}
 
       <section className="flex min-h-[280px] max-h-[calc(100dvh-14rem)] flex-none flex-col overflow-hidden rounded-xl border border-border bg-surface md:min-h-[360px] md:max-h-[calc(100dvh-16.5rem)]">

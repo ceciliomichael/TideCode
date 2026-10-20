@@ -6,6 +6,7 @@ import {
   isValidMaxOutputTokens,
 } from '../../../lib/modelOutputTokens'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { DropdownField } from '../../ui/DropdownField'
 import { PRIMARY_ACTION_BUTTON_CLASS_NAME } from '../shared/actionButtonStyles'
 import {
@@ -545,9 +546,7 @@ export function UserModelDialog({
             ) : null}
 
             {errorMessage ? (
-              <p className="rounded-xl border border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger-foreground">
-                {errorMessage}
-              </p>
+              <AppNoticeSurface title="Could not save model" message={errorMessage} fallbackMessage="Check the model details and try again." />
             ) : null}
           </div>
 

@@ -7,6 +7,7 @@ import {
 } from './imagePreviewSizing'
 import { useWorkspaceDocumentCanvasInteraction } from '../workspaceDocumentPreview/useWorkspaceDocumentCanvasInteraction'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { Tooltip } from '../../Tooltip'
 import { useWorkspaceTabScrollPosition } from '../workspaceTabScrollState'
 
@@ -146,12 +147,7 @@ export const WorkspaceImagePreviewView = memo(function WorkspaceImagePreviewView
           }
         >
           {imageUnavailable ? (
-            <div className="max-w-lg text-center">
-              <div className="text-sm font-medium text-foreground">Image preview unavailable</div>
-              <p className="mt-2 text-sm leading-6 text-subtle-foreground">
-                {previewErrorMessage ?? `TideCode could not render ${fileName}. You can still keep the file in your workspace.`}
-              </p>
-            </div>
+            <div className="w-full max-w-lg"><AppNoticeSurface title="Image preview unavailable" message={previewErrorMessage ?? 'This image could not be displayed. The file is still in your workspace.'} fallbackMessage="This image could not be displayed. The file is still in your workspace." /></div>
           ) : (
             <img
               alt={fileName}

@@ -1,6 +1,7 @@
 import { memo, useId } from 'react'
 import { useResolvedDocumentTheme } from '../../../hooks/useResolvedDocumentTheme'
 import { useMermaidRenderer } from './useMermaidRenderer'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 
 interface MermaidDiagramProps {
   code: string
@@ -29,11 +30,13 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code }: MermaidDiag
       <div className="rounded-[inherit] bg-background p-2">
         <div className="flex min-h-[220px] items-center justify-center overflow-hidden">
           {error ? (
-            <div className="max-w-lg rounded-xl border border-danger-border bg-danger-surface px-4 py-3 text-center text-sm text-danger-foreground">
-              <div className="mb-2 font-medium">Failed to render diagram</div>
-              <pre className="max-h-[200px] overflow-auto whitespace-pre-wrap break-words text-left text-[12px] leading-5">
-                {error}
-              </pre>
+            <div className="w-full max-w-lg">
+              <AppNoticeSurface title="Diagram preview unavailable" message="This diagram could not be displayed. Check the diagram source.">
+                <details className="mt-2 text-xs text-muted-foreground">
+                  <summary className="cursor-pointer">Show technical details</summary>
+                  <pre className="mt-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-words text-left text-xs">{error}</pre>
+                </details>
+              </AppNoticeSurface>
             </div>
           ) : svg ? (
             <div

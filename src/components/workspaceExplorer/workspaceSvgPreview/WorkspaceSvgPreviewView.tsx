@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
 import { Tooltip } from '../../Tooltip'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { useWorkspaceTabScrollPosition } from '../workspaceTabScrollState'
 
 interface WorkspaceSvgPreviewViewProps {
@@ -54,12 +55,7 @@ export const WorkspaceSvgPreviewView = memo(function WorkspaceSvgPreviewView({
 
         <div className="flex min-h-full items-center justify-center p-2">
           {hasError ? (
-            <div className="max-w-lg text-center">
-              <div className="text-sm font-medium text-foreground">SVG preview unavailable</div>
-              <p className="mt-2 text-sm leading-6 text-subtle-foreground">
-                The file could not be rendered as SVG. You can still edit the raw source in the file editor.
-              </p>
-            </div>
+            <div className="w-full max-w-lg p-3"><AppNoticeSurface title="SVG preview unavailable" message="This SVG could not be displayed. You can still edit the file." /></div>
           ) : (
             <img
               alt={fileName}

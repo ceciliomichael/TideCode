@@ -2,6 +2,7 @@ import { ChevronRight } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { requestDocxPreviewRender } from '../../../lib/docxPreviewRenderCache'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { useWorkspaceDocumentCanvasInteraction } from '../workspaceDocumentPreview/useWorkspaceDocumentCanvasInteraction'
 import { Tooltip } from '../../Tooltip'
 import { useWorkspaceTabScrollPosition } from '../workspaceTabScrollState'
@@ -162,12 +163,7 @@ export const WorkspaceDocxPreviewView = memo(function WorkspaceDocxPreviewView({
           </div>
         ) : previewUnavailable ? (
           <div className="absolute inset-0 flex min-h-[200px] items-center justify-center px-4">
-            <div className="max-w-lg text-center">
-              <div className="text-sm font-medium text-foreground">DOCX preview unavailable</div>
-              <p className="mt-2 text-sm leading-6 text-subtle-foreground">
-                {errorMessage ?? `TideCode could not open ${fileName}.`}
-              </p>
-            </div>
+            <div className="w-full max-w-lg"><AppNoticeSurface title="DOCX preview unavailable" message={errorMessage ?? 'This document could not be opened.'} fallbackMessage="This document could not be opened. Try again." /></div>
           </div>
         ) : !hasRenderedDocument ? (
           <div className="absolute inset-0 flex min-h-[200px] items-center justify-center text-sm text-subtle-foreground">

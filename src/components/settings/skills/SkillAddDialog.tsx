@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Loader2, Plus, Save, X } from 'lucide-react'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { PRIMARY_ACTION_BUTTON_CLASS_NAME } from '../shared/actionButtonStyles'
 import type { CreateSkillInput } from '../../../types/skills'
 
@@ -127,9 +128,7 @@ export function SkillAddDialog({
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4 sm:p-6">
             {activeError ? (
-              <div className="rounded-xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-                {activeError}
-              </div>
+              <AppNoticeSurface title="Could not save skill" message={activeError} fallbackMessage="Check the skill details and try again." />
             ) : null}
 
             <div className="space-y-1.5">

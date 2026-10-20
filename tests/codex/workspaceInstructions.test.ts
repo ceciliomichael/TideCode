@@ -23,7 +23,7 @@ test('stable workspace instruction contract keeps the conditional bootstrap guid
   assert.match(block, /bootstrap does not contain the file contents/u)
   assert.match(block, /Read the current `AGENTS\.md` only when that exact revision has not already been read/u)
   assert.match(block, /reuse it and do not read it again/u)
-  assert.doesNotMatch(block, /not optional reference data|before each action|Do not skip applicable requirements/u)
+  assert.doesNotMatch(block, /authoritative workspace instructions|optional reference data|before each action|Do not skip applicable requirements/u)
   assert.match(block, /bootstrap revision changes/u)
   assert.match(block, /continue without attempting that bootstrap read/u)
 })
@@ -41,8 +41,8 @@ test('workspace bootstrap replaces stale context without embedding file contents
     const injectedText = modelText(injected)
 
     assert.match(injectedText, /Implement this\./u)
-    assert.match(injectedText, /AGENTS\.md changed\. Read it again in full\. Its instructions are mandatory/u)
-    assert.match(injectedText, /follow every applicable requirement and exception; do not skip any for speed or convenience/u)
+    assert.match(injectedText, /AGENTS\.md changed\. Read it again in full and treat it as authoritative workspace instructions/u)
+    assert.match(injectedText, /Follow every applicable requirement and exception; do not treat it as optional reference data/u)
     assert.doesNotMatch(injectedText, /# Current rules|Use tests\./u)
     assert.doesNotMatch(injectedText, /old rules/u)
     assert.equal(injectedText.match(/kind="workspace_instructions"/gu)?.length, 1)
@@ -50,7 +50,7 @@ test('workspace bootstrap replaces stale context without embedding file contents
 
     const unchanged = modelText(applyWorkspaceInstructionsContext(injected, workspaceRootPath))
     assert.doesNotMatch(unchanged, /AGENTS\.md changed/u)
-    assert.match(unchanged, /Read AGENTS\.md in full\. Its instructions are mandatory throughout this task/u)
+    assert.match(unchanged, /Read AGENTS\.md in full and treat it as authoritative workspace instructions throughout this task/u)
 
     const fileStats = await fs.stat(path.join(workspaceRootPath, 'AGENTS.md'))
     const currentRevision = `${fileStats.mtimeMs}:${fileStats.size}`
@@ -68,7 +68,7 @@ test('workspace bootstrap replaces stale context without embedding file contents
       },
     ]
     const transitioned = modelText(applyWorkspaceInstructionsContext(transitionedMessages, workspaceRootPath))
-    assert.match(transitioned, /AGENTS\.md changed\. Read it again in full\. Its instructions are mandatory/u)
+    assert.match(transitioned, /AGENTS\.md changed\. Read it again in full and treat it as authoritative workspace instructions/u)
     assert.doesNotMatch(transitionedMessages[1]?.content ?? '', /AGENTS\.md changed/u)
 
     await fs.rm(path.join(workspaceRootPath, 'AGENTS.md'))

@@ -1,4 +1,5 @@
 import { Plus } from 'lucide-react'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { useState } from 'react'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { SettingsPanelLayout, SETTINGS_SECTION_TITLE_CLASS_NAME } from '../shared/SettingsPanelPrimitives'
@@ -105,9 +106,7 @@ export function SkillsSettingsPanel({
         </header>
 
         {visibleErrorMessage ? (
-          <div className="rounded-xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-            {visibleErrorMessage}
-          </div>
+          <AppNoticeSurface title="Could not load skills" message={visibleErrorMessage} fallbackMessage="The skills could not be updated. Try again." />
         ) : null}
 
         {state ? (

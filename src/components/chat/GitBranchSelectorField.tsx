@@ -2,6 +2,7 @@ import { Check, GitBranch, Plus, RefreshCw, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
 
 interface GitBranchSelectorFieldProps {
   branches: readonly string[]
@@ -324,9 +325,7 @@ export function GitBranchSelectorField({
               </button>
 
               {errorMessage ? (
-                <div className="border-t border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger-foreground">
-                  {errorMessage}
-                </div>
+                <div className="border-t border-border p-2"><AppNoticeSurface title="Branch action failed" message={errorMessage} fallbackMessage="The branch action could not be completed. Try again." /></div>
               ) : null}
             </div>,
             document.body,
@@ -386,9 +385,7 @@ export function GitBranchSelectorField({
                   </div>
 
                   {errorMessage ? (
-                    <div className="rounded-xl border border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger-foreground">
-                      {errorMessage}
-                    </div>
+                    <AppNoticeSurface title="Could not create branch" message={errorMessage} fallbackMessage="Check the branch name and try again." />
                   ) : null}
 
                   <div className="flex items-center justify-end gap-2">

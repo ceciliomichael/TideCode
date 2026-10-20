@@ -56,3 +56,35 @@ test('workspace filesystem failures do not expose operating-system error codes',
     'That workspace item is no longer available. Refresh the explorer and try again.',
   )
 })
+
+test('unrecognized technical errors never become application copy', () => {
+  const fallback = 'The action could not be completed. Try again.'
+  for (const error of [
+    'SyntaxError: Unexpected token } in JSON at position 21',
+    'TypeError: Cannot read properties of undefined',
+    'ERR_UNKNOWN_INTERNAL_STATE at renderer.ts:150',
+    'C:\\Users\\someone\\project\\node_modules\\module.js:45',
+    'Error invoking remote method "foo:bar": RpcError',
+  ]) {
+    assert.equal(toUserFacingErrorMessage(error, fallback), fallback)
+  }
+})
+
+test('webpage and capacity errors have nontechnical recovery instructions', () => {
+  assert.equal(
+    toUserFacingErrorMessage('net::ERR_NAME_NOT_RESOLVED', 'Fallback'),
+    'This website could not be found. Check its address and try again.',
+  )
+  assert.equal(
+    toUserFacingErrorMessage('ENOSPC: no space left on device', 'Fallback'),
+    'There is not enough disk space to complete this action. Free some space and try again.',
+  )
+  assert.equal(
+    toUserFacingErrorMessage('net::ERR_CONNECTION_REFUSED', 'Fallback'),
+    'The website could not be reached. Check its address and your connection, then try again.',
+  )
+})
+
+test('short actionable validation messages retain their meaning', () => {
+  assert.equal(toUserFacingErrorMessage('Folder name is required.', 'Fallback'), 'Folder name is required.')
+})

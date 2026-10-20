@@ -11,6 +11,8 @@ import {
 } from 'react'
 import { Check, GripVertical, Paperclip, Undo2 } from 'lucide-react'
 import { readChatAttachmentsFromFiles } from '../../lib/chatAttachmentFiles'
+import { toUserFacingErrorMessage } from '../../lib/userFacingError'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
 import { isSupportedImageMimeType } from '../../lib/chatAttachments'
 import { chatInputSurfaceClassName } from '../../lib/chatStyles'
 import { createClientId } from '../../lib/clientId'
@@ -186,7 +188,7 @@ export function ChatQueueItem({
         try {
           nextAttachments.push(await uploadRemoteAttachmentSelection({ file, kind: 'file' }, conversationId))
         } catch (error) {
-          errors.push(error instanceof Error ? error.message : `Unable to attach ${file.name || 'item'}.`)
+          errors.push(toUserFacingErrorMessage(error, 'The attachment could not be added. Try again.'))
         }
         continue
       }
@@ -223,7 +225,7 @@ export function ChatQueueItem({
         }
         errors.push(...fallbackResult.errors)
       } catch (error) {
-        errors.push(error instanceof Error ? error.message : `Unable to attach ${file.name || 'item'}.`)
+        errors.push(toUserFacingErrorMessage(error, 'The attachment could not be added. Try again.'))
       }
     }
 
@@ -232,7 +234,7 @@ export function ChatQueueItem({
       try {
         namedAttachments = await nameStagedChatImages(conversationId, draftAttachments, nextAttachments)
       } catch (error) {
-        setAttachmentError(error instanceof Error ? error.message : 'Unable to check attachment filenames.')
+        setAttachmentError(toUserFacingErrorMessage(error, 'The attachment name could not be checked. Try again.'))
         return
       }
       const nextMentionMap = new Map(draftMentionPathMap)
@@ -393,7 +395,7 @@ export function ChatQueueItem({
             style={{ fieldSizing: 'content' } as CSSProperties}
           />
 
-          {attachmentError ? <p className="mt-2 text-sm text-danger-foreground">{attachmentError}</p> : null}
+          {attachmentError ? <AppNoticeSurface className="mt-2" title="Attachment unavailable" message={attachmentError} fallbackMessage="The attachment could not be added. Try again." onDismiss={() => setAttachmentError(null)} /> : null}
 
           <div className="mt-1 flex items-end justify-between gap-3">
             <Tooltip content="Attach files" side="top" noWrap>

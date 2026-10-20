@@ -215,6 +215,13 @@ export function SidebarPanel({
         </div>
 
         <div className="mt-2 flex items-center justify-between gap-1">
+          <div className="flex shrink-0 items-center">
+            <SidebarHistoryFilter
+              hasArchivedConversations={hasArchivedConversations}
+              selectedProjectId={resolvedSelectedProjectId}
+              onSelectProject={handleSelectProject}
+            />
+          </div>
           <ProjectThreadSelector
             cachedSelectedProjectName={selectedProjectName}
             projects={projects}
@@ -224,11 +231,6 @@ export function SidebarPanel({
             onSelectProject={handleSelectProject}
           />
           <div className="flex shrink-0 items-center">
-            <SidebarHistoryFilter
-              hasArchivedConversations={hasArchivedConversations}
-              selectedProjectId={resolvedSelectedProjectId}
-              onSelectProject={handleSelectProject}
-            />
             <Tooltip content="Add folder" side="right">
               <button
                 type="button"

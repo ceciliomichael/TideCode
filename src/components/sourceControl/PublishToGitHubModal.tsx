@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   CheckCircle2,
   ExternalLink,
   GitBranch,
@@ -12,6 +11,8 @@ import {
 } from 'lucide-react'
 import { SiGithub } from 'react-icons/si'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
+import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 import type {
   GitCommitModelSelection,
   GitHubAuthStatus,
@@ -89,7 +90,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
     } catch (authError) {
       setAuthStatus({
         kind: 'not-authenticated',
-        message: authError instanceof Error ? authError.message : 'Could not check GitHub sign-in status.',
+        message: toUserFacingErrorMessage(authError, 'Could not check your GitHub sign-in. Try again.'),
       })
     } finally {
       setIsCheckingAuth(false)
@@ -132,10 +133,10 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
       const nextAuthStatus = await window.tidecodeGit.completeGitHubDeviceLogin()
       setAuthStatus(nextAuthStatus)
       if (nextAuthStatus.kind !== 'authenticated') {
-        setError(nextAuthStatus.message)
+        setError(toUserFacingErrorMessage(nextAuthStatus.message, 'Could not sign in to GitHub. Try again.'))
       }
     } catch (connectError) {
-      setError(connectError instanceof Error ? connectError.message : 'Could not connect to GitHub.')
+      setError(toUserFacingErrorMessage(connectError, 'Could not connect to GitHub. Try again.'))
     } finally {
       setIsConnecting(false)
     }
@@ -169,7 +170,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
       setStep('success')
       onPublishSuccess()
     } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : 'Failed to publish to remote.')
+      setError(toUserFacingErrorMessage(publishError, 'Could not publish to the remote repository. Try again.'))
       setStep('error')
     }
   }
@@ -207,7 +208,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
       setStep('success')
       onPublishSuccess()
     } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : 'Failed to publish to GitHub.')
+      setError(toUserFacingErrorMessage(publishError, 'Could not publish to GitHub. Try again.'))
       setStep('error')
       await refreshAuthStatus()
     }
@@ -389,10 +390,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
               </div>
 
               {error && (
-              <div className="flex items-start gap-2.5 rounded-lg border border-danger-border bg-danger-surface px-3 py-2.5">
-                <AlertCircle size={14} className="mt-0.5 shrink-0 text-danger-foreground" />
-                <p className="text-xs leading-relaxed text-danger-foreground">{error}</p>
-                </div>
+                <AppNoticeSurface title="Publishing failed" message={error} fallbackMessage="The repository could not be published. Try again." />
               )}
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
@@ -456,10 +454,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
               ) : (
                 <div className="flex flex-col items-center gap-3">
                   {error ? (
-            <div className="inline-flex max-w-[22rem] items-start gap-2 rounded-lg border border-danger-border bg-danger-surface px-3 py-2 text-center">
-              <AlertCircle size={14} className="mt-0.5 shrink-0 text-danger-foreground" aria-hidden="true" />
-              <p className="text-xs leading-relaxed text-danger-foreground">{error}</p>
-                    </div>
+                    <AppNoticeSurface title="GitHub sign-in failed" message={error} fallbackMessage="Could not sign in to GitHub. Try again." />
                   ) : null}
                   <button
                     type="button"
@@ -569,10 +564,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
               </div>
 
               {error && (
-              <div className="flex items-start gap-2.5 rounded-lg border border-danger-border bg-danger-surface px-3 py-2.5">
-                <AlertCircle size={14} className="mt-0.5 shrink-0 text-danger-foreground" />
-                <p className="text-xs leading-relaxed text-danger-foreground">{error}</p>
-                </div>
+                <AppNoticeSurface title="Publishing failed" message={error} fallbackMessage="The repository could not be published. Try again." />
               )}
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">

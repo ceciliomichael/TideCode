@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bug, MessageSquarePlus, Trash2, X } from 'lucide-react'
 import { Tooltip } from '../Tooltip'
+import { showAppError } from '../ui/appNotifications'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
+import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 import type { BrowserElementAnnotation } from '../../types/browser'
 
 interface BrowserSelectableWebview {
@@ -95,6 +98,22 @@ export function BrowserAnnotations({
   const [isPicking, setIsPicking] = useState(false)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
+  const notifiedErrorRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!error) {
+      notifiedErrorRef.current = null
+      return
+    }
+    if (error && !open) {
+      if (notifiedErrorRef.current === error) {
+        return
+      }
+      notifiedErrorRef.current = error
+      showAppError(error, 'The annotation action could not be completed. Try again.', { title: 'Annotation action failed' })
+      setError('')
+    }
+  }, [error, open])
 
   const refresh = useCallback(() => {
     if (!conversationId || !projectPath || projectPath === '__no-workspace__') {
@@ -104,7 +123,7 @@ export function BrowserAnnotations({
     if (!window.tidecodeBrowserPageActions?.listAnnotations) return
     void window.tidecodeBrowserPageActions.listAnnotations({ conversationId, projectPath })
       .then((items) => setAnnotations(items.filter((item) => item.tabId === tabId)))
-      .catch((failure) => setError(String(failure)))
+      .catch((failure) => setError(toUserFacingErrorMessage(failure, 'Annotations could not be loaded. Try again.')))
   }, [conversationId, projectPath, tabId])
 
   useEffect(() => {
@@ -128,7 +147,7 @@ export function BrowserAnnotations({
         setOpen(true)
       }
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure))
+      setError(toUserFacingErrorMessage(failure, 'The annotation could not be saved. Try again.'))
     } finally {
       setIsPicking(false)
     }
@@ -148,7 +167,7 @@ export function BrowserAnnotations({
       setComment('')
       refresh()
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure))
+      setError(toUserFacingErrorMessage(failure, 'The annotation could not be saved. Try again.'))
     }
   }
 
@@ -176,7 +195,7 @@ export function BrowserAnnotations({
           onClick={() => {
             void window.tidecodeBrowserPageActions.setDeveloperMode({ projectPath, enabled: !developerEnabled })
               .then(setDeveloperEnabled)
-              .catch((failure) => setError(String(failure)))
+              .catch((failure) => setError(toUserFacingErrorMessage(failure, 'Annotations could not be loaded. Try again.')))
           }}
           className={[
             'flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted',
@@ -228,14 +247,14 @@ export function BrowserAnnotations({
                 <button type="button" aria-label="Remove annotation" onClick={() => {
                   void window.tidecodeBrowserPageActions.removeAnnotation({
                     id: annotation.id, conversationId: annotation.conversationId, projectPath,
-                  }).then(refresh).catch((failure) => setError(String(failure)))
+                  }).then(refresh).catch((failure) => setError(toUserFacingErrorMessage(failure, 'The annotation could not be removed. Try again.')))
                 }}><Trash2 size={13} /></button>
               </div>
             ))}
           </div>
-          {error ? <p className="mt-2 text-xs text-red-500">{error}</p> : null}
+          {error ? <AppNoticeSurface className="mt-2" title="Annotation action failed" message={error} fallbackMessage="The annotation action could not be completed. Try again." onDismiss={() => setError('')} /> : null}
         </div>
-      ) : error ? <span className="max-w-40 truncate text-xs text-red-500" title={error}>{error}</span> : null}
+      ) : null}
     </div>
   )
 }

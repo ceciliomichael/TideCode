@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type RefObject } from 'react'
 import { ChatInput } from '../../components/ChatInput'
+import { AppNoticeSurface } from '../../components/ui/AppNoticeSurface'
 import { EmptyState } from '../../components/EmptyState'
 import { MessageList } from '../../components/MessageList'
 import { ChatQueueBlock } from '../../components/chat/ChatQueueBlock'
@@ -197,9 +198,7 @@ export function ChatConversationSurface({
     >
       <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
         {chatMessages.error ? (
-          <div className="chat-input-shell mx-auto rounded-2xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-            {chatMessages.error}
-          </div>
+          <div className="chat-input-shell mx-auto py-2"><AppNoticeSurface title="Conversation unavailable" message={chatMessages.error} fallbackMessage="Could not load the conversation. Try again." /></div>
         ) : null}
         {chatMessages.isLoading && !chatMessages.isOpeningEmptyConversation ? (
           <div className="flex flex-1 items-center justify-center px-4 text-sm text-subtle-foreground">

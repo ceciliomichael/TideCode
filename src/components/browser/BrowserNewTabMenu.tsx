@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { Tooltip } from '../Tooltip'
 import { DropdownPopover } from '../ui/DropdownPopover'
+import { showAppError } from '../ui/appNotifications'
 
 interface BrowserNewTabMenuProps {
   onCreateTab: (incognito: boolean) => Promise<void>
@@ -17,7 +18,6 @@ interface BrowserNewTabMenuProps {
 export function BrowserNewTabMenu({ onCreateTab }: BrowserNewTabMenuProps) {
   const [open, setOpen] = useState(false)
   const [pending, setPending] = useState(false)
-  const [error, setError] = useState('')
   const buttonRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const id = useId()
@@ -28,7 +28,6 @@ export function BrowserNewTabMenu({ onCreateTab }: BrowserNewTabMenuProps) {
 
   useEffect(() => {
     if (open) {
-      setError('')
       const frame = window.requestAnimationFrame(() => {
         panelRef.current
           ?.querySelector<HTMLButtonElement>('button:not(:disabled)')
@@ -43,14 +42,11 @@ export function BrowserNewTabMenu({ onCreateTab }: BrowserNewTabMenuProps) {
       return
     }
     setPending(true)
-    setError('')
     try {
       await onCreateTab(incognito)
       close()
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : 'The tab could not be opened.',
-      )
+      showAppError(cause, 'The browser tab could not be opened. Try again.', { title: 'Could not open tab' })
     } finally {
       setPending(false)
     }
@@ -127,11 +123,6 @@ export function BrowserNewTabMenu({ onCreateTab }: BrowserNewTabMenuProps) {
         >
           New incognito tab
         </button>
-        {error ? (
-          <p role="alert" className="px-3 py-2 text-xs text-danger-foreground">
-            {error}
-          </p>
-        ) : null}
       </DropdownPopover>
     </>
   )

@@ -25,6 +25,8 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
+import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 import type {
   FolderPickerDirectory,
   FolderPickerEntry,
@@ -42,7 +44,7 @@ import {
 } from './remoteFolderPickerState'
 
 function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
+  return toUserFacingErrorMessage(error, 'The folder action could not be completed. Try again.')
 }
 
 function FolderPickerRootIcon({ kind }: { kind: FolderPickerRootKind }) {
@@ -729,9 +731,7 @@ export function RemoteFolderPickerDialog({
 
           <div className="flex min-w-0 flex-1 flex-col">
             {error ? (
-              <div className="mx-3 mt-3 rounded-lg border border-danger/30 bg-danger-surface px-3 py-2 text-sm text-danger-foreground">
-                {error}
-              </div>
+              <div className="mx-3 mt-3"><AppNoticeSurface title="Folder action failed" message={error} fallbackMessage="The folder action could not be completed. Try again." onDismiss={() => setError(null)} /></div>
             ) : null}
 
             <div

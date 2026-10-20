@@ -82,6 +82,7 @@ export function toUserFacingErrorMessage(
   }
 
   const isRemoteMethodError = /^Error invoking remote method\s+['"][^'"]+['"]:/iu.test(message)
+  const hasTechnicalPrefix = /^(?:Error|TypeError|RangeError|SyntaxError|ReferenceError|AggregateError):/iu.test(message)
   const applicationMessage = unwrapRemoteMethodMessage(message)
   const normalizedMessage = applicationMessage.toLowerCase()
   const partialGitSuccessMessage = getPartialGitSuccessMessage(applicationMessage)
@@ -158,6 +159,22 @@ export function toUserFacingErrorMessage(
     return 'The item could not be read. Check that it is still available and try again.'
   }
 
+  if (normalizedMessage.includes('err_name_not_resolved') || normalizedMessage.includes('err_address_unreachable')) {
+    return 'This website could not be found. Check its address and try again.'
+  }
+
+  if (normalizedMessage.includes('err_internet_disconnected')) {
+    return 'You appear to be offline. Check your internet connection and try again.'
+  }
+
+  if (normalizedMessage.includes('err_cert_')) {
+    return 'The website connection could not be verified. Check the address before continuing.'
+  }
+
+  if (normalizedMessage.includes('err_connection')) {
+    return 'The website could not be reached. Check its address and your connection, then try again.'
+  }
+
   if (
     normalizedMessage.includes('context_length') ||
     normalizedMessage.includes('context window') ||
@@ -178,7 +195,9 @@ export function toUserFacingErrorMessage(
   if (
     normalizedMessage.includes('fetch failed') ||
     normalizedMessage.includes('econn') ||
-    normalizedMessage.includes('network error')
+    normalizedMessage.includes('network error') ||
+    normalizedMessage.includes('connection refused') ||
+    normalizedMessage.includes('connection reset')
   ) {
     return 'The provider could not be reached. Check your connection and try again.'
   }
@@ -191,13 +210,29 @@ export function toUserFacingErrorMessage(
     return 'The provider took too long to respond. Try again.'
   }
 
+  if (normalizedMessage.includes('no space left') || normalizedMessage.includes('enospc')) {
+    return 'There is not enough disk space to complete this action. Free some space and try again.'
+  }
+
+  if (normalizedMessage.includes('rate limit') || /\b429\b/u.test(normalizedMessage)) {
+    return 'Too many requests were sent. Try again shortly.'
+  }
+
+  if (normalizedMessage.includes('forbidden') || /\b403\b/u.test(normalizedMessage)) {
+    return 'You do not have access to complete this action. Check your account permissions.'
+  }
+
   if (
     applicationMessage.length > 240 ||
     isRemoteMethodError ||
+    hasTechnicalPrefix ||
     normalizedMessage.includes('ipcmain') ||
     normalizedMessage.includes('nooutputgeneratederror') ||
     normalizedMessage.includes('ai_') ||
-    /\s+at\s+\S+[:(]/u.test(applicationMessage)
+    /\s+at\s+\S+[:(]/u.test(applicationMessage) ||
+    /\b(?:ERR_[A-Z0-9_]+|E(?:ACCES|PERM|NOENT|EXIST|CONNREFUSED|CONNRESET|TIMEDOUT|PIPE|ADDRINUSE|INVAL|BUSY|IO|NOSPC)|HTTP\/\d|IPC|RPC|UnhandledPromiseRejection|undefined|null reference)\b/u.test(applicationMessage) ||
+    /(?:[A-Za-z]:\\|\/(?:Users|home|tmp|var|opt)\/|node_modules\/|\.tsx?:\d+|\.js:\d+|^\{[\s\S]*\}$)/u.test(applicationMessage) ||
+    /(?:traceback|stack trace|exception|failed to invoke|internal server error|syntaxerror|typeerror|referenceerror)/iu.test(applicationMessage)
   ) {
     return fallbackMessage
   }

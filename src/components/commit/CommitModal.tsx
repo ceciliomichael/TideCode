@@ -4,6 +4,7 @@ import { GitBranch, GitCommitHorizontal, ArrowUp, X, Loader2 } from 'lucide-reac
 import { FaGithub } from 'react-icons/fa'
 import { ConfirmUnstagedCommitDialog } from './ConfirmUnstagedCommitDialog'
 import { toUserFacingErrorMessage } from '../../lib/userFacingError'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
 import type { GitBranchState, GitCommitAction, GitStatusResult } from '../../types/chat'
 import type { ConversationDiffSnapshot } from '../../lib/chatDiffs'
 import { normalizeGitBranchName, sanitizeGitBranchInput } from '../../lib/gitBranchName'
@@ -300,9 +301,7 @@ export function CommitModal({
 
           {/* Error */}
           {errorMessage || localError ? (
-            <div className="mx-6 mt-2 rounded-xl border border-danger-border bg-danger-surface px-3.5 py-2.5 text-sm text-danger-foreground">
-              {errorMessage || localError}
-            </div>
+            <div className="mx-6 mt-2"><AppNoticeSurface title="Could not commit changes" message={errorMessage || localError} fallbackMessage="The changes could not be committed. Try again." /></div>
           ) : null}
 
           {/* Submit */}

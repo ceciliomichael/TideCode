@@ -100,7 +100,7 @@ export function SidebarHistoryFilter({
 
   return (
     <div ref={containerRef} className="relative shrink-0">
-      <Tooltip content="Filter chats" side="right">
+      <Tooltip content="Filter chats" side="top">
         <button
           ref={buttonRef}
           type="button"

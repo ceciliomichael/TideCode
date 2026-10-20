@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Eraser, Eye, EyeOff, Loader2, Save, Trash2, X } from 'lucide-react'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import type {
   ApiKeyProviderStatus,
   SaveApiKeyProviderInput,
@@ -193,7 +194,7 @@ export function ProviderConfigDialog({
             ) : null}
 
             {localError ? (
-              <p className="mt-5 rounded-xl border border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger-foreground">{localError}</p>
+              <AppNoticeSurface className="mt-5" title="Provider action failed" message={localError} fallbackMessage="Check your provider settings and try again." />
             ) : null}
           </div>
 

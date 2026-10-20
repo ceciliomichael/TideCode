@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { mkdir, realpath, stat, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import type { BrowserScreenshot } from '../../src/types/browser'
 
@@ -14,14 +15,14 @@ async function screenshotDirectory(projectPath: string, create: boolean) {
   if (!(await stat(root)).isDirectory()) {
     throw new Error('The screenshot project must be a directory.')
   }
-  let directory = root
+  let directory = await realpath(homedir())
   for (const segment of ['.tidecode', 'browser-screenshots']) {
     directory = path.join(directory, segment)
     if (create) {
       await mkdir(directory, { recursive: true })
     }
     if ((await realpath(directory)) !== directory) {
-      throw new Error('The screenshot folder must stay inside the project.')
+      throw new Error('The screenshot folder must stay inside your user folder.')
     }
   }
   return { root, directory }
@@ -52,7 +53,7 @@ export async function resolveBrowserScreenshot(input: BrowserScreenshot) {
     path.dirname(input.filePath) !== directory ||
     !screenshotName.test(path.basename(input.filePath))
   ) {
-    throw new Error('Select a saved browser screenshot inside this project.')
+    throw new Error('Select a saved browser screenshot from your user folder.')
   }
   const filePath = await realpath(input.filePath)
   if (filePath !== input.filePath || !(await stat(filePath)).isFile()) {

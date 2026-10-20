@@ -1,10 +1,11 @@
-import { X } from 'lucide-react'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   BrowserScreenshot,
   BrowserScreenshotAction,
 } from '../../types/browser'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
+import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 
 interface BrowserScreenshotToastProps {
   containerRef: RefObject<HTMLDivElement | null>
@@ -77,11 +78,7 @@ export function BrowserScreenshotToast({
         }, 2000)
       }
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'The screenshot action failed.',
-      )
+      setError(toUserFacingErrorMessage(cause, 'The screenshot action could not be completed. Try again.'))
     } finally {
       runningRef.current.delete(action)
       setPendingActions((current) =>
@@ -95,9 +92,13 @@ export function BrowserScreenshotToast({
   }
 
   return createPortal(
-    <div
+    <AppNoticeSurface
       role="region"
-      aria-label="Browser screenshot notification"
+      ariaLabel="Browser screenshot notification"
+      dismissLabel="Dismiss screenshot notification"
+      title="Screenshot saved"
+      mode="toast"
+      onDismiss={onClose}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onPointerDownCapture={() => setFocused(false)}
@@ -109,19 +110,8 @@ export function BrowserScreenshotToast({
           setFocused(false)
         }
       }}
-      className="absolute right-3 top-14 z-[100] w-[380px] max-w-[calc(100%-1.5rem)] rounded-xl border border-border bg-surface-raised p-3 text-foreground shadow-lg"
+      className="absolute right-3 top-14 z-[100]"
     >
-      <button
-        type="button"
-        aria-label="Dismiss screenshot notification"
-        onClick={onClose}
-        className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
-      >
-        <X size={14} />
-      </button>
-      <div role="status" className="pr-6 text-sm font-medium">
-        Screenshot saved
-      </div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <button
           type="button"
@@ -177,12 +167,12 @@ export function BrowserScreenshotToast({
       {error ? (
         <p
           role="alert"
-          className="mt-1.5 break-words text-xs text-danger-foreground"
+          className="mt-1.5 break-words text-xs text-muted-foreground"
         >
           {error}
         </p>
       ) : null}
-    </div>,
+    </AppNoticeSurface>,
     containerRef.current,
   )
 }

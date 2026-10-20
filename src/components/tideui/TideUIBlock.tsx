@@ -3,6 +3,7 @@ import { parseStreamingTideUI } from '../../lib/tideui/streaming'
 import type { TideNode, TideUIActions } from '../../lib/tideui/types'
 import { reconcileTideNodes } from '../../lib/tideui/reconcileNodes'
 import { TideUIRenderer } from './TideUIRenderer'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
 
 const STREAMING_ACTIONS: TideUIActions = {}
 
@@ -28,8 +29,12 @@ export const TideUIBlock = memo(function TideUIBlock({ source, actions, isStream
     committedNodes.current = nodes
   }, [nodes])
   if (document.errors.length) return <div className="tideui-root">
-    <div className="tideui-error" role="alert">{document.errors.join('\n')}</div>
-    <pre className="tideui-code">{source}</pre>
+    <AppNoticeSurface title="Generated interface unavailable" message="This generated interface could not be displayed." fallbackMessage="This generated interface could not be displayed.">
+      <details className="mt-2 text-xs text-muted-foreground">
+        <summary className="cursor-pointer">Show technical details</summary>
+        <pre className="tideui-code mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words">{document.errors.join('\n')}{'\n'}{source}</pre>
+      </details>
+    </AppNoticeSurface>
   </div>
   if (document.nodes.length === 0) {
     return null

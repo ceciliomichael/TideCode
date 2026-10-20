@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { DropdownPopover } from '../ui/DropdownPopover'
 import { Tooltip } from '../Tooltip'
+import { showAppError } from '../ui/appNotifications'
 import type {
   BrowserPageControls,
   BrowserPageState,
@@ -35,7 +36,6 @@ export function BrowserMenu({
   const [isOpen, setIsOpen] = useState(false)
   const [pending, setPending] = useState(false)
   const [message, setMessage] = useState('')
-  const [hasError, setHasError] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const id = useId()
@@ -60,7 +60,6 @@ export function BrowserMenu({
     }
     setPending(true)
     setMessage('')
-    setHasError(false)
     try {
       await action()
       setMessage(success)
@@ -68,10 +67,7 @@ export function BrowserMenu({
         close()
       }
     } catch (error) {
-      setHasError(true)
-      setMessage(
-        error instanceof Error ? error.message : 'The browser action failed.',
-      )
+      showAppError(error, 'The browser action could not be completed. Try again.', { title: 'Browser action failed' })
     } finally {
       setPending(false)
     }
@@ -212,11 +208,8 @@ export function BrowserMenu({
         </button>
         {message ? (
           <p
-            role={hasError ? 'alert' : 'status'}
-            className={[
-              'px-3 py-2 text-xs',
-              hasError ? 'text-danger-foreground' : 'text-muted-foreground',
-            ].join(' ')}
+            role="status"
+            className="px-3 py-2 text-xs text-muted-foreground"
           >
             {message}
           </p>

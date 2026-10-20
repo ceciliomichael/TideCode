@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent, type RefObject } from 'react'
 import { ArrowUp, Clock, File, Folder, Paperclip, Square } from 'lucide-react'
 import { readChatAttachmentsFromFiles } from '../lib/chatAttachmentFiles'
+import { toUserFacingErrorMessage } from '../lib/userFacingError'
+import { AppNoticeSurface } from './ui/AppNoticeSurface'
 import { CHAT_ATTACHMENT_MAX_COUNT, isSupportedImageMimeType } from '../lib/chatAttachments'
 import { chatConversationSurfacePaddingClassName, chatInputSurfaceClassName } from '../lib/chatStyles'
 import { DEFAULT_FOLLOW_UP_BEHAVIOR, type FollowUpBehavior } from '../lib/appSettings'
@@ -399,7 +401,7 @@ export function ChatInput({
         }
         nextNewAttachments.push(await uploadRemoteAttachmentSelection(selection, conversationId))
       } catch (error) {
-        errors.push(error instanceof Error ? error.message : 'Unable to upload attachment.')
+        errors.push(toUserFacingErrorMessage(error, 'The attachment could not be uploaded. Try again.'))
       }
     }
     if (selections.length > availableSlots) {
@@ -410,7 +412,7 @@ export function ChatInput({
       try {
         namedAttachments = await nameStagedChatImages(conversationId, attachments, nextNewAttachments)
       } catch (error) {
-        setAttachmentError(error instanceof Error ? error.message : 'Unable to check attachment filenames.')
+        setAttachmentError(toUserFacingErrorMessage(error, 'The attachment name could not be checked. Try again.'))
         return
       }
       onAttachmentsChange?.([...attachments, ...namedAttachments])
@@ -472,7 +474,7 @@ export function ChatInput({
         }
         errors.push(...fallbackResult.errors)
       } catch (error) {
-        errors.push(error instanceof Error ? error.message : `Unable to attach ${file.name || 'item'}.`)
+        errors.push(toUserFacingErrorMessage(error, 'The attachment could not be added. Try again.'))
       }
     }
     if (files.length > availableSlots) {
@@ -484,7 +486,7 @@ export function ChatInput({
       try {
         namedAttachments = await nameStagedChatImages(conversationId, attachments, nextNewAttachments)
       } catch (error) {
-        setAttachmentError(error instanceof Error ? error.message : 'Unable to check attachment filenames.')
+        setAttachmentError(toUserFacingErrorMessage(error, 'The attachment name could not be checked. Try again.'))
         return
       }
       const nextAttachments = [...attachments, ...namedAttachments]
@@ -539,7 +541,7 @@ export function ChatInput({
           sizeBytes: stored.sizeBytes,
         })
       } catch (error) {
-        errors.push(error instanceof Error ? error.message : `Unable to attach ${sourcePath}.`)
+        errors.push(toUserFacingErrorMessage(error, 'The attachment could not be added. Try again.'))
       }
     }
     if (paths.length > availableSlots) {
@@ -550,7 +552,7 @@ export function ChatInput({
       try {
         namedAttachments = await nameStagedChatImages(conversationId, attachments, nextAttachments)
       } catch (error) {
-        setAttachmentError(error instanceof Error ? error.message : 'Unable to check attachment filenames.')
+        setAttachmentError(toUserFacingErrorMessage(error, 'The attachment name could not be checked. Try again.'))
         return
       }
       onAttachmentsChange?.([...attachments, ...namedAttachments])
@@ -624,7 +626,7 @@ export function ChatInput({
       const paths = await window.tidecodeClipboard.readFiles()
       await handleAttachmentPaths(paths)
     } catch (error) {
-      setAttachmentError(error instanceof Error ? error.message : 'Unable to read files from the clipboard.')
+      setAttachmentError(toUserFacingErrorMessage(error, 'The clipboard files could not be read. Try again.'))
     }
   }
 
@@ -647,7 +649,7 @@ export function ChatInput({
             }
             return handleRemoteAttachmentSelections(selections)
           })
-          .catch((error) => setAttachmentError(error instanceof Error ? error.message : 'Unable to read pasted items.'))
+          .catch((error) => setAttachmentError(toUserFacingErrorMessage(error, 'The pasted items could not be read. Try again.')))
         return
       }
       void handleClipboardFilePaste(files)
@@ -673,7 +675,7 @@ export function ChatInput({
       const items = Array.from(event.dataTransfer.items)
       void collectRemoteAttachmentSelections(items, files)
         .then((selections) => handleRemoteAttachmentSelections(selections))
-        .catch((error) => setAttachmentError(error instanceof Error ? error.message : 'Unable to read dropped items.'))
+        .catch((error) => setAttachmentError(toUserFacingErrorMessage(error, 'The dropped items could not be read. Try again.')))
       return
     }
     if (files.length > 0) {
@@ -737,7 +739,7 @@ export function ChatInput({
       }])
       setAttachmentError(null)
     } catch (error) {
-      setAttachmentError(error instanceof Error ? error.message : 'Unable to attach folder.')
+      setAttachmentError(toUserFacingErrorMessage(error, 'The folder could not be attached. Try again.'))
     }
   }
 
@@ -905,7 +907,7 @@ export function ChatInput({
           />
         </div>
 
-        {attachmentError ? <p className="mt-2 text-sm text-danger-foreground">{attachmentError}</p> : null}
+        {attachmentError ? <AppNoticeSurface className="mt-2" title="Attachment unavailable" message={attachmentError} fallbackMessage="The attachment could not be added. Try again." onDismiss={() => setAttachmentError(null)} /> : null}
 
         <div
           className={isMobileViewport

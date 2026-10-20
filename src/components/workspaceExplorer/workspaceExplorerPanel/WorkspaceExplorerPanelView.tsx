@@ -1,4 +1,5 @@
-import { AlertCircle, ChevronRight, File, Folder, FolderOpen, X } from 'lucide-react'
+import { ChevronRight, File, Folder, FolderOpen } from 'lucide-react'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import type { DragEvent as ReactDragEvent, ReactElement } from 'react'
 import { useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
@@ -348,21 +349,8 @@ export function WorkspaceExplorerPanelView({
         ) : (
           <>
             {panelState.errorMessage ? (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className="mx-3 mt-2 flex shrink-0 items-start gap-2 rounded-xl border border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger-foreground"
-              >
-                <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
-                <span className="min-w-0 flex-1 break-words">{panelState.errorMessage}</span>
-                <button
-                  type="button"
-                  aria-label="Dismiss explorer error"
-                  onClick={panelState.clearErrorMessage}
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-danger-foreground transition-colors hover:bg-danger-surface hover:text-danger-foreground-hover"
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
+              <div className="mx-3 mt-2 shrink-0">
+                <AppNoticeSurface title="Explorer action failed" message={panelState.errorMessage} fallbackMessage="The file action could not be completed. Try again." onDismiss={panelState.clearErrorMessage} dismissLabel="Dismiss explorer error" />
               </div>
             ) : null}
             {!showExplorerTree ? (

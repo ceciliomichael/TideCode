@@ -1,4 +1,5 @@
 import { CircleAlert, CircleCheck, Loader2 } from 'lucide-react'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
 
 export type SourceControlOperationNotice =
   | { kind: 'error'; message: string }
@@ -21,16 +22,22 @@ export function SourceControlOperationStatus({
     return null
   }
 
+  if (kind === 'error') {
+    return (
+      <div className="shrink-0 px-3 py-2">
+        <AppNoticeSurface title="Source control action failed" message={message} fallbackMessage="The Git action could not be completed. Try again." />
+      </div>
+    )
+  }
+
   return (
     <div
-      role={kind === 'error' ? 'alert' : 'status'}
-      aria-live={kind === 'error' ? 'assertive' : 'polite'}
+      role="status"
+      aria-live="polite"
       className={[
         'flex min-h-9 shrink-0 items-center gap-2 border-b px-4 py-2 text-[12px]',
-        kind === 'error'
-          ? 'border-danger-border bg-danger-surface text-danger-foreground'
-          : kind === 'warning'
-            ? 'border-warning-border bg-warning-surface text-warning-foreground'
+        kind === 'warning'
+          ? 'border-warning-border bg-warning-surface text-warning-foreground'
           : 'border-border bg-surface-muted text-muted-foreground',
       ].join(' ')}
     >

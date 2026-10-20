@@ -1,6 +1,7 @@
 import { AlertCircle, CheckCircle2, Download, ExternalLink, PackageCheck, RefreshCw, RotateCw } from 'lucide-react'
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { MarkdownRenderer } from '../../chat/MarkdownRenderer'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { SegmentedField } from '../../ui/SegmentedField'
 import {
@@ -253,12 +254,7 @@ export function UpdatesSettingsPanel({
           </div>
 
           {errorMessage ? (
-            <div
-              role="alert"
-              className="mt-4 rounded-xl border border-danger-border bg-danger-surface px-3 py-2.5 text-sm leading-5 text-danger-foreground"
-            >
-              {errorMessage}
-            </div>
+            <AppNoticeSurface className="mt-4" title="Update action failed" message={errorMessage} fallbackMessage="TideCode could not check for updates. Try again." />
           ) : null}
         </div>
       </SettingsSection>

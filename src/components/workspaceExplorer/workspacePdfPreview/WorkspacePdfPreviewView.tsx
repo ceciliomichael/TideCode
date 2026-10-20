@@ -6,6 +6,7 @@ import {
   type PdfPreviewRenderSnapshot,
 } from '../../../lib/pdfPreviewRenderCache'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { useWorkspaceDocumentCanvasInteraction } from '../workspaceDocumentPreview/useWorkspaceDocumentCanvasInteraction'
 import { WorkspacePdfPage } from './WorkspacePdfPage'
 import { Tooltip } from '../../Tooltip'
@@ -134,12 +135,7 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
           </div>
         ) : previewUnavailable ? (
           <div className="flex h-full min-h-[200px] items-center justify-center px-4">
-            <div className="max-w-lg text-center">
-              <div className="text-sm font-medium text-foreground">PDF preview unavailable</div>
-              <p className="mt-2 text-sm leading-6 text-subtle-foreground">
-                {errorMessage ?? `TideCode could not open ${fileName}.`}
-              </p>
-            </div>
+            <div className="w-full max-w-lg"><AppNoticeSurface title="PDF preview unavailable" message={errorMessage ?? 'This document could not be opened.'} fallbackMessage="This document could not be opened. Try again." /></div>
           </div>
         ) : previewSnapshot ? (
           <div className="workspace-document-page-stack">

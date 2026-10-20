@@ -7,6 +7,7 @@ import {
   PDF_MAX_CANVAS_PIXELS,
 } from '../../../lib/pdfPreviewRenderCache'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 
 interface WorkspacePdfPageProps {
   documentProxy: PDFDocumentProxy
@@ -144,10 +145,7 @@ export const WorkspacePdfPage = memo(function WorkspacePdfPage({
     >
       <canvas ref={canvasRef} aria-label={`Page ${pageNumber}`} className={errorMessage ? 'hidden' : 'block'} />
       {errorMessage ? (
-        <div className="max-w-sm px-6 py-8 text-center text-sm text-subtle-foreground">
-          <div className="font-medium text-foreground">Page {pageNumber} unavailable</div>
-          <p className="mt-2 leading-6">{errorMessage}</p>
-        </div>
+        <div className="w-full max-w-sm px-3 py-4"><AppNoticeSurface title={`Page ${pageNumber} unavailable`} message={errorMessage} fallbackMessage="This page could not be displayed. Try reopening the PDF." /></div>
       ) : null}
     </div>
   )

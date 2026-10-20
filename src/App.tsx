@@ -10,6 +10,7 @@ import { resolveBootConversationLaunchState } from './pages/chatInterface/chatLa
 import { hydrateCachedUpdate, requestAutomaticUpdateCheck } from './components/settings/updates/updatesSessionStore'
 import type { SettingsItemId } from './components/settings/settingsItems'
 import { GlobalOverlayScrollbars } from './components/ui/GlobalOverlayScrollbars'
+import { AppNotificationHost } from './components/ui/AppNotificationHost'
 
 type AppScreen = 'chat' | 'settings'
 
@@ -240,6 +241,7 @@ export default function App() {
       ) : null}
 
       <GlobalOverlayScrollbars />
+      <AppNotificationHost />
     </div>
   )
 }

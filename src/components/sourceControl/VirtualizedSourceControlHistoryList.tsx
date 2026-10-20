@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from 'react'
 import { Loader2 } from 'lucide-react'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
 import type { GitHistoryCommitDetailsResult } from '../../types/chat'
 import {
   calculateVariableSizeVirtualRange,
@@ -297,7 +298,7 @@ export const VirtualizedSourceControlHistoryList = memo(function VirtualizedSour
         })
       )}
 
-      {historyError ? <p className="px-4 py-2 text-xs text-danger-foreground">{historyError}</p> : null}
+      {historyError ? <div className="px-3 py-2"><AppNoticeSurface title="Could not load history" message={historyError} fallbackMessage="Git history could not be loaded. Try again." /></div> : null}
 
       {hasMoreHistory ? (
         <div className="px-4 py-3">

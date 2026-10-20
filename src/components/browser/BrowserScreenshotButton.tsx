@@ -1,8 +1,9 @@
-import { Camera, X } from 'lucide-react'
+import { Camera } from 'lucide-react'
 import { useCallback, useRef, useState, type RefObject } from 'react'
 import { Tooltip } from '../Tooltip'
 import type { BrowserScreenshot } from '../../types/browser'
 import { BrowserScreenshotToast } from './BrowserScreenshotToast'
+import { showAppError } from '../ui/appNotifications'
 
 interface BrowserScreenshotButtonProps {
   toastContainerRef: RefObject<HTMLDivElement | null>
@@ -19,7 +20,6 @@ export function BrowserScreenshotButton({
 }: BrowserScreenshotButtonProps) {
   const [capturing, setCapturing] = useState(false)
   const [screenshot, setScreenshot] = useState<BrowserScreenshot | null>(null)
-  const [error, setError] = useState('')
   const capturingRef = useRef(false)
   const closeToast = useCallback(() => setScreenshot(null), [])
 
@@ -30,15 +30,10 @@ export function BrowserScreenshotButton({
     capturingRef.current = true
     setCapturing(true)
     setScreenshot(null)
-    setError('')
     try {
       setScreenshot(await onCapture())
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'The screenshot could not be saved.',
-      )
+      showAppError(cause, 'The screenshot could not be saved. Try again.', { title: 'Could not save screenshot' })
     } finally {
       capturingRef.current = false
       setCapturing(false)
@@ -65,21 +60,6 @@ export function BrowserScreenshotButton({
           screenshot={screenshot}
           onClose={closeToast}
         />
-      ) : null}
-      {error ? (
-        <div
-          role="alert"
-          className="absolute right-0 top-full z-50 mt-1 flex w-72 items-start gap-2 rounded-lg border border-border bg-background p-3 text-xs text-danger-foreground shadow-lg"
-        >
-          <span className="flex-1">{error}</span>
-          <button
-            type="button"
-            aria-label="Dismiss screenshot error"
-            onClick={() => setError('')}
-          >
-            <X size={14} />
-          </button>
-        </div>
       ) : null}
     </div>
   )

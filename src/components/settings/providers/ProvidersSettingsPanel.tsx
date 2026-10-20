@@ -1,4 +1,5 @@
 import { Plus } from 'lucide-react'
+import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
 import { useEffect, useRef, useState } from 'react'
 import type {
   ApiKeyProviderId,
@@ -134,7 +135,7 @@ export function ProvidersSettingsPanel(props: ProvidersSettingsPanelProps) {
         </header>
 
         {props.errorMessage ? (
-          <div className="rounded-xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">{props.errorMessage}</div>
+          <AppNoticeSurface title="Could not update providers" message={props.errorMessage} fallbackMessage="Check your provider settings and try again." />
         ) : null}
 
         <div className="flex flex-col gap-2.5">

@@ -14,7 +14,7 @@ export const WORKSPACE_INSTRUCTIONS_HIDDEN_CONTEXT_KIND = 'workspace_instruction
 export const WORKSPACE_DURABLE_MEMORY_HIDDEN_CONTEXT_KIND = 'workspace_durable_memory'
 export const WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND = 'workspace_memory'
 export const WORKSPACE_INSTRUCTIONS_REVISION_CHANGED_PROMPT =
-  'AGENTS.md changed. Read it again in full. Its instructions are mandatory: follow every applicable requirement and exception; do not skip any for speed or convenience.'
+  'AGENTS.md changed. Read it again in full and treat it as authoritative workspace instructions. Follow every applicable requirement and exception; do not treat it as optional reference data.'
 
 const HIDDEN_USER_CONTEXT_PATTERN =
   /<hidden_user_context\b[^>]*>[\s\S]*?<\/hidden_user_context>/gu
@@ -102,7 +102,7 @@ export function buildWorkspaceInstructionsHiddenContext(
     '<workspace_instruction_context path="AGENTS.md" state="present">',
     options.revisionChanged
       ? WORKSPACE_INSTRUCTIONS_REVISION_CHANGED_PROMPT
-      : 'Read AGENTS.md in full. Its instructions are mandatory throughout this task: follow every applicable requirement and exception; do not skip any for speed or convenience.',
+      : 'Read AGENTS.md in full and treat it as authoritative workspace instructions throughout this task. Follow every applicable requirement and exception; do not treat it as optional reference data.',
     '</workspace_instruction_context>',
   ].join('\n'))
 }

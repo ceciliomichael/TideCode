@@ -6,6 +6,7 @@ import type { TideUIActions } from '../../lib/tideui/types'
 import { copyTextToClipboard } from '../../lib/clipboard'
 import { readTideHtmlTheme } from '../../lib/tideui/htmlTheme'
 import { isRemoteMobileViewportRuntime } from '../../hooks/useIsMobileViewport'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
 
 const NO_ACTIONS: TideUIActions = {}
 
@@ -120,7 +121,14 @@ export const TideUIHtmlPreview = memo(function TideUIHtmlPreview({ source, actio
       window.removeEventListener('message', receiveMessage)
     }
   }, [actions, isStreaming, preview.credential, preview.token])
-  if (preview.error) return <div className="tideui-error" role="alert">{preview.error}</div>
+  if (preview.error) return (
+    <AppNoticeSurface title="HTML preview unavailable" message="This HTML preview could not be displayed.">
+      <details className="mt-2 text-xs text-muted-foreground">
+        <summary className="cursor-pointer">Show technical details</summary>
+        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words">{preview.error}</pre>
+      </details>
+    </AppNoticeSurface>
+  )
   return <div className="tideui-root tideui-html-preview">
     <div className="tideui-html-viewport">
       <iframe ref={frameRef} title="Custom HTML"

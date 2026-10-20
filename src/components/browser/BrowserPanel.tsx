@@ -1,4 +1,5 @@
 import { BrowserScreenshotButton } from './BrowserScreenshotButton'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
 import { BrowserAnnotations } from './BrowserAnnotations'
 import { createElement, FormEvent, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { ArrowLeft, ArrowRight, Globe2, Home, LoaderCircle, RefreshCw, Search, VenetianMask, X } from 'lucide-react'
@@ -554,13 +555,9 @@ function BrowserTabSession({
           {isElectron && loadFailure ? (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-background px-6 text-foreground">
             <div className="w-full max-w-xl">
-              <div className="text-lg font-semibold">This page could not be loaded</div>
-              <div className="mt-2 break-all text-sm text-muted-foreground">{loadFailure.url}</div>
-              <div className="mt-4 rounded-lg border border-border bg-surface-muted p-3 font-mono text-xs text-muted-foreground">
-                {loadFailure.message}
-                {loadFailure.errorCode !== null ? ` (${loadFailure.errorCode})` : ''}
-              </div>
-              <div className="mt-4 flex items-center gap-2">
+              <AppNoticeSurface title="This page could not be loaded" message={loadFailure.message} fallbackMessage="Check the website address or your connection, then try again.">
+                <div className="mt-1.5 break-all text-xs text-muted-foreground">{loadFailure.url}</div>
+              <div className="mt-2 flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleRetry}
@@ -576,6 +573,7 @@ function BrowserTabSession({
                   Open DevTools
                 </button>
               </div>
+              </AppNoticeSurface>
             </div>
             </div>
           ) : null}

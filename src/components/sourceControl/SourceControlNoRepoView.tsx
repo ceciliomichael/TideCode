@@ -1,7 +1,9 @@
-import { GitBranch, FolderGit2, Globe, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { GitBranch, FolderGit2, Globe, Loader2, CheckCircle2 } from 'lucide-react'
 import { useState } from 'react'
 import type { GitCommitModelSelection } from '../../types/chat'
 import { PublishToGitHubModal } from './PublishToGitHubModal'
+import { AppNoticeSurface } from '../ui/AppNoticeSurface'
+import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 
 interface SourceControlNoRepoViewProps {
   commitModelSelection: GitCommitModelSelection
@@ -28,7 +30,7 @@ export function SourceControlNoRepoView({ commitModelSelection, workspacePath, o
       await new Promise((resolve) => setTimeout(resolve, 600))
       await onRefreshAll()
     } catch (err) {
-      setInitError(err instanceof Error ? err.message : 'Failed to initialize repository.')
+      setInitError(toUserFacingErrorMessage(err, 'Could not initialize a repository in this folder.'))
       setInitStep('error')
     }
   }
@@ -65,10 +67,7 @@ export function SourceControlNoRepoView({ commitModelSelection, workspacePath, o
 
         {/* Error message */}
         {(initStep === 'error' && initError) && (
-          <div className="w-full flex items-start gap-2 rounded-lg border border-danger-border bg-danger-surface px-3 py-2.5">
-            <AlertCircle size={13} className="mt-0.5 shrink-0 text-danger-foreground" />
-            <p className="text-xs text-danger-foreground leading-relaxed">{initError}</p>
-          </div>
+          <AppNoticeSurface title="Could not create repository" message={initError} fallbackMessage="Check the folder permissions and try again." />
         )}
 
         {/* Actions */}
