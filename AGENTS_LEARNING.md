@@ -1,5 +1,7 @@
 # Durable project knowledge
 
+- On 2026-10-20 the user clarified that branching should copy the chat through the selected point, including applicable compression and durable memory. Reverting after several compactions should reuse the latest safe earlier compaction and retained messages instead of loading the raw transcript from the first message. Preserve separate per-chat ownership after branching. Tests may use isolated copies of chat `22fa05ff-8b2a-47b9-ae29-dd346763c9be`; do not rewrite its live saved history for verification.
+
 - The user requested stronger AGENTS.md instruction injection so the AI applies repository rules throughout work, rather than merely reading them. Preserve explicit user authorization and the file's stated exceptions; do not treat a past read or compressed summary as the complete current instructions.
 
 - The user explicitly clarified that stronger AGENTS.md guidance must be scoped to the conditional workspace instruction injection, supplied only when AGENTS.md exists in the workspace. Do not change the global mindset.md prompt for this purpose.

@@ -835,7 +835,8 @@ export function useChatMessages(input: UseChatMessagesInput) {
         await conversationActions.selectConversation(branchedConversation.id)
       } catch (caughtError) {
         console.error(caughtError)
-        sessionState.setError('Unable to branch this chat.')
+      const detail = caughtError instanceof Error ? caughtError.message.trim() : ''
+      sessionState.setError(detail ? `Unable to branch this chat: ${detail}` : 'Unable to branch this chat.')
       }
     },
     [

@@ -1,5 +1,9 @@
 # Design
 
+## Branch and revert continuity (2026-10-20)
+
+Branching keeps visible messages through the selected assistant response plus the canonical context and durable memory valid at that point. Reverting between compactions 2 and 3 resumes from compaction 2 with the retained suffix. Every new fork records its canonical revision boundary so later reverts cannot restore discarded snapshots. Display history remains available; model context uses the retained compacted window. A new chat owns its memory independently of its source. Branch failures include the underlying error in the chat error message.
+
 ## Sidebar project selector (2026-10-20)
 
 Project rows keep the title above the path or description, with hover highlighting following the pointer and the ellipsis action's neutral button hover kept separate from the row. The project dropdown shows no checkmarks. Choosing a project immediately filters history to that project and keeps the filter selected while its new conversation is created. Chats belongs in the history filter, not the project dropdown. The reasoning-effort dropdown prefers opening below and flips only when viewport space requires it.

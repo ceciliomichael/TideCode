@@ -17,7 +17,8 @@ import { decodeReplayValue, encodeModelMessages, encodeReplayValue } from './rep
 import { parseCanonicalHistoryDocument } from './validation'
 import type { ModelMessage } from 'ai'
 import { sha256, stableStringify } from '../cache/canonicalization'
-import { resolveReplayStateAfterHistoryRewrite } from './branchReplay'
+import { carryCompletedReplaysAcrossBranch, resolveReplayStateAfterHistoryRewrite } from './branchReplay'
+import { getBranchHistoryEvents, getHistoryCutoffRevision } from './branchContext'
 import {
   sanitizeCompactedModelMessages,
   sanitizeModelMessages,
@@ -177,9 +178,8 @@ export async function readCanonicalHistory(conversationId: string) {
 
 export async function readLatestCompactionPacket(conversationId: string): Promise<CompactionPacket | null> {
   const document = await readCanonicalHistory(conversationId)
-  for (const event of [...document.events].reverse()) {
+  for (const event of getBranchHistoryEvents(document).reverse()) {
     if (
-      event.branchId !== document.activeBranchId ||
       event.type !== 'compaction_committed' ||
       !('packet' in event)
     ) {
@@ -197,9 +197,8 @@ export async function readLatestCompactionPacket(conversationId: string): Promis
 
 export async function readLatestConversationMemory(conversationId: string): Promise<ConversationMemory | null> {
   const document = await readCanonicalHistory(conversationId)
-  for (const event of [...document.events].reverse()) {
+  for (const event of getBranchHistoryEvents(document).reverse()) {
     if (
-      event.branchId !== document.activeBranchId ||
       event.type !== 'compaction_committed' ||
       !('durableMemory' in event) ||
       event.durableMemory === undefined
@@ -219,10 +218,9 @@ export async function readLatestConversationMemory(conversationId: string): Prom
 
 export async function listCompactionMarkers(conversationId: string): Promise<ChatCompactionMarker[]> {
   const document = await readCanonicalHistory(conversationId)
-  return document.events
+  return getBranchHistoryEvents(document)
     .flatMap((event) => {
       if (
-        event.branchId !== document.activeBranchId ||
         event.type !== 'compaction_committed' ||
         !('compactionId' in event)
       ) {
@@ -258,7 +256,7 @@ function buildCompactionDetailSections(encodedPacket: Parameters<typeof decodeRe
   }
 }
 
-export async function synchronizeCanonicalMessages(conversationId: string, messages: Message[]) {
+export async function synchronizeCanonicalMessages(conversationId: string, messages: Message[], previousMessages?: Message[]) {
   return updateDocument(conversationId, (document) => {
     const messageIds = messages.map((message) => message.id)
     const messageDigests = messages.map((message) => sha256(stableStringify(message)))
@@ -267,14 +265,18 @@ export async function synchronizeCanonicalMessages(conversationId: string, messa
     const historyIsUnchanged =
       priorIds.length === messageIds.length &&
       priorIds.every((id, index) => messageIds[index] === id && priorDigests[index] === messageDigests[index])
-    if (historyIsUnchanged) {
+    const displayWasRewritten = previousMessages !== undefined && previousMessages.some((message, index) => (
+      messages[index]?.id !== message.id || stableStringify(messages[index]) !== stableStringify(message)
+    ))
+    if (historyIsUnchanged && !displayWasRewritten) {
       return false
     }
     const priorIsPrefix = priorIds.every((id, index) => (
       messageIds[index] === id && priorDigests[index] === messageDigests[index]
     ))
 
-    if (!priorIsPrefix && priorIds.length > 0) {
+    if ((!priorIsPrefix && priorIds.length > 0) || displayWasRewritten) {
+      const retainedThroughRevision = getHistoryCutoffRevision(document, messages, previousMessages)
       const previousBranchId = document.activeBranchId
       document.activeBranchId = randomUUID()
       const wasEdited = priorIds.some((id, index) => (
@@ -286,11 +288,14 @@ export async function synchronizeCanonicalMessages(conversationId: string, messa
         replay: document.replay,
         replays: document.replays,
         wasEdited,
+        retainedThroughRevision,
+        sourceBranchId: previousBranchId,
       })
       document.replays = carriedReplayState.replays
       document.replay = carriedReplayState.replay
       appendEvent(document, {
         fromBranchId: previousBranchId,
+        retainedThroughRevision,
         reason: wasEdited ? 'edited' : 'history_replaced',
         runId: null,
         type: 'branch_created',
@@ -304,6 +309,40 @@ export async function synchronizeCanonicalMessages(conversationId: string, messa
       runId: null,
       type: 'messages_synchronized',
     })
+  })
+}
+
+/** Seed an independent chat before publishing its visible conversation file. */
+export async function initializeCanonicalBranch(
+  conversationId: string,
+  sourceConversationId: string,
+  sourceMessages: Message[],
+  messages: Message[],
+) {
+  const source = await readCanonicalHistory(sourceConversationId)
+  const retainedThroughRevision = getHistoryCutoffRevision(source, messages, sourceMessages)
+  const messageIds = new Set(messages.map((message) => message.id))
+  await updateDocument(conversationId, (document) => {
+    document.contextFingerprint = source.contextFingerprint
+    document.promptContext = source.promptContext
+    document.events = getBranchHistoryEvents(source).filter((event) => (
+      event.revision <= retainedThroughRevision && event.type !== 'branch_created' &&
+      (!('anchorUserMessageId' in event) || event.anchorUserMessageId === null || messageIds.has(event.anchorUserMessageId))
+    )).map((event) => ({ ...event, branchId: document.activeBranchId, eventId: randomUUID() }))
+    document.revision = document.events.at(-1)?.revision ?? 0
+    const carried = carryCompletedReplaysAcrossBranch({
+      activeBranchId: document.activeBranchId,
+      messageIds: [...messageIds],
+      replay: source.replay,
+      replays: source.replays,
+      retainedThroughRevision,
+      sourceBranchId: source.activeBranchId,
+    })
+    document.replay = carried.replay
+    document.replays = carried.replays
+    document.synchronizedMessageIds = [...messageIds]
+    document.synchronizedMessageDigests = messages.map((message) => sha256(stableStringify(message)))
+    appendEvent(document, { type: 'messages_synchronized', runId: null, messageIds: [...messageIds] })
   })
 }
 

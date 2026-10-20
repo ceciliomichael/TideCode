@@ -86,6 +86,16 @@ function isEvent(value: unknown): value is CanonicalHistoryEvent {
     return typeof value.stepNumber === 'number' && typeof value.durationMs === 'number' && isUsage(value.usage)
   }
 
+  if (value.type === 'branch_created') {
+    return typeof value.fromBranchId === 'string' &&
+      ['edited', 'reverted', 'history_replaced', 'replay_anchor_missing'].includes(String(value.reason)) &&
+      (value.retainedThroughRevision === undefined || (
+        typeof value.retainedThroughRevision === 'number' &&
+        Number.isInteger(value.retainedThroughRevision) && value.retainedThroughRevision >= 0 &&
+        value.retainedThroughRevision < value.revision
+      ))
+  }
+
   if (value.type === 'compaction_committed' && 'compactionId' in value) {
     return (
       typeof value.anchorUserMessageId === 'string' || value.anchorUserMessageId === null

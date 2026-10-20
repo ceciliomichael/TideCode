@@ -56,6 +56,7 @@ export type CanonicalHistoryEvent =
     })
   | (CanonicalHistoryEventBase & {
       fromBranchId: string
+      retainedThroughRevision?: number
       reason: 'edited' | 'reverted' | 'history_replaced' | 'replay_anchor_missing'
       type: 'branch_created'
     })

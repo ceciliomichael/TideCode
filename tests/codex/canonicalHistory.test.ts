@@ -17,6 +17,7 @@ import {
 } from '../../electron/chat/history/branchReplay'
 import { decodeModelMessages, encodeModelMessages, encodeReplayValue } from '../../electron/chat/history/replayCodec'
 import { projectCanonicalReplay } from '../../electron/chat/history/replayProjector'
+import { parseCanonicalHistoryDocument } from '../../electron/chat/history/validation'
 import { buildModelMessages } from '../../electron/chat/shared/messages'
 import { createCompactionPacketFixture } from './compactionFixtures'
 import {
@@ -27,6 +28,15 @@ import {
 import { estimateModelMessageContextUsage } from '../../src/lib/contextUsage'
 import { formatStructuredToolResultContent, getToolResultModelContent } from '../../src/lib/toolResultContent'
 import type { Message } from '../../src/types/chat'
+
+test('stored branch cutoffs cannot point to future canonical revisions', () => {
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  document.events.push({
+    branchId: 'branch', createdAt: 2, eventId: 'fork', revision: 2, runId: null,
+    type: 'branch_created', fromBranchId: 'main', reason: 'history_replaced', retainedThroughRevision: 3,
+  })
+  assert.throws(() => parseCanonicalHistoryDocument(JSON.stringify(document), 'conversation'), /invalid/u)
+})
 
 test('stable prompt manifests and cache keys ignore object insertion order', () => {
   assert.equal(stableStringify({ b: 2, a: { d: 4, c: 3 } }), stableStringify({ a: { c: 3, d: 4 }, b: 2 }))
@@ -748,7 +758,8 @@ test('compacted replay recovery restores persisted durable memory before the sho
   assert.equal(result.isCompacted, true)
   assert.deepEqual(result.messages.map((message) => message.role), ['user', 'assistant', 'assistant', 'user'])
   assert.match(String(result.messages[1]?.content), /Durable conversation memory/u)
-  assert.match(String(result.messages[1]?.content), /Preserve feature branches after merge/u)
+  assert.match(String(result.messages[1]?.content), /@chat\/DURABLE\.md/u)
+  assert.doesNotMatch(String(result.messages[1]?.content), /Preserve feature branches after merge/u)
   assert.equal(result.messages[2]?.content, packet.continuationMarkdown)
 })
 

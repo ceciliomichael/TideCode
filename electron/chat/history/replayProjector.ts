@@ -28,6 +28,7 @@ import {
 import { shouldMigrateCrossProviderHistoryToText } from './providerSwitch'
 import { migrateToolHistoryToUserInput } from './providerToolMigration'
 import { projectModelMessagesForContext } from '../shared/tools/toolOutputBudget'
+import { getBranchHistoryEvents } from './branchContext'
 
 export interface ReplayProjectionResult {
   compactionPacket: CompactionPacket | null
@@ -78,13 +79,12 @@ function findLatestCompactionProjection(input: {
   modelId: string
   providerId: CanonicalReplayProjection['providerId']
 }): CompactionReplayProjection | null {
-  const compactionEvents = [...input.document.events].reverse().filter((candidate) => (
+  const compactionEvents = getBranchHistoryEvents(input.document).reverse().filter((candidate) => (
     candidate.type === 'compaction_committed' &&
-    'projectedMessages' in candidate &&
-    candidate.branchId === input.document.activeBranchId
+    'projectedMessages' in candidate
   ))
   // A compaction projection is conversation state, not a provider-specific
-  // transcript. Reuse the newest active-branch projection when switching
+  // transcript. Reuse the newest eligible ancestral projection when switching
   // providers. Provider-specific tool compatibility is handled separately
   // by shouldMigrateCrossProviderHistoryToText.
   const event = compactionEvents[0]
@@ -105,7 +105,7 @@ function findLatestCompactionProjection(input: {
     )))
     return {
       anchorUserMessageId: event.anchorUserMessageId,
-      branchId: event.branchId,
+      branchId: input.document.activeBranchId,
       contextFingerprint: input.document.contextFingerprint ?? '',
       fidelity: 'exact' as const,
       freshnessRevision: input.document.freshness.revision,
@@ -138,7 +138,7 @@ function findLatestCompactionProjection(input: {
       console.warn('Canonical compaction projection was unavailable; rebuilding it from the stored packet.')
       return {
         anchorUserMessageId: event.anchorUserMessageId,
-        branchId: event.branchId,
+        branchId: input.document.activeBranchId,
         contextFingerprint: input.document.contextFingerprint ?? '',
         fidelity: 'migrated_legacy' as const,
         freshnessRevision: input.document.freshness.revision,
@@ -165,8 +165,7 @@ function findLatestCompactionPacketForReplay(input: {
   providerId: CanonicalReplayProjection['providerId']
   replay: CanonicalReplayProjection
 }) {
-  const events = [...input.document.events].reverse().filter((event) => (
-    event.branchId === input.document.activeBranchId &&
+  const events = getBranchHistoryEvents(input.document).reverse().filter((event) => (
     event.type === 'compaction_committed' &&
     'packet' in event &&
     event.revision <= input.replay.sourceRevision
@@ -342,7 +341,12 @@ export function projectCanonicalReplay(input: {
       decodeModelMessages(replay.messages),
       replayCompactionPacket,
     ) as ModelMessage[])
-    const suffix = buildPostAnchorReplaySuffix(input.messages, anchorIndex, input.options)
+    const suffix = replay === compactionProjection
+      ? buildModelMessages(input.messages.slice(anchorIndex + 1).filter((message) => message.timestamp > replay.updatedAt), {
+          ...input.options,
+          includeExecutionModeContext: false,
+        })
+      : buildPostAnchorReplaySuffix(input.messages, anchorIndex, input.options)
     const messages = replay.freshnessRevision < input.document.freshness.revision
       ? appendFreshnessNotice([...exactPrefix, ...suffix], input.document.freshness.invalidatedSubjects)
       : [...exactPrefix, ...suffix]

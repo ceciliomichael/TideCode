@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
-import { deleteCanonicalHistory, synchronizeCanonicalMessages } from '../chat/history/eventStore'
+import { deleteCanonicalHistory, initializeCanonicalBranch, synchronizeCanonicalMessages } from '../chat/history/eventStore'
 import type {
   AppendConversationMessagesInput,
   ChatMode,
@@ -267,10 +267,10 @@ export async function createStoredConversation(input?: CreateConversationInput) 
     messages: branchMessages,
   }
 
-  await Promise.all([
-    writeConversationFile(conversation),
-    ...(branchMessages.length > 0 ? [synchronizeCanonicalMessages(conversation.id, branchMessages)] : []),
-  ])
+  if (branchSourceConversationId && sourceConversation) {
+    await initializeCanonicalBranch(conversation.id, sourceConversation.id, sourceConversation.messages, branchMessages)
+  }
+  await writeConversationFile(conversation)
   return conversation
 }
 
@@ -533,7 +533,7 @@ export async function replaceStoredMessages(input: ReplaceConversationMessagesIn
 
     if (input.synchronizeCanonicalHistory) {
       try {
-        await synchronizeCanonicalMessages(input.conversationId, input.messages)
+        await synchronizeCanonicalMessages(input.conversationId, input.messages, existingConversation.messages)
       } catch (error) {
         console.error('Canonical chat history synchronization failed after message replacement.', error)
       }

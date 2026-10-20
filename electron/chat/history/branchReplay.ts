@@ -7,6 +7,8 @@ export interface BranchReplayCarryForwardInput {
   messageIds: readonly string[]
   replay: CanonicalReplayProjection | null
   replays: Readonly<Record<string, CanonicalReplayProjection>>
+  retainedThroughRevision?: number
+  sourceBranchId?: string
 }
 
 export interface BranchReplayCarryForwardResult {
@@ -37,7 +39,7 @@ function rebaseReplayProjection(
 
 /**
  * A rollback branch should retain the last completed model replay when its
- * user-message anchor is still present. Pre-response run_started snapshots are
+ * user-message anchor is still present and it precedes the cutoff. Pre-response run_started snapshots are
  * not completed replays and must never be synthesized as branch history.
  */
 export function carryCompletedReplaysAcrossBranch(
@@ -46,10 +48,14 @@ export function carryCompletedReplaysAcrossBranch(
   const messageIds = new Set(input.messageIds)
   const replays = Object.fromEntries(
     Object.entries(input.replays)
-      .filter(([, replay]) => canReplayAgainstMessages(replay, messageIds))
+      .filter(([, replay]) => canReplayAgainstMessages(replay, messageIds) &&
+        (input.sourceBranchId === undefined || replay.branchId === input.sourceBranchId) &&
+        replay.sourceRevision <= (input.retainedThroughRevision ?? Infinity))
       .map(([slotKey, replay]) => [slotKey, rebaseReplayProjection(replay, input.activeBranchId)]),
   )
-  const replay = input.replay && canReplayAgainstMessages(input.replay, messageIds)
+  const replay = input.replay && canReplayAgainstMessages(input.replay, messageIds) &&
+    (input.sourceBranchId === undefined || input.replay.branchId === input.sourceBranchId) &&
+    input.replay.sourceRevision <= (input.retainedThroughRevision ?? Infinity)
     ? rebaseReplayProjection(input.replay, input.activeBranchId)
     : null
 
@@ -61,7 +67,8 @@ export function carryCompletedReplaysAcrossBranch(
  * the pre-response prompt, so using it after a revert silently drops completed
  * assistant/tool output that still exists in durable conversation history. If
  * no completed replay survives the branch, leave replay empty and let the
- * projector rebuild from the retained Message[] transcript.
+ * projector use an eligible compaction plus retained suffix, or rebuild from
+ * the retained Message[] transcript when no compaction survives.
  */
 export function resolveReplayStateAfterHistoryRewrite(
   input: BranchReplayAfterRewriteInput,
