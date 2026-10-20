@@ -40,7 +40,6 @@ export function splitFinishedAssistantRun(
     const textMessage: Message = {
       ...lastMessage,
       content: normalizedContent.content,
-      id: `${lastMessage.id}-text`,
       reasoningContent: undefined,
       reasoningCompletedAt: undefined,
       toolInvocations: [],
