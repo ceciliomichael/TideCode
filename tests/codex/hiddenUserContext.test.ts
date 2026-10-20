@@ -159,9 +159,7 @@ test('workspace instructions persist only when their content state changes', () 
   })
   assert.equal(initial.length, 1)
   assert.equal(initial[0]?.kind, 'workspace_instructions')
-  assert.match(initial[0]?.content ?? '', /same revision is already available/u)
-  assert.match(initial[0]?.content ?? '', /do not read the file again/u)
-  assert.match(initial[0]?.content ?? '', /A root AGENTS\.md exists/u)
+  assert.match(initial[0]?.content ?? '', /Read AGENTS\.md in full\. Its instructions are mandatory throughout this task/u)
   assert.doesNotMatch(initial[0]?.content ?? '', /Plan before implementation/u)
 
   const history = [createUserMessage('user-1', 'Plan this.', initial)]

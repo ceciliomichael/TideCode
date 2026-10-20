@@ -32,6 +32,24 @@ test('all catalog references send explicit tools while preserving their exact ta
   assert.equal(getChatMentionTarget(findChatMentionMatches(expanded)[2].path!), '@attachments/report.pdf')
 })
 
+test('mention targets show only the selected path or name without tool prefixes', () => {
+  const references: ReadonlyArray<readonly [string, string]> = [
+    ['tools.read:@workspace/tidecode/src/main.ts', '@workspace/tidecode/src/main.ts'],
+    ['tools.list:@workspace/tidecode/src/components/', '@workspace/tidecode/src/components/'],
+    ['tools.read:@attachments/report.pdf', '@attachments/report.pdf'],
+    ['tools.list:@attachments/references/', '@attachments/references/'],
+    ['tools.skill.load:writing', 'writing'],
+    ['tools.available.search:GitHub Enterprise', 'GitHub Enterprise'],
+    ['read_file:@workspace/tidecode/src/main.ts', '@workspace/tidecode/src/main.ts'],
+    ['list:@workspace/tidecode/src/components/', '@workspace/tidecode/src/components/'],
+    ['load_skill:writing', 'writing'],
+  ]
+
+  for (const [reference, target] of references) {
+    assert.equal(getChatMentionTarget(reference), target)
+  }
+})
+
 test('MCP markers restore their names without swallowing adjacent normal text', () => {
   const marker = '[[tools.available.search:GitHub Enterprise]]'
   const text = `${marker}, then inspect this repository.`

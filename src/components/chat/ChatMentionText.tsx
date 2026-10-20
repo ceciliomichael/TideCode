@@ -1,7 +1,8 @@
 import { memo } from 'react'
-import { splitChatMentionSegments } from '../../lib/chatMentions'
-import { findChatMentionImageAttachment } from '../../lib/chatMentionImages'
 import { splitChatImageReferenceSegments } from '../../lib/chatImageReferences'
+import { findChatMentionImageAttachment } from '../../lib/chatMentionImages'
+import { getChatMentionTarget, splitChatMentionSegments } from '../../lib/chatMentions'
+import { chatMentionTooltipPanelClassName } from '../../lib/chatStyles'
 import type { ChatImageAttachment } from '../../types/chat'
 import { Tooltip } from '../Tooltip'
 import { ChatMentionImageHoverContent } from './ChatMentionImageHoverContent'
@@ -113,10 +114,10 @@ export const ChatMentionText = memo(function ChatMentionText({
           : null
         const tooltipContent = imageAttachment && segment.path
           ? <ChatMentionImageHoverContent attachment={imageAttachment} />
-          : segment.path ?? segment.label
+          : getChatMentionTarget(segment.path ?? segment.label ?? '')
         const tooltipPanelClassName = imageAttachment
           ? '!max-w-[min(26rem,calc(100vw-24px))] !items-stretch !p-2'
-          : undefined
+          : chatMentionTooltipPanelClassName
         let highlightClass = mentionHighlightSurfaceClassName
         if (isMcp) {
           highlightClass = mcpHighlightSurfaceClassName

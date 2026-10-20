@@ -1,6 +1,8 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react'
 import { ChatMentionText } from './ChatMentionText'
 import { findChatMentionImageAttachment } from '../../lib/chatMentionImages'
+import { getChatMentionTarget } from '../../lib/chatMentions'
+import { chatMentionTooltipPanelClassName } from '../../lib/chatStyles'
 import type { ChatImageAttachment } from '../../types/chat'
 import { AnchoredTooltip, type AnchoredTooltipRect } from '../Tooltip'
 import { ChatMentionImageHoverContent } from './ChatMentionImageHoverContent'
@@ -243,17 +245,21 @@ export function ChatMentionTextarea({
             variant="backdrop"
           />
         </div>
-      <AnchoredTooltip
-        anchorElement={null}
-        anchorRect={hoveredMention?.rect ?? null}
-        content={hoveredImageAttachment && hoveredMention
-          ? <ChatMentionImageHoverContent attachment={hoveredImageAttachment} />
-          : hoveredMention?.path ?? ''}
-        panelClassName={hoveredImageAttachment
-          ? '!max-w-[min(26rem,calc(100vw-24px))] !items-stretch !p-2'
-          : undefined}
-        visible={hoveredMention !== null}
-      />
+        <AnchoredTooltip
+          anchorElement={null}
+          anchorRect={hoveredMention?.rect ?? null}
+          content={
+            hoveredImageAttachment && hoveredMention
+              ? <ChatMentionImageHoverContent attachment={hoveredImageAttachment} />
+              : getChatMentionTarget(hoveredMention?.path ?? '')
+          }
+          panelClassName={
+            hoveredImageAttachment
+              ? '!max-w-[min(26rem,calc(100vw-24px))] !items-stretch !p-2'
+              : chatMentionTooltipPanelClassName
+          }
+          visible={hoveredMention !== null}
+        />
       </div>
     </div>
   )

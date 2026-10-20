@@ -113,7 +113,12 @@ function isVirtualMentionPath(path: string) {
 }
 
 export function getChatMentionTarget(reference: string) {
-  if (reference.startsWith('tools.')) {
+  if (
+    reference.startsWith('tools.') ||
+    reference.startsWith('read_file:') ||
+    reference.startsWith('list:') ||
+    reference.startsWith('load_skill:')
+  ) {
     return reference.slice(reference.indexOf(':') + 1)
   }
   return reference

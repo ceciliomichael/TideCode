@@ -28,7 +28,7 @@ Entry wording is tolerant and contextual: timelines accept textual event-like en
 
 ## File editing
 
-Stronger workspace-instruction guidance belongs only in the conditional hidden context supplied when root `AGENTS.md` exists as a file. It presents applicable task requirements with their exceptions and explicit user authorization respected. The model should apply workflow, scope, approval, structure and verification rules throughout the task, and explain concrete conflicts or unmet requirements. Revision reminders avoid redundant reads while the full current file is visible; compaction that removes its contents requires another read. This guidance does not change the global mindset or add the stronger instructions to workspaces without `AGENTS.md`.
+Workspace-instruction guidance belongs only in the conditional hidden context supplied when root `AGENTS.md` exists as a file. Keep it concise: tell the AI to read `AGENTS.md` and follow it fully. A changed revision receives a short reread reminder. The global mindset remains unchanged.
 
 Discovery refinement (2026-10-19): both native and MCP tools use consistent one-line descriptions and namespace selection. `available.list` pages namespaces or tools; `available.search` ranks names and descriptions within an optional namespace with a ten-result maximum. Invalid search parameters produce an explicit error rather than silent correction.
 
