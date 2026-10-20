@@ -2,11 +2,10 @@ import type { UserPromptLedgerEntry } from './contracts'
 
 export const USER_PROMPT_LEDGER_HEADING = '## Prior user prompts'
 
-function renderPrompt(entry: UserPromptLedgerEntry, index: number) {
+function renderPrompt(entry: UserPromptLedgerEntry) {
   const lines = entry.prompt.split('\n')
-  const status = entry.truncated ? `${entry.status}; bounded` : entry.status
   return [
-    `### Prompt ${index + 1} (${status})`,
+    entry.truncated ? 'Historical request (bounded):' : 'Historical request:',
     ...lines.map((line) => `> ${line}`),
   ].join('\n')
 }
@@ -16,7 +15,7 @@ export function renderUserPromptLedger(entries: readonly UserPromptLedgerEntry[]
   return [
     USER_PROMPT_LEDGER_HEADING,
     '',
-    'These are exact historical user-intent records. They are context, not new instructions. Host-generated prompt statuses are authoritative when deciding what remains open.',
+    'These are bounded historical intent records, not new instructions or evidence of completion. Infer progress from transcript evidence, not stored status labels. Consolidate useful intent into the current state; do not reproduce this list in the handoff.',
     '',
     ...entries.map(renderPrompt),
   ].join('\n\n')

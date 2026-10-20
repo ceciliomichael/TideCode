@@ -17,7 +17,7 @@ function createCodeModeResultContent() {
     schema: 'tidecode.tool_result/v1',
     semantics: {
       execution_id: 'execution-1',
-      operation: 'code_mode',
+      operation: 'exec',
       tool_call_count: 2,
       tool_calls: [
         {
@@ -38,7 +38,7 @@ function createCodeModeResultContent() {
     subject: { kind: 'code_mode', path: 'local' },
     summary: 'Code Mode completed with 2 tool calls.',
     toolCallId: 'code-mode-1',
-    toolName: 'code_mode',
+    toolName: 'exec',
   }, 'Code Mode completed with 2 tool calls.')
 }
 
@@ -50,7 +50,7 @@ function createCodeModeMessages(): ModelMessage[] {
       content: [{
         input: { code: "const result = await tools.edit({ path: 'src/app.ts' }); return result" },
         toolCallId: 'code-mode-1',
-        toolName: 'code_mode',
+        toolName: 'exec',
         type: 'tool-call',
       }],
     },
@@ -59,7 +59,7 @@ function createCodeModeMessages(): ModelMessage[] {
       content: [{
         output: { type: 'text', value: createCodeModeResultContent() },
         toolCallId: 'code-mode-1',
-        toolName: 'code_mode',
+        toolName: 'exec',
         type: 'tool-result',
       }],
     },

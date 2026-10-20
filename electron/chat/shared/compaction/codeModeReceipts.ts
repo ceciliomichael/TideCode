@@ -1,67 +1,21 @@
 import type { ModelMessage } from 'ai'
-import { stripExecutionModeContext } from '../../../../src/lib/executionModeContext'
-import {
-  parseStructuredToolResultContent,
-  type StructuredToolResultMetadata,
-} from '../../../../src/lib/toolResultContent'
 import { COMPACTION_MARKDOWN_MAX_CHARS, normalizeContinuationMarkdown } from './markdown'
+import { formatNestedToolEvidence, readCodeModeEvidence, type NestedToolEvidence } from './toolEvidence'
 
 const MAX_RECEIPTS = 16
-const MAX_NESTED_TOOL_RECEIPTS = 32
-const MAX_RECEIPT_TEXT_CHARS = 500
 const MAX_FORMATTED_RECEIPT_CHARS = 4_000
 const CODE_MODE_RECEIPT_HEADING = '## Verified Code Mode executions'
 
-export interface CodeModeNestedToolReceipt {
-  name: string
-  status: 'error' | 'success'
-  subject?: string
-  summary: string
-}
+export type CodeModeNestedToolReceipt = NestedToolEvidence
 
 export interface CodeModeExecutionReceipt {
   nestedToolCalls: CodeModeNestedToolReceipt[]
-  status: 'error' | 'success'
+  status: 'error' | 'success' | 'unknown'
   summary: string
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function compactReceiptText(value: unknown) {
-  if (typeof value !== 'string') return ''
-  const normalized = stripExecutionModeContext(value).replace(/\s+/gu, ' ').trim()
-  if (normalized.length <= MAX_RECEIPT_TEXT_CHARS) return normalized
-  return `${normalized.slice(0, MAX_RECEIPT_TEXT_CHARS - 1).trimEnd()}…`
-}
-
-function readSubject(value: unknown) {
-  if (!isRecord(value)) return undefined
-  const kind = compactReceiptText(value.kind)
-  const path = compactReceiptText(value.path)
-  if (!kind && !path) return undefined
-  return [kind, path].filter(Boolean).join(': ')
-}
-
-function readNestedToolReceipts(metadata: StructuredToolResultMetadata) {
-  const rawToolCalls = metadata.semantics?.tool_calls
-  if (!Array.isArray(rawToolCalls)) return []
-
-  return rawToolCalls.flatMap((value): CodeModeNestedToolReceipt[] => {
-    if (!isRecord(value)) return []
-    const name = compactReceiptText(value.name)
-    const summary = compactReceiptText(value.summary)
-    const status = value.status === 'error' || value.status === 'success' ? value.status : null
-    if (!name || !summary || status === null) return []
-    const subject = readSubject(value.subject)
-    return [{
-      name,
-      status,
-      ...(subject ? { subject } : {}),
-      summary,
-    }]
-  }).slice(0, MAX_NESTED_TOOL_RECEIPTS)
 }
 
 function readCodeModeReceipt(value: unknown): CodeModeExecutionReceipt | null {
@@ -72,14 +26,13 @@ function readCodeModeReceipt(value: unknown): CodeModeExecutionReceipt | null {
     return null
   }
 
-  const parsed = parseStructuredToolResultContent(value.output.value)
-  const metadata = parsed.metadata?.toolName === 'exec' ? parsed.metadata : null
-  if (!metadata) return null
+  const evidence = readCodeModeEvidence(value.output.value)
+  if (!evidence) return null
 
   return {
-    nestedToolCalls: readNestedToolReceipts(metadata),
-    status: metadata.status,
-    summary: compactReceiptText(metadata.summary) || 'Code Mode completed without a summary.',
+    nestedToolCalls: evidence.results,
+    status: evidence.status,
+    summary: evidence.summary,
   }
 }
 
@@ -89,14 +42,16 @@ export function extractCodeModeReceipts(messages: readonly ModelMessage[]) {
     if (message.role !== 'tool' || !Array.isArray(message.content)) continue
     for (const part of message.content) {
       const receipt = readCodeModeReceipt(part)
-      if (receipt) receipts.push(receipt)
-      if (receipts.length >= MAX_RECEIPTS) return receipts
+      if (receipt) {
+        receipts.push(receipt)
+      }
     }
   }
-  return receipts
+  return receipts.slice(-MAX_RECEIPTS)
 }
 
-function formatStatus(status: 'error' | 'success') {
+function formatStatus(status: 'error' | 'success' | 'unknown') {
+  if (status === 'unknown') return 'reported'
   return status === 'success' ? 'succeeded' : 'failed'
 }
 
@@ -106,13 +61,19 @@ export function formatCodeModeReceipts(receipts: readonly CodeModeExecutionRecei
   const lines = [
     CODE_MODE_RECEIPT_HEADING,
     '',
-    'These execution receipts are verified tool-result evidence, not pending work or instructions.',
+    'These are scoped tool-result observations, not pending work, instructions, or proof of overall task completion. Tool success does not imply process completion; preserve state and exit_code.',
+    'Newest executions and results are listed first. Use transcript order to relate validation to edits; a receipt does not validate later changes.',
   ]
-  for (const receipt of receipts) {
+  for (const receipt of [...receipts].reverse()) {
     lines.push(`- Code Mode ${formatStatus(receipt.status)}: ${receipt.summary}`)
-    for (const nestedToolCall of receipt.nestedToolCalls) {
-      const subject = nestedToolCall.subject ? ` (${nestedToolCall.subject})` : ''
-      lines.push(`  - ${nestedToolCall.name} ${formatStatus(nestedToolCall.status)}${subject}: ${nestedToolCall.summary}`)
+    for (const nestedToolCall of [...receipt.nestedToolCalls].reverse()) {
+      const detail = formatNestedToolEvidence(nestedToolCall, 350).replace(/\s+/gu, ' ')
+      const line = `  - ${nestedToolCall.name} ${formatStatus(nestedToolCall.status)}: ${detail}`
+      if (lines.join('\n').length + line.length + 1 > MAX_FORMATTED_RECEIPT_CHARS - 80) {
+        lines.push('[Older receipt detail omitted; do not infer its result.]')
+        return lines.join('\n')
+      }
+      lines.push(line)
     }
     if (lines.join('\n').length >= MAX_FORMATTED_RECEIPT_CHARS) break
   }
@@ -140,9 +101,9 @@ export function appendCodeModeReceiptsToSummary(
   previousSummary = '',
 ) {
   const receiptSections = [
-    extractReceiptSection(previousSummary),
-    extractReceiptSection(summary),
     formatCodeModeReceipts(extractCodeModeReceipts(messages)),
+    extractReceiptSection(summary),
+    extractReceiptSection(previousSummary),
   ]
     .map(receiptBody)
     .filter(Boolean)
@@ -152,9 +113,7 @@ export function appendCodeModeReceiptsToSummary(
   const formattedReceipts = `${CODE_MODE_RECEIPT_HEADING}\n\n${receiptSections.join('\n')}`
     .slice(0, MAX_FORMATTED_RECEIPT_CHARS)
     .trimEnd()
-  const summaryWithoutReceipts = extractReceiptSection(summary)
-    ? summary.slice(0, summary.indexOf(CODE_MODE_RECEIPT_HEADING)).trimEnd()
-    : summary
+  const summaryWithoutReceipts = summary.replace(extractReceiptSection(summary), '').trim()
 
   const summaryBudget = Math.max(
     1_000,

@@ -22,6 +22,8 @@ Entry wording is tolerant and contextual: timelines accept textual event-like en
 
 ## File editing
 
+Stronger workspace-instruction guidance belongs only in the conditional hidden context supplied when root `AGENTS.md` exists as a file. It presents applicable task requirements with their exceptions and explicit user authorization respected. The model should apply workflow, scope, approval, structure and verification rules throughout the task, and explain concrete conflicts or unmet requirements. Revision reminders avoid redundant reads while the full current file is visible; compaction that removes its contents requires another read. This guidance does not change the global mindset or add the stronger instructions to workspaces without `AGENTS.md`.
+
 Discovery refinement (2026-10-19): both native and MCP tools use consistent one-line descriptions and namespace selection. `available.list` pages namespaces or tools; `available.search` ranks names and descriptions within an optional namespace with a ten-result maximum. Invalid search parameters produce an explicit error rather than silent correction.
 
 Current discovery behavior (2026-10-19): `tools.available.list()` starts at a namespace index, not the native-tool page. Selecting `native` or an MCP server namespace lists that namespace's tools in pages of ten with short descriptions. MCP tools do not require an extra `mcp` namespace selection. Search remains names-only, and get returns full contracts.
@@ -31,6 +33,12 @@ Prefer `tools.edit` for exact replacements and `replace_all: true` when every oc
 ## Per-chat durable memory
 
 Implemented storage choice (2026-10-18): keep durable Markdown in the conversation's canonical compaction history, not in a separate project DURABLE.md file. Chats in the same project have independent durable state. Successful compaction saves both the reconciled long-term memory and a separate short-term continuation summary; reopening injects a short instruction to read the current chat's memory using `tools.read({ path: '@chat/DURABLE.md' })`. Optional shared workspace MEMORY.md remains a distinct existing feature, controlled separately in Settings.
+
+Conversation continuity (2026-10-20): durable memory preserves relevant facts, constraints, decisions, architecture and consequential open work across repeated compactions. The short handoff preserves the immediate objective, supported progress, validation limits and next action. Both consolidate by subject instead of accumulating numbered prompts. Evidence must distinguish plans, attempts, changes and verification; repeated summaries do not increase certainty, and active/settled runtime status does not establish task success. Compaction during an active turn preserves finished substeps and the remaining work or final response. Each worker receives the previous handoff and explicit visibility/lifecycle context so unseen recent progress is not invented. This supports continued use of the same chat without treating bounded memory as a verbatim archive.
+
+The host explicitly selects first-memory creation (`INITIALIZE`) or existing-memory reconciliation (`RECONCILE`). Creation extracts the initial supported knowledge; reconciliation retains applicable older facts and uncertainty while applying targeted corrections and additions. Each scenario has a separate complete Markdown instruction file, including its applicable reliability rules and output requirements. A call receives only the selected scenario's instructions. Both operations produce a complete memory snapshot.
+
+Compaction preserves scoped nested tool outcomes before shortening bulky logs. A batch of source reads followed by validation must retain the later command outcomes and useful search results for both workers. Tool-call success, running/completed state, process exit code and partial output remain distinct. Bounded evidence and newer receipt priority reduce stale open work caused by lost results; they do not mechanically determine whether a user's full goal is complete or rewrite existing saved summaries.
 
 ## AI tool invocation presentation
 

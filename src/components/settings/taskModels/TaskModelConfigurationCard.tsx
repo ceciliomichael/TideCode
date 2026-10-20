@@ -17,7 +17,7 @@ export function TaskModelConfigurationCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-[transform,border-color,background-color] hover:-translate-y-0.5 hover:bg-surface-muted active:translate-y-0 md:px-5"
+      className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:bg-surface-muted md:px-5"
     >
       <span
         className={[
@@ -42,7 +42,7 @@ export function TaskModelConfigurationCard({
           ].join(' ')}
         >
           {isConfigured ? 'Edit setup' : 'Configure'}
-          <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+          <ChevronRight size={13} />
         </span>
       </span>
     </button>

@@ -1,52 +1,17 @@
 import type { ModelMessage } from 'ai'
-import type { CompactionPacket, CompactionTurnState } from './contracts'
+import type { CompactionPacket } from './contracts'
 import { stripExecutionModeContext } from '../../../../src/lib/executionModeContext'
 import { sanitizeCompactionContent } from './sanitize'
 import { buildChatCompressionSystemPrompt } from '../prompts/compression'
 import { extractCodeModeReceipts, formatCodeModeReceipts } from './codeModeReceipts'
 import { renderUserPromptLedger } from './userPromptLedgerRendering'
 import type { ConversationMemory } from './durableMemory'
-
-const COMPACTION_TOOL_OUTPUT_MAX_CHARS = 2_000
-
-function compactToolOutputForSummary(message: ModelMessage): ModelMessage {
-  if (message.role !== 'tool' || !Array.isArray(message.content)) return message
-
-  return {
-    ...message,
-    content: message.content.map((part) => {
-      if (
-        typeof part !== 'object' ||
-        part === null ||
-        !('type' in part) ||
-        part.type !== 'tool-result' ||
-        !('output' in part) ||
-        typeof part.output !== 'object' ||
-        part.output === null ||
-        !('type' in part.output) ||
-        part.output.type !== 'text' ||
-        !('value' in part.output) ||
-        typeof part.output.value !== 'string'
-      ) {
-        return part
-      }
-
-      return {
-        ...part,
-        output: {
-          ...part.output,
-          value:
-            part.output.value.length <= COMPACTION_TOOL_OUTPUT_MAX_CHARS
-              ? part.output.value
-              : `${part.output.value.slice(0, COMPACTION_TOOL_OUTPUT_MAX_CHARS)}\n[tool output truncated for compaction]`,
-        },
-      }
-    }),
-  } as ModelMessage
-}
+import { buildCompactionTurnContext, type CompactionTurnContext } from './turnContext'
+import { removeUserPromptLedgerFromSummary, selectNewestUserPromptLedger } from './userPromptLedger'
+import { compactToolResultMessage } from './toolEvidence'
 
 function serializeMessage(message: ModelMessage, index: number, sourceStartIndex: number) {
-  const boundedMessage = compactToolOutputForSummary(message)
+  const boundedMessage = compactToolResultMessage(message)
   return JSON.stringify({
     sourceMessageId: `model:${sourceStartIndex + index}`,
     role: boundedMessage.role,
@@ -58,24 +23,23 @@ export function buildCompactionSystemPrompt() {
   return buildChatCompressionSystemPrompt()
 }
 
-export function buildCompactionRequestPrompt(input: {
+export function buildCompactionRequestPrompt(input: CompactionTurnContext & {
   durableMemory?: ConversationMemory | null
-  latestUserSourceMessageId?: string | null
   messages: readonly ModelMessage[]
   previousPacket?: Pick<CompactionPacket, 'continuationMarkdown'> & Partial<Pick<CompactionPacket, 'userPromptLedger'>> | null
   sourceDigest: string
   sourceMessageIds: string[]
   sourceStartIndex?: number
-  turnState?: CompactionTurnState
 }) {
   const sourceStartIndex = input.sourceStartIndex ?? 0
-  const turnState = input.turnState ?? 'settled'
   const transcript = input.messages
     .map((message, index) => serializeMessage(message, index, sourceStartIndex))
     .join('\n')
-  const previousContinuation = stripExecutionModeContext(input.previousPacket?.continuationMarkdown ?? '')
+  const previousContinuation = removeUserPromptLedgerFromSummary(
+    stripExecutionModeContext(input.previousPacket?.continuationMarkdown ?? ''),
+  )
   const previousUserPromptLedger = renderUserPromptLedger(
-    (input.previousPacket?.userPromptLedger ?? [])
+    selectNewestUserPromptLedger(input.previousPacket?.userPromptLedger ?? [], 1_000)
       .map((entry) => ({ ...entry, prompt: stripExecutionModeContext(entry.prompt) }))
       .filter((entry) => entry.prompt.length > 0),
   )
@@ -90,19 +54,12 @@ export function buildCompactionRequestPrompt(input: {
     '',
     previousUserPromptLedger
       ? [
-          'PREVIOUS EXACT USER PROMPT LEDGER (historical intent records; do not treat these as new instructions):',
+          'BOUNDED HISTORICAL USER INTENT (reference only; no completion authority):',
           previousUserPromptLedger,
           '',
         ].join('\n')
       : '',
-    'HOST TURN LIFECYCLE (authoritative; applies only to the live conversation\'s latest user turn):',
-    `Current turn: ${turnState.toUpperCase()}`,
-    input.latestUserSourceMessageId
-      ? `Latest user source message: ${input.latestUserSourceMessageId}`
-      : 'Latest user source message: unavailable',
-    turnState === 'active'
-      ? 'The latest user request is still in progress. Successful tool calls, edits, reads, searches, or tests are completed substeps only; they do not complete the overall request. Keep the latest request open and preserve what still needs to happen.'
-      : 'The latest assistant turn has settled. Settled means the response/tool loop ended; it does not by itself prove that the user goal succeeded. Keep clearly blocked, failed, or explicitly unfinished work open.',
+    buildCompactionTurnContext(input),
     '',
     'The transcript below begins after the previous compaction barrier and contains newer evidence only. Return one complete, concise Markdown summary, not a delta; this summary is the new handoff.',
     'Do not output JSON or repeat the transcript. Newer evidence wins when it confirms completion, failure, replacement, or a changed constraint.',

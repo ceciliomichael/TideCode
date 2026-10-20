@@ -4,12 +4,14 @@ import { stripExecutionModeContext } from '../../../../src/lib/executionModeCont
 import { sanitizeCompactionContent } from './sanitize'
 import { buildDurableMemorySystemPrompt } from '../prompts/durableMemory'
 import type { CompactionStreamFactory } from './contracts'
+import { buildCompactionTurnContext, type CompactionTurnContext } from './turnContext'
+import { removeUserPromptLedgerFromSummary } from './userPromptLedger'
+import { compactToolResultMessage } from './toolEvidence'
 
 export const DURABLE_MEMORY_SCHEMA = 'tidecode.conversation_memory/v1' as const
 export const DURABLE_MEMORY_MAX_CHARS = 32_000
 export const DURABLE_MEMORY_MAX_LINES = 320
 const MAX_LINE_CHARS = 4_000
-const TOOL_OUTPUT_MAX_CHARS = 2_000
 const MEMORY_TIMEOUT_MS = 90_000
 
 export const conversationMemorySchema = z.object({
@@ -20,43 +22,8 @@ export const conversationMemorySchema = z.object({
 
 export type ConversationMemory = z.infer<typeof conversationMemorySchema>
 
-function compactToolOutputForMemory(message: ModelMessage): ModelMessage {
-  if (message.role !== 'tool' || !Array.isArray(message.content)) return message
-
-  return {
-    ...message,
-    content: message.content.map((part) => {
-      if (
-        typeof part !== 'object' ||
-        part === null ||
-        !('type' in part) ||
-        part.type !== 'tool-result' ||
-        !('output' in part) ||
-        typeof part.output !== 'object' ||
-        part.output === null ||
-        !('type' in part.output) ||
-        part.output.type !== 'text' ||
-        !('value' in part.output) ||
-        typeof part.output.value !== 'string'
-      ) {
-        return part
-      }
-
-      return {
-        ...part,
-        output: {
-          ...part.output,
-          value: part.output.value.length <= TOOL_OUTPUT_MAX_CHARS
-            ? part.output.value
-            : `${part.output.value.slice(0, TOOL_OUTPUT_MAX_CHARS)}\n[tool output truncated for durable memory]`,
-        },
-      }
-    }),
-  } as ModelMessage
-}
-
 function serializeMessage(message: ModelMessage, index: number, sourceStartIndex: number) {
-  const boundedMessage = compactToolOutputForMemory(message)
+  const boundedMessage = compactToolResultMessage(message)
   return JSON.stringify({
     sourceMessageId: `model:${sourceStartIndex + index}`,
     role: boundedMessage.role,
@@ -159,19 +126,28 @@ export function buildDurableMemoryMessage(): ModelMessage {
   }
 }
 
-export function buildDurableMemoryRequestPrompt(input: {
+export function buildDurableMemoryRequestPrompt(input: CompactionTurnContext & {
   messages: readonly ModelMessage[]
   previousMemory?: ConversationMemory | null
+  previousContinuation?: string
   sourceDigest: string
   sourceStartIndex: number
 }) {
   const transcript = input.messages
     .map((message, index) => serializeMessage(message, index, input.sourceStartIndex))
     .join('\n')
+  const operation = input.previousMemory ? 'RECONCILE' : 'INITIALIZE'
 
   return [
+    `MEMORY OPERATION: ${operation}`,
+    '',
     'PREVIOUS DURABLE MEMORY:',
     input.previousMemory?.markdown ?? '(none)',
+    '',
+    'PREVIOUS SUMMARY / HANDOFF (carry forward relevant constraints and unfinished obligations; reconcile with memory and newer evidence):',
+    removeUserPromptLedgerFromSummary(stripExecutionModeContext(input.previousContinuation ?? '')) || '(none)',
+    '',
+    buildCompactionTurnContext(input),
     '',
     'NEWER TRANSCRIPT EVIDENCE:',
     `Source digest: ${input.sourceDigest}`,
@@ -183,12 +159,13 @@ export function buildDurableMemoryRequestPrompt(input: {
   ].join('\n')
 }
 
-export async function reconcileDurableMemory(input: {
+export async function reconcileDurableMemory(input: CompactionTurnContext & {
   createStream?: CompactionStreamFactory
   messages: readonly ModelMessage[]
   model: string
   providerId?: Parameters<CompactionStreamFactory>[0]['providerId']
   previousMemory?: ConversationMemory | null
+  previousContinuation?: string
   reasoningEffort: string
   signal?: AbortSignal
   sourceDigest: string
@@ -214,17 +191,21 @@ export async function reconcileDurableMemory(input: {
       messages: [{
         role: 'user',
         content: buildDurableMemoryRequestPrompt({
+          latestUserMessage: input.latestUserMessage,
+          latestUserSourceMessageId: input.latestUserSourceMessageId,
           messages: input.messages,
+          previousContinuation: input.previousContinuation,
           previousMemory: input.previousMemory,
           sourceDigest: input.sourceDigest,
           sourceStartIndex: input.sourceStartIndex,
+          turnState: input.turnState,
         }),
       }],
       model: input.model,
       providerId: input.providerId,
       reasoningEffort: input.reasoningEffort,
       signal: abortController.signal,
-      system: buildDurableMemorySystemPrompt(),
+      system: buildDurableMemorySystemPrompt(input.previousMemory ? 'reconcile' : 'initialize'),
     })
 
     let text = ''

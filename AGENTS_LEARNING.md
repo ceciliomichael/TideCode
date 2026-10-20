@@ -1,5 +1,13 @@
 # Durable project knowledge
 
+- The user requested stronger AGENTS.md instruction injection so the AI applies repository rules throughout work, rather than merely reading them. Preserve explicit user authorization and the file's stated exceptions; do not treat a past read or compressed summary as the complete current instructions.
+
+- The user explicitly clarified that stronger AGENTS.md guidance must be scoped to the conditional workspace instruction injection, supplied only when AGENTS.md exists in the workspace. Do not change the global mindset.md prompt for this purpose.
+
+- On 2026-10-20 the user clarified that compaction and durable memory should let the same chat keep going reliably, including when the token threshold is reached during active work. Preserve relevant facts and unfinished obligations through consolidation; do not accumulate numbered prompt histories or claim completion from assistant responses, keywords, or the compaction boundary. Durable memory carries lasting knowledge; compression carries the current working state.
+
+- For durable-memory creation versus reconciliation, the user explicitly prefers separate complete Markdown instruction files selected by the host, so each API call receives only its scenario's instructions. Do not combine both scenarios in one instruction file sent on every call.
+
 - On 2026-10-20 the user approved replacing Code Mode's custom interpreter with isolated native V8 execution so AI programs can use ordinary JavaScript without language-specific workarounds. Preserve registered-tool authority, discovery, validation, permissions and execution limits; do not retain the custom interpreter as a fallback.
 
 - On 2026-10-20 the user requested native tool namespace guidance in TideCode's existing mode-transition hidden user context rather than the stable exec tool description. Plan Mode should receive planning-safe namespace guidance and a later Agent Mode implementation turn should receive Agent-native namespace guidance without inventing plan approval. Root tool discovery remains MCP-only, while native discovery requires an explicitly named namespace or exact contract lookup.

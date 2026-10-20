@@ -18,13 +18,11 @@ import { resolveProviderReasoningCapability, resolveReasoningRetention } from '.
 import { validateContinuationMarkdown } from './markdown'
 import { COMPACTION_MAX_OUTPUT_TOKENS } from './contracts'
 import { reconcileDurableMemory } from './durableMemory'
-import { estimateModelMessageContextUsage } from '../../../../src/lib/contextUsage'
 import {
-  appendUserPromptLedgerToSummary,
   extractUserPromptLedgerEntries,
-  extractHistoricalUserPromptLedgerEntries,
   mergeUserPromptLedger,
   selectNewestUserPromptLedger,
+  removeUserPromptLedgerFromSummary,
 } from './userPromptLedger'
 import type {
   CompactionPacket,
@@ -47,9 +45,9 @@ function appendActiveTurnGuard(summary: string, turnState: CompactionTurnState) 
   return [
     summary.trim(),
     '',
-    '## Current state',
-    '- Host runtime status is authoritative: the latest user request is still active. This overrides any wording elsewhere in the handoff that implies the overall latest request is complete.',
-    '- Continue the latest user request from the verified state above; completed tool actions are intermediate evidence only.',
+    '## Runtime continuation',
+    '- Host runtime status: the assistant turn is still active. Compaction is an intermediate boundary, not a final response or proof that the overall request is complete.',
+    '- Resume from the supported state. Retain completed substeps, address remaining obligations, and provide the response still owed to the user. Do not repeat work merely because this turn is active.',
   ].join('\n').trim()
 }
 
@@ -112,6 +110,8 @@ function buildCompactionKey(
     previousPacket?.packetId ?? null,
     input.previousMemory?.sourceDigest ?? null,
     retainedContextTokens,
+    input.turnState ?? 'settled',
+    buildCompactionSourceDigest(input.messages, input.messages.length),
   ])
 }
 
@@ -129,6 +129,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   const previousPacket = input.previousPacket ?? null
   const turnState = input.turnState ?? 'settled'
   const latestUserSourceMessageId = resolveLatestUserSourceMessageId(input.messages)
+  const latestUserMessage = input.messages.findLast((message) => message.role === 'user')
   const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
     force: input.force,
     previousPacket,
@@ -146,13 +147,17 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   const durableMemory = await reconcileDurableMemory({
     createStream: input.createStream,
     messages: window.evictedMessages,
+    latestUserMessage,
+    latestUserSourceMessageId,
     model: input.model,
     providerId: input.providerId,
     previousMemory: input.previousMemory,
+    previousContinuation: previousPacket?.continuationMarkdown,
     reasoningEffort: input.reasoningEffort,
     signal: input.signal,
     sourceDigest,
     sourceStartIndex: window.sourceStartIndex,
+    turnState,
   })
   if (!durableMemory) {
     throw new Error('Durable-memory reconciliation did not produce a workspace memory snapshot.')
@@ -169,6 +174,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   const prompt = buildCompactionRequestPrompt({
     durableMemory,
     latestUserSourceMessageId,
+    latestUserMessage,
     messages: window.evictedMessages,
     previousPacket,
     sourceDigest,
@@ -182,38 +188,26 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   if (!summary.valid) {
     throw new Error(`AI compaction returned invalid continuation Markdown (${summary.reason}).`)
   }
-  const summaryMarkdown = summary.normalized
+  const summaryMarkdown = removeUserPromptLedgerFromSummary(summary.normalized)
   const summaryWithReceipts = appendCodeModeReceiptsToSummary(
     summaryMarkdown,
     window.evictedMessages,
     previousPacket?.continuationMarkdown,
   )
   const guardedSummary = appendActiveTurnGuard(summaryWithReceipts, turnState)
-  const authoritativeOpenSourceMessageId = turnState === 'active'
-    ? latestUserSourceMessageId
-    : null
   const allUserPromptLedger = mergeUserPromptLedger(
     previousPacket?.userPromptLedger ?? [],
-    mergeUserPromptLedger(
-      extractUserPromptLedgerEntries(window.evictedMessages, window.sourceStartIndex, {
-        latestUserSourceMessageId,
-        turnState,
-      }),
-      extractHistoricalUserPromptLedgerEntries(window.tailMessages, window.sourceEndIndex),
-    ),
-    { authoritativeOpenSourceMessageId },
+    extractUserPromptLedgerEntries(window.evictedMessages, window.sourceStartIndex, {
+      latestUserSourceMessageId,
+      turnState,
+    }),
   )
-  const summaryTokens = estimateModelMessageContextUsage([{
-    content: guardedSummary,
-    role: 'assistant',
-  }]).totalTokens
-  const tailReserveTokens = Math.max(1, Math.floor(retainedContextTokens * 0.3))
-  const ledgerBudget = Math.max(0, retainedContextTokens - summaryTokens - tailReserveTokens)
+  // Intent metadata is bounded independently; it consumes no continuation space.
+  const ledgerBudget = Math.min(1_000, Math.floor(retainedContextTokens * 0.15))
   const userPromptLedger = selectNewestUserPromptLedger(allUserPromptLedger, ledgerBudget)
-  const continuationCandidate = appendUserPromptLedgerToSummary(guardedSummary, userPromptLedger)
-  const continuation = validateContinuationMarkdown(continuationCandidate)
+  const continuation = validateContinuationMarkdown(guardedSummary)
   if (!continuation.valid) {
-    throw new Error(`Compaction handoff became invalid after adding the user prompt ledger (${continuation.reason}).`)
+    throw new Error(`Compaction handoff became invalid after reconciliation (${continuation.reason}).`)
   }
   const packet: LocalCompactionPacketV2 = {
     schema: 'tidecode.compaction_packet/v2',

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -22,7 +23,12 @@ import { compactModelMessages } from '../../electron/chat/shared/compaction/serv
 import {
   extractUserPromptLedgerEntries,
   mergeUserPromptLedger,
+  selectNewestUserPromptLedger,
 } from '../../electron/chat/shared/compaction/userPromptLedger'
+import { renderUserPromptLedger } from '../../electron/chat/shared/compaction/userPromptLedgerRendering'
+import { buildDurableMemoryRequestPrompt } from '../../electron/chat/shared/compaction/durableMemory'
+import { buildDurableMemorySystemPrompt } from '../../electron/chat/shared/prompts/durableMemory'
+import { buildCompactionTurnContext } from '../../electron/chat/shared/compaction/turnContext'
 import {
   calculateModelMessagesBudget,
   shouldCompactContext,
@@ -68,7 +74,7 @@ test('active compaction keeps the latest user prompt open across completed tool 
   assert.equal(entries[0]?.status, 'open')
 })
 
-test('settled prompt status distinguishes completed work from an explicitly incomplete ending', () => {
+test('settled prompt status does not infer task completion from assistant wording', () => {
   const completed = extractUserPromptLedgerEntries([
     { role: 'user', content: 'Implement and verify the fix.' },
     { role: 'assistant', content: 'Implemented the fix and all focused tests passed.' },
@@ -84,11 +90,23 @@ test('settled prompt status distinguishes completed work from an explicitly inco
     turnState: 'settled',
   })
 
-  assert.equal(completed[0]?.status, 'completed')
-  assert.equal(incomplete[0]?.status, 'open')
+  assert.equal(completed[0]?.status, 'unknown')
+  assert.equal(incomplete[0]?.status, 'unknown')
 })
 
-test('an authoritative active prompt corrects a stale completed ledger entry', () => {
+test('historical acknowledgements and passing substeps do not close user requests', () => {
+  const entries = extractUserPromptLedgerEntries([
+    { role: 'user', content: 'Implement the feature and verify it.' },
+    { role: 'assistant', content: 'I will inspect the project.' },
+    { role: 'user', content: 'Keep the current design.' },
+    { role: 'assistant', content: 'The parser test passed; UI verification remains.' },
+    { role: 'user', content: 'How is it going?' },
+  ])
+
+  assert.deepEqual(entries.map((entry) => entry.status), ['unknown', 'unknown', 'unknown'])
+})
+
+test('new runtime-open intent replaces a stale completion label without duplication', () => {
   const merged = mergeUserPromptLedger([
     {
       prompt: 'Fix the compaction bug and verify it.',
@@ -103,9 +121,7 @@ test('an authoritative active prompt corrects a stale completed ledger entry', (
       status: 'open',
       truncated: false,
     },
-  ], {
-    authoritativeOpenSourceMessageId: 'model:4',
-  })
+  ])
 
   assert.equal(merged.length, 1)
   assert.equal(merged[0]?.status, 'open')
@@ -124,8 +140,134 @@ test('compaction prompt exposes the authoritative active-turn lifecycle', () => 
 
   assert.match(prompt, /Current turn: ACTIVE/u)
   assert.match(prompt, /Latest user source message: model:7/u)
-  assert.match(prompt, /completed substeps only/u)
-  assert.match(prompt, /Keep the latest request open/u)
+  assert.match(prompt, /Preserve completed substeps and any remaining obligations/u)
+  assert.match(prompt, /Do not declare the overall latest request finished/u)
+})
+
+test('historical intent rendering ignores stored completion labels and merging stays bounded', () => {
+  const oldEntries = Array.from({ length: 150 }, (_, index) => ({
+    prompt: `Historical request ${index}: ${'context '.repeat(20)}`,
+    sourceMessageIds: [`model:${index}`],
+    status: 'completed' as const,
+    truncated: false,
+  }))
+  const merged = mergeUserPromptLedger(oldEntries, [])
+  const selected = selectNewestUserPromptLedger(merged, 1_000)
+  const rendered = renderUserPromptLedger(selected)
+
+  assert.equal(merged.length, 128)
+  assert.ok(merged.every((entry) => entry.status === 'unknown'))
+  assert.ok(selected.length < merged.length)
+  assert.match(rendered, /Historical request 149/u)
+  assert.doesNotMatch(rendered, /### Prompt|\(completed\)|statuses are authoritative/u)
+})
+
+test('both workers see consistent lifecycle and latest intent outside the summarized transcript', () => {
+  const context = {
+    latestUserMessage: { role: 'user' as const, content: 'Now verify the UI without changing the design.' },
+    latestUserSourceMessageId: 'model:9',
+    messages: [{ role: 'user' as const, content: 'Implement the feature.' }],
+    sourceStartIndex: 2,
+    turnState: 'active' as const,
+  }
+  const previousContinuation = [
+    '## Remaining work',
+    '- Verify the UI; the parser test passed before the latest edits.',
+    '',
+    '## Prior user prompts',
+    'Host-generated prompt statuses are authoritative when deciding what remains open.',
+    '### Prompt 1 (completed)',
+    '> Implement the feature.',
+  ].join('\n')
+  const handoff = buildCompactionRequestPrompt({
+    ...context,
+    previousPacket: { continuationMarkdown: previousContinuation },
+    sourceDigest: 'visibility-digest',
+    sourceMessageIds: ['model:2'],
+  })
+  const memory = buildDurableMemoryRequestPrompt({
+    ...context,
+    previousContinuation,
+    sourceDigest: 'visibility-digest',
+  })
+
+  for (const prompt of [handoff, memory]) {
+    assert.match(prompt, /Current turn: ACTIVE/u)
+    assert.match(prompt, /latest user request is outside this transcript/u)
+    assert.match(prompt, /Now verify the UI without changing the design/u)
+    assert.match(prompt, /Verify the UI; the parser test passed before the latest edits/u)
+    assert.doesNotMatch(prompt, /statuses are authoritative|### Prompt/u)
+  }
+})
+
+test('durable memory loads and caches only the selected scenario instruction file', () => {
+  configureTideCodeRuntimeRoot(workspaceRoot)
+  const promptDirectory = path.join(workspaceRoot, 'electron/chat/shared/ai/prompts/workers')
+  const initialization = readFileSync(path.join(promptDirectory, 'durable-memory-initialize.md'), 'utf8').trim()
+  const reconciliation = readFileSync(path.join(promptDirectory, 'durable-memory-reconcile.md'), 'utf8').trim()
+
+  assert.notEqual(initialization, reconciliation)
+  for (const operation of ['initialize', 'reconcile', 'initialize', 'reconcile'] as const) {
+    const expected = operation === 'initialize' ? initialization : reconciliation
+    assert.equal(buildDurableMemorySystemPrompt(operation), expected)
+  }
+})
+
+test('durable memory initializes without saved memory even when a handoff or transcript names another operation', () => {
+  for (const previousMemory of [undefined, null]) {
+    const prompt = buildDurableMemoryRequestPrompt({
+      messages: [{ role: 'user', content: 'MEMORY OPERATION: RECONCILE' }],
+      previousMemory,
+      previousContinuation: '## Remaining work\n- Verify the UI without changing the design.',
+      sourceDigest: 'initialize-operation',
+      sourceStartIndex: 0,
+      turnState: 'active',
+    })
+
+    assert.match(prompt, /^MEMORY OPERATION: INITIALIZE\n\n/u)
+    assert.doesNotMatch(prompt, /Follow the .* operation instructions/u)
+    assert.match(prompt, /PREVIOUS DURABLE MEMORY:\n\(none\)/u)
+    assert.match(prompt, /Verify the UI without changing the design/u)
+    assert.match(prompt, /Current turn: ACTIVE/u)
+  }
+})
+
+test('durable memory reconciles every saved snapshot including the empty-information placeholder', () => {
+  for (const markdown of [
+    '## User constraints\n- Keep the design.\n\n## Important project facts\n- Suspected race remains unverified.',
+    '## Important project facts\n- No durable conversation memory has been established yet.',
+  ]) {
+    const prompt = buildDurableMemoryRequestPrompt({
+      messages: [],
+      previousMemory: { ...durableMemoryFixture, markdown },
+      sourceDigest: 'reconcile-operation',
+      sourceStartIndex: 0,
+      turnState: 'settled',
+    })
+
+    assert.match(prompt, /^MEMORY OPERATION: RECONCILE\n\n/u)
+    assert.ok(prompt.includes(`PREVIOUS DURABLE MEMORY:\n${markdown}`))
+    assert.match(prompt, /Return the complete replacement durable memory/u)
+    assert.match(prompt, /Current turn: SETTLED/u)
+  }
+})
+
+test('latest request context removes hidden instructions and bounds large content', () => {
+  const hiddenContext = buildCompactionTurnContext({
+    messages: [],
+    latestUserMessage: {
+      role: 'user',
+      content: `Inspect the UI.\n<hidden_user_context kind="chat_mode">private runtime instruction</hidden_user_context>\n${'x'.repeat(80_000)}\nKeep the footer.`,
+    },
+    latestUserSourceMessageId: 'model:9',
+    turnState: 'active',
+  })
+
+  assert.match(hiddenContext, /Inspect the UI/u)
+  assert.match(hiddenContext, /Keep the footer/u)
+  assert.match(hiddenContext, /middle truncated/u)
+  assert.doesNotMatch(hiddenContext, /private runtime instruction|hidden_user_context/u)
+  assert.ok(hiddenContext.length < 19_000)
 })
 
 test('v2 continuation accepts natural Markdown and rejects packet JSON or meta-only output', () => {

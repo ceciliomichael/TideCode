@@ -12,65 +12,20 @@ interface UserPromptLedgerExtractionOptions {
   turnState?: CompactionTurnState
 }
 
-interface MergeUserPromptLedgerOptions {
-  authoritativeOpenSourceMessageId?: string | null
-}
-
 function promptContent(message: ModelMessage) {
   const sanitized = sanitizeCompactionContent(message.content)
   if (typeof sanitized === 'string') return sanitized.trim()
   return JSON.stringify(sanitized)
 }
 
-function visibleAssistantText(message: ModelMessage) {
-  if (message.role !== 'assistant') return ''
-  if (typeof message.content === 'string') return message.content.trim()
-  return message.content
-    .filter((part): part is typeof part & { text: string; type: 'text' } => (
-      typeof part === 'object' && part !== null && part.type === 'text' && typeof part.text === 'string'
-    ))
-    .map((part) => part.text)
-    .join('\n')
-    .trim()
-}
-
-function settledPromptStatus(
-  messages: readonly ModelMessage[],
-  userIndex: number,
-  endIndex: number,
-): UserPromptLedgerEntry['status'] {
-  const finalAssistant = messages
-    .slice(userIndex + 1, endIndex)
-    .filter((message) => message.role === 'assistant')
-    .at(-1)
-  if (!finalAssistant) return 'open'
-
-  const finalText = visibleAssistantText(finalAssistant)
-  if (!finalText) return 'open'
-  if (/\b(?:blocked|unfinished|incomplete|pending|unable\s+to|cannot|can't|could\s+not|couldn't|failed\s+to|did(?:n't|\s+not)\s+(?:complete|finish|verify|validate|test)|not\s+(?:done|complete|completed|finished|resolved|verified)|still\s+(?:need|needs|working)|remains?\s+(?:open|pending|unfinished|incomplete))\b/iu.test(finalText)) {
-    return 'open'
-  }
-  return /\b(?:complete(?:d)?|done|finished|implemented|fixed|resolved|verified|passed|successful(?:ly)?)\b/iu.test(finalText)
-    ? 'completed'
-    : 'open'
-}
-
 function promptStatus(
-  messages: readonly ModelMessage[],
-  userIndex: number,
   sourceId: string,
   options?: UserPromptLedgerExtractionOptions,
 ): UserPromptLedgerEntry['status'] {
-  const nextUserIndex = messages.findIndex((message, index) => index > userIndex && message.role === 'user')
-  const endIndex = nextUserIndex >= 0 ? nextUserIndex : messages.length
-  if (options?.latestUserSourceMessageId === sourceId) {
-    return options.turnState === 'active'
-      ? 'open'
-      : settledPromptStatus(messages, userIndex, endIndex)
+  if (options?.latestUserSourceMessageId === sourceId && options.turnState === 'active') {
+    return 'open'
   }
-  return messages.slice(userIndex + 1, endIndex).some((message) => message.role === 'assistant')
-    ? 'completed'
-    : 'open'
+  return 'unknown'
 }
 
 function sourceMessageId(sourceStartIndex: number, messageIndex: number) {
@@ -93,63 +48,36 @@ export function extractUserPromptLedgerEntries(
     return [{
       prompt: stripExecutionModeContext(prompt),
       sourceMessageIds: [sourceId],
-      status: promptStatus(messages, index, sourceId, options),
+      status: promptStatus(sourceId, options),
       truncated: prompt !== rawPrompt,
     }]
   })
 }
 
-export function extractHistoricalUserPromptLedgerEntries(
-  messages: readonly ModelMessage[],
-  sourceStartIndex = 0,
-) {
-  const latestUserIndex = messages.findLastIndex((message) => message.role === 'user')
-  return latestUserIndex >= 0
-    ? extractUserPromptLedgerEntries(messages.slice(0, latestUserIndex), sourceStartIndex)
-    : extractUserPromptLedgerEntries(messages, sourceStartIndex)
-}
-
 export function mergeUserPromptLedger(
   previous: readonly UserPromptLedgerEntry[],
   current: readonly UserPromptLedgerEntry[],
-  options?: MergeUserPromptLedgerOptions,
 ) {
-  const merged = [...previous]
-  for (const entry of current) {
-    const authoritativeOpen = Boolean(
-      options?.authoritativeOpenSourceMessageId &&
-      entry.status === 'open' &&
-      entry.sourceMessageIds.includes(options.authoritativeOpenSourceMessageId),
-    )
-    if (authoritativeOpen) {
-      const activePromptIndex = merged.findLastIndex((prior) => prior.prompt === entry.prompt)
-      if (activePromptIndex >= 0) {
-        const prior = merged[activePromptIndex]
-        merged[activePromptIndex] = {
-          ...entry,
-          sourceMessageIds: Array.from(new Set([...prior.sourceMessageIds, ...entry.sourceMessageIds])).slice(-8),
-          truncated: prior.truncated || entry.truncated,
-        }
-        continue
-      }
-    }
-
-    const statusUpgradeIndex = merged.findIndex((prior) => (
-      prior.prompt === entry.prompt &&
-      prior.status !== entry.status &&
-      (prior.status === 'open' || prior.status === 'unknown') &&
-      (entry.status === 'completed' || entry.status === 'aborted')
-    ))
-    if (statusUpgradeIndex >= 0) {
-      merged[statusUpgradeIndex] = entry
-      continue
-    }
-
-    if (!merged.some((prior) => JSON.stringify(prior) === JSON.stringify(entry))) {
-      merged.push(entry)
+  const merged: UserPromptLedgerEntry[] = []
+  for (const entry of [...previous, ...current]) {
+    // Only a fresh extraction can establish runtime-open state. Older status
+    // labels are not evidence that a user goal succeeded or remains unfinished.
+    const status = current.includes(entry) && entry.status === 'open' ? 'open' : 'unknown'
+    const priorIndex = merged.findIndex((prior) => prior.prompt === entry.prompt)
+    if (priorIndex >= 0) {
+      const prior = merged[priorIndex]
+      merged.splice(priorIndex, 1)
+      merged.push({
+        ...entry,
+        sourceMessageIds: Array.from(new Set([...prior.sourceMessageIds, ...entry.sourceMessageIds])).slice(-8),
+        status,
+        truncated: prior.truncated || entry.truncated,
+      })
+    } else {
+      merged.push({ ...entry, status })
     }
   }
-  return merged
+  return merged.slice(-128)
 }
 
 export function estimateUserPromptLedgerTokens(entries: readonly UserPromptLedgerEntry[]) {
@@ -191,7 +119,7 @@ export function selectNewestUserPromptLedger(
   return selected
 }
 
-function removeExistingLedgerSection(summary: string) {
+export function removeUserPromptLedgerFromSummary(summary: string) {
   const headingIndex = summary.indexOf(USER_PROMPT_LEDGER_HEADING)
   if (headingIndex < 0) return summary.trim()
   const before = summary.slice(0, headingIndex).trimEnd()
@@ -199,13 +127,4 @@ function removeExistingLedgerSection(summary: string) {
   const nextHeadingIndex = afterSection.search(/\n## /u)
   const after = nextHeadingIndex >= 0 ? afterSection.slice(nextHeadingIndex).trimStart() : ''
   return [before, after].filter(Boolean).join('\n\n').trim()
-}
-
-export function appendUserPromptLedgerToSummary(
-  summary: string,
-  entries: readonly UserPromptLedgerEntry[],
-) {
-  const withoutLedger = removeExistingLedgerSection(summary)
-  const ledger = renderUserPromptLedger(entries)
-  return [withoutLedger, ledger].filter(Boolean).join('\n\n').trim()
 }

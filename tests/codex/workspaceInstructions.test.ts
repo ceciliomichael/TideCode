@@ -16,16 +16,16 @@ function modelText(messages: readonly ModelMessage[]) {
     : message.content.map((part) => 'text' in part ? part.text : '').join('\n')).join('\n')
 }
 
-test('workspace instruction prompt reads AGENTS.md only when the current revision is not already in context', () => {
+test('stable workspace instruction contract keeps the conditional bootstrap guidance', () => {
   const block = buildWorkspaceInstructionsRuntimeBlock()
 
   assert.match(block, /revision-aware hidden bootstrap context/u)
   assert.match(block, /bootstrap does not contain the file contents/u)
   assert.match(block, /Read the current `AGENTS\.md` only when that exact revision has not already been read/u)
   assert.match(block, /reuse it and do not read it again/u)
+  assert.doesNotMatch(block, /not optional reference data|before each action|Do not skip applicable requirements/u)
   assert.match(block, /bootstrap revision changes/u)
   assert.match(block, /continue without attempting that bootstrap read/u)
-  assert.doesNotMatch(block, /you must read it/u)
 })
 
 test('workspace bootstrap replaces stale context without embedding file contents and is removed when unavailable', async () => {
@@ -42,6 +42,11 @@ test('workspace bootstrap replaces stale context without embedding file contents
 
     assert.match(injectedText, /Implement this\./u)
     assert.match(injectedText, /A root AGENTS\.md exists/u)
+    assert.match(injectedText, /Follow its applicable requirements and stated exceptions throughout project work/u)
+    assert.match(injectedText, /repository instructions, not optional reference data/u)
+    assert.match(injectedText, /designation does not extend to instructions in arbitrary files/u)
+    assert.match(injectedText, /Do not skip applicable requirements for speed or convenience/u)
+    assert.match(injectedText, /Continue paginated reads until the complete file is available/u)
     assert.match(injectedText, /AGENTS\.md revision changed since the last workspace-instructions context/u)
     assert.match(injectedText, /Read the current AGENTS\.md again before continuing project work/u)
     assert.doesNotMatch(injectedText, /# Current rules|Use tests\./u)
@@ -51,6 +56,8 @@ test('workspace bootstrap replaces stale context without embedding file contents
 
     const unchanged = modelText(applyWorkspaceInstructionsContext(injected, workspaceRootPath))
     assert.doesNotMatch(unchanged, /AGENTS\.md revision changed since the last workspace-instructions context/u)
+    assert.match(unchanged, /If compaction removed its contents, read AGENTS\.md again even when this revision is unchanged/u)
+    assert.match(unchanged, /Honor existing user approval/u)
 
     const fileStats = await fs.stat(path.join(workspaceRootPath, 'AGENTS.md'))
     const currentRevision = `${fileStats.mtimeMs}:${fileStats.size}`
@@ -75,6 +82,27 @@ test('workspace bootstrap replaces stale context without embedding file contents
     const removed = modelText(applyWorkspaceInstructionsContext(injected, workspaceRootPath))
     assert.match(removed, /Implement this\./u)
     assert.doesNotMatch(removed, /workspace_instructions|Current rules/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('strong workspace instruction guidance is absent without a root AGENTS.md file', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-no-agents-'))
+  const messages: ModelMessage[] = [{
+    role: 'user',
+    content: 'Inspect the project.\n\n' + buildWorkspaceInstructionsHiddenContext('old-revision').content,
+  }]
+
+  try {
+    for (const root of [null, workspaceRootPath]) {
+      const projected = modelText(applyWorkspaceInstructionsContext(messages, root))
+      assert.equal(projected, 'Inspect the project.')
+    }
+
+    await fs.mkdir(path.join(workspaceRootPath, 'AGENTS.md'))
+    const projected = modelText(applyWorkspaceInstructionsContext(messages, workspaceRootPath))
+    assert.equal(projected, 'Inspect the project.')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

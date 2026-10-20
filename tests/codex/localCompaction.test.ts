@@ -17,6 +17,9 @@ import {
 import type { CompactionStreamFactory } from '../../electron/chat/shared/compaction/contracts'
 import { buildCompactionRequestPrompt, buildCompactionSystemPrompt } from '../../electron/chat/shared/compaction/prompt'
 import { buildChatCompressionSystemPrompt } from '../../electron/chat/shared/prompts/compression'
+import { buildDurableMemorySystemPrompt } from '../../electron/chat/shared/prompts/durableMemory'
+import { estimateModelMessageContextUsage } from '../../src/lib/contextUsage'
+import { estimateUserPromptLedgerTokens } from '../../electron/chat/shared/compaction/userPromptLedger'
 import {
   buildChatModeHiddenContext,
   buildExecutionModeHiddenContext,
@@ -225,7 +228,7 @@ test('AI compaction produces a Markdown summary as the new history beginning', a
 
   assert.ok(result)
   assert.match(result.packet.continuationMarkdown, /^## Goal\n- Continue the requested workspace change\./u)
-  assert.match(result.packet.continuationMarkdown, /## Prior user prompts/u)
+  assert.doesNotMatch(result.packet.continuationMarkdown, /## Prior user prompts|### Prompt/u)
   assert.match(String(result.projectedMessages[0]?.content ?? ''), /Durable conversation memory/u)
   assert.deepEqual(result.projectedMessages[1], { role: 'assistant', content: result.packet.continuationMarkdown })
   assert.doesNotMatch(result.packet.continuationMarkdown, /tidecode\.compaction_packet/u)
@@ -234,11 +237,15 @@ test('AI compaction produces a Markdown summary as the new history beginning', a
 test('durable memory is reconciled before the short handoff and stays separate in projected context', async () => {
   const messages = createConversationMessages()
   const phases: string[] = []
+  let memorySystem = ''
+  let memoryPrompt = ''
   let handoffPrompt = ''
   const createStream: CompactionStreamFactory = async ({ messages: requestMessages, system }) => ({
     fullStream: (async function* () {
       if (system.includes('durable-memory reconciliation worker')) {
         phases.push('memory')
+        memorySystem = system
+        memoryPrompt = String(requestMessages[0]?.content ?? '')
         yield {
           type: 'text-delta',
           text: '## Decisions\n- Targeted source edits use apply_patch.\n\n## User constraints\n- Preserve feature branches after merge.',
@@ -259,6 +266,9 @@ test('durable memory is reconciled before the short handoff and stays separate i
 
   assert.ok(result)
   assert.deepEqual(phases, ['memory', 'handoff'])
+  assert.match(memoryPrompt, /^MEMORY OPERATION: INITIALIZE/u)
+  assert.equal(memorySystem, buildDurableMemorySystemPrompt('initialize'))
+  assert.notEqual(memorySystem, buildDurableMemorySystemPrompt('reconcile'))
   assert.match(result.durableMemory.markdown, /Targeted source edits use apply_patch/u)
   assert.match(handoffPrompt, /DURABLE CONVERSATION MEMORY/u)
   assert.match(handoffPrompt, /Preserve feature branches after merge/u)
@@ -307,10 +317,12 @@ test('durable memory reconciliation receives the previous canonical memory and r
     sourceDigest: 'previous-memory-digest',
   }
   let memoryPrompt = ''
+  let memorySystem = ''
   const createStream: CompactionStreamFactory = async ({ messages: requestMessages, system }) => ({
     fullStream: (async function* () {
       if (system.includes('durable-memory reconciliation worker')) {
         memoryPrompt = String(requestMessages[0]?.content ?? '')
+        memorySystem = system
         yield {
           type: 'text-delta',
           text: '## Decisions\n- Code Mode uses apply_patch for targeted edits and does not expose edit.\n\n## User constraints\n- Preserve feature branches after merge.',
@@ -328,6 +340,9 @@ test('durable memory reconciliation receives the previous canonical memory and r
   })
 
   assert.ok(result)
+  assert.match(memoryPrompt, /^MEMORY OPERATION: RECONCILE/u)
+  assert.equal(memorySystem, buildDurableMemorySystemPrompt('reconcile'))
+  assert.notEqual(memorySystem, buildDurableMemorySystemPrompt('initialize'))
   assert.match(memoryPrompt, /Code Mode exposes edit and apply_patch/u)
   assert.match(memoryPrompt, /Preserve feature branches after merge/u)
   assert.match(result.durableMemory.markdown, /does not expose edit/u)
@@ -392,10 +407,10 @@ test('active automatic compaction keeps the current request open even if the com
     entry.prompt.includes('Fix the runtime issue')
   ))
   assert.equal(activePrompt?.status, 'open')
-  assert.match(result.packet.continuationMarkdown, /Prompt 1 \(open\)/u)
-  assert.match(result.packet.continuationMarkdown, /Host runtime status is authoritative: the latest user request is still active/u)
-  assert.match(result.packet.continuationMarkdown, /overrides any wording elsewhere in the handoff/u)
-  assert.match(result.packet.continuationMarkdown, /Continue the latest user request from the verified state above/u)
+  assert.doesNotMatch(result.packet.continuationMarkdown, /## Prior user prompts|### Prompt/u)
+  assert.match(result.packet.continuationMarkdown, /Host runtime status: the assistant turn is still active/u)
+  assert.match(result.packet.continuationMarkdown, /not a final response or proof that the overall request is complete/u)
+  assert.match(result.packet.continuationMarkdown, /Do not repeat work merely because this turn is active/u)
 })
 
 test('repeated compaction carries the prior handoff and ledger across the new barrier', async () => {
@@ -416,8 +431,14 @@ test('repeated compaction carries the prior handoff and ledger across the new ba
     { role: 'assistant', content: 'The final state is recorded.' },
   ]
   let secondCompactionPrompt = ''
-  const secondStream: CompactionStreamFactory = async ({ messages }) => ({
+  let secondMemoryPrompt = ''
+  const secondStream: CompactionStreamFactory = async ({ messages, system }) => ({
     fullStream: (async function* () {
+      if (system.includes('durable-memory reconciliation worker')) {
+        secondMemoryPrompt = String(messages[0]?.content ?? '')
+        yield { type: 'text-delta', text: '## Open work\n- Carry forward the supported verification state.' }
+        return
+      }
       secondCompactionPrompt = String(messages[0]?.content ?? '')
       yield { type: 'text-delta', text: '## Current state\n- The second barrier was created.' }
     })(),
@@ -435,9 +456,13 @@ test('repeated compaction carries the prior handoff and ledger across the new ba
   assert.ok(second)
   assert.equal(second.packet.parentPacketId, first.packet.packetId)
   assert.match(second.packet.continuationMarkdown, /The second barrier was created/u)
-  assert.match(second.packet.continuationMarkdown, /Implement the requested workspace change\./u)
-  assert.match(second.packet.continuationMarkdown, /Continue with the post-barrier verification\./u)
+  assert.doesNotMatch(second.packet.continuationMarkdown, /## Prior user prompts|### Prompt/u)
+  assert.ok(second.packet.userPromptLedger.some((entry) => entry.prompt.includes('Implement the requested workspace change.')))
+  assert.ok(second.packet.userPromptLedger.some((entry) => entry.prompt.includes('Continue with the post-barrier verification.')))
   assert.match(secondCompactionPrompt, /The first barrier was created\./u)
+  assert.match(secondMemoryPrompt, /The first barrier was created\./u)
+  assert.match(secondMemoryPrompt, /^MEMORY OPERATION: RECONCILE/u)
+  assert.match(secondMemoryPrompt, /Current turn: SETTLED/u)
   assert.match(secondCompactionPrompt, /Continue with the post-barrier verification\./u)
   assert.doesNotMatch(secondCompactionPrompt, /I am inspecting the relevant files\./u)
   assert.equal(second.projectedMessages.some((message) => message.role === 'tool'), false)
@@ -454,12 +479,11 @@ test('AI compaction applies the configured retention token target to projected h
   const retainedUsers = result.projectedMessages
     .filter((message) => message.role === 'user')
     .map((message) => String(message.content))
-  assert.equal(retainedUsers.length, 1)
-  assert.match(retainedUsers[0] ?? '', /User request for turn 6/u)
-  assert.deepEqual(
-    result.packet.userPromptLedger.map((entry) => entry.prompt.match(/turn \d+/u)?.[0]),
-    ['turn 3', 'turn 4', 'turn 5'],
-  )
+  assert.match(retainedUsers.at(-1) ?? '', /User request for turn 6/u)
+  // Retention selects nearby complete turns and allows its existing 4k overshoot.
+  assert.ok(estimateModelMessageContextUsage(result.projectedMessages).totalTokens <= 11_000)
+  assert.ok(estimateUserPromptLedgerTokens(result.packet.userPromptLedger) <= 1_000)
+  assert.doesNotMatch(result.packet.continuationMarkdown, /## Prior user prompts|### Prompt/u)
 })
 
 test('invalid non-Markdown AI output fails instead of creating a deterministic compaction', async () => {
@@ -573,7 +597,7 @@ test('valid AI Markdown is accepted and malformed AI output is rejected', async 
   ))
   assert.ok(accepted)
   assert.ok(accepted.packet.continuationMarkdown.startsWith(generatedMarkdown))
-  assert.match(accepted.packet.continuationMarkdown, /## Prior user prompts/u)
+  assert.doesNotMatch(accepted.packet.continuationMarkdown, /## Prior user prompts|### Prompt/u)
   assert.match(String(accepted.projectedMessages[0]?.content ?? ''), /Durable conversation memory/u)
   assert.equal(accepted.projectedMessages[1]?.content, accepted.packet.continuationMarkdown)
 
@@ -601,6 +625,92 @@ test('same compaction digest shares one in-flight two-phase compaction pipeline'
   assert.ok(second)
   assert.equal(calls, 2)
   assert.equal(first.packet.sourceDigest, second.packet.sourceDigest)
+})
+
+test('active and settled compactions do not share one in-flight result', async () => {
+  const messages = createConversationMessages()
+  const requestPrompts: string[] = []
+  const createStream: CompactionStreamFactory = async ({ messages: requestMessages, system }) => ({
+    fullStream: (async function* () {
+      requestPrompts.push(String(requestMessages[0]?.content ?? ''))
+      yield {
+        type: 'text-delta',
+        text: system.includes('durable-memory reconciliation worker')
+          ? '## Open work\n- Verify the implementation; source inspection is recorded.'
+          : '## Current state\n- Implementation verification remains outstanding.',
+      }
+    })(),
+  })
+  const [active, settled] = await Promise.all([
+    compactModelMessages({ ...createCompactionInput(messages, createStream), turnState: 'active' }),
+    compactModelMessages({ ...createCompactionInput(messages, createStream), turnState: 'settled' }),
+  ])
+
+  assert.ok(active)
+  assert.ok(settled)
+  assert.notEqual(active.packet.packetId, settled.packet.packetId)
+  assert.equal(requestPrompts.filter((prompt) => prompt.includes('Current turn: ACTIVE')).length, 2)
+  assert.equal(requestPrompts.filter((prompt) => prompt.includes('Current turn: SETTLED')).length, 2)
+  assert.match(active.packet.continuationMarkdown, /## Runtime continuation/u)
+  assert.doesNotMatch(settled.packet.continuationMarkdown, /## Runtime continuation/u)
+})
+
+test('different latest requests with the same evicted source do not share compaction results', async () => {
+  const messages = createConversationMessages()
+  const changedMessages = messages.map((message, index): ModelMessage => {
+    if (index === 2) {
+      return { role: 'user', content: 'Verify the new UI request instead.' }
+    }
+    return message
+  })
+  const capturedPrompts: string[] = []
+  const createStream: CompactionStreamFactory = async ({ messages: requestMessages, system }) => ({
+    fullStream: (async function* () {
+      capturedPrompts.push(String(requestMessages[0]?.content ?? ''))
+      yield {
+        type: 'text-delta',
+        text: system.includes('durable-memory reconciliation worker')
+          ? '## Important project facts\n- Source inspection is recorded.'
+          : '## Current state\n- Continue from the retained latest request.',
+      }
+    })(),
+  })
+  const [first, second] = await Promise.all([
+    compactModelMessages(createCompactionInput(messages, createStream)),
+    compactModelMessages(createCompactionInput(changedMessages, createStream)),
+  ])
+
+  assert.ok(first)
+  assert.ok(second)
+  assert.equal(first.sourceDigest, second.sourceDigest)
+  assert.notEqual(first.packet.packetId, second.packet.packetId)
+  assert.equal(capturedPrompts.filter((prompt) => prompt.includes('Verify the new UI request instead.')).length, 2)
+})
+
+test('repeated compaction keeps intent metadata bounded without growing the handoff', async () => {
+  const summary = '## Remaining work\n- Verify the UI while preserving the agreed design.'
+  let result = await compactModelMessages(createCompactionInput(
+    createConversationMessages(), createTextStreamFactory(summary), 7_000,
+  ))
+  assert.ok(result)
+
+  for (let index = 0; index < 8; index += 1) {
+    const previous = result
+    result = await compactModelMessages({
+      ...createCompactionInput([
+        ...previous.projectedMessages,
+        { role: 'user', content: `Clarification ${index}: ${'retain the agreed constraints '.repeat(80)}` },
+        { role: 'assistant', content: 'I will continue verification.' },
+        { role: 'user', content: 'Continue working.' },
+      ], createTextStreamFactory(summary), 7_000),
+      previousPacket: previous.packet,
+      previousMemory: previous.durableMemory,
+    })
+    assert.ok(result)
+    assert.equal(result.packet.continuationMarkdown, summary)
+    assert.ok(estimateUserPromptLedgerTokens(result.packet.userPromptLedger) <= 1_000)
+    assert.ok(result.packet.userPromptLedger.length <= 128)
+  }
 })
 
 test('different chats never share one in-flight compaction result', async () => {
