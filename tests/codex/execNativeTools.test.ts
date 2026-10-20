@@ -44,7 +44,7 @@ test('listing namespaces pages independently', () => {
     { name: 'tools.mcp.github_first', namespace: 'mcp', description: '[User MCP server "github"; original tool "first"]' },
     { name: 'tools.mcp.github_second', namespace: 'mcp', description: '[User MCP server "github"; original tool "second"]' },
     { name: 'tools.mcp.other_first', namespace: 'mcp', description: '[User MCP server "other"; original tool "first"]' }]
-  assert.deepEqual(listAvailableApis(names, 1).items.map(({ name }) => name), ['github', 'other'])
+  assert.deepEqual(listAvailableApis(names, 1).items.map(({ name }) => name), ['github', 'native_files', 'other'])
   assert.deepEqual(listAvailableApis(names, 1, 'native_files').items.map(({ name }) => name), natives.slice(0, 10))
   assert.deepEqual(listAvailableApis(names, 2, 'native_files').items.map(({ name }) => name), natives.slice(10))
   assert.equal(listAvailableApis(names, 2, 'native_files').hasMore, false)
@@ -89,7 +89,7 @@ test('MCP namespaces cannot merge into reserved TideCode native groups', () => {
       description: '[User MCP server "Custom"; original tool "scan"; namespace "native_browser"] Scan remote service.' },
   ]
   const root = listAvailableApis(entries, 1)
-  assert.deepEqual(root.items.map((entry) => entry.name), ['mcp_native_browser'])
+  assert.deepEqual(root.items.map((entry) => entry.name), ['mcp_native_browser', 'native_browser'])
   assert.deepEqual(listAvailableApis(entries, 1, 'native_browser').items.map((entry) => entry.name), ['tools.browser.read'])
   assert.deepEqual(listAvailableApis(entries, 1, 'mcp_native_browser').items.map((entry) => entry.name), ['tools.mcp_browser_scan'])
 })
@@ -103,7 +103,7 @@ test('root namespace index stays capped at 10 per page', () => {
   servers.push({ name: 'tools.read', namespace: 'native_files', description: 'Read file' })
   assert.equal(listAvailableApis(servers, 1).items.length, 10)
   assert.equal(listAvailableApis(servers, 1).hasMore, true)
-  assert.equal(listAvailableApis(servers, 2).items.length, 4)
+  assert.equal(listAvailableApis(servers, 2).items.length, 5)
   assert.deepEqual(listAvailableApis(servers, 1, 'server12').items.map((item) => item.name), ['tools.mcp.server12_action'])
   assert.deepEqual(listAvailableApis(servers, 1, 'mcp').items, [])
 })
@@ -198,7 +198,7 @@ test('native list is paged, names-only and mode-aware', async () => withWorkspac
   assert.equal(invalid.status, 'error')
   const rootList = await execute(agent, 'return await tools.available.list();')
   assert.match(rootList.body ?? '', /# Available tool namespaces \(page 1\)/u)
-  assert.doesNotMatch(rootList.body ?? '', /- `native_browser`/u)
+  assert.match(rootList.body ?? '', /- `native_browser`/u)
   assert.doesNotMatch(rootList.body ?? '', /- `native`/u)
   const later = await execute(agent, 'return await tools.available.list({ namespace: "native_terminal", page: 1 });')
   assert.equal(later.status, 'success', later.body)

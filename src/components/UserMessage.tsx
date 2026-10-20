@@ -153,23 +153,23 @@ export function UserMessage({ attachments = [], content, mentionPathMap, onEdit,
       </div>
 
       {onRevert && !isImageReferenceHovered ? (
-        <Tooltip content="Revert and edit this message" side="right">
-          <div
-            className={`absolute ${buttonPositionClassName} invisible z-10 flex items-center justify-end opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100`}
-          >
-            <div className="h-full w-6 bg-gradient-to-r from-transparent to-surface" />
-            <div className="flex h-full items-center bg-surface pr-3">
+        <div
+          className={`absolute ${buttonPositionClassName} invisible z-10 flex items-center justify-end opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100`}
+        >
+          <div className="h-full w-6 bg-gradient-to-r from-transparent to-surface" />
+          <div className="flex h-full items-center bg-surface pr-3">
+            <Tooltip content="Revert and edit this message" side="right">
               <button
                 type="button"
                 onClick={handleUndoClick}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-subtle-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-subtle-foreground"
                 aria-label="Revert and edit this message"
               >
-                <Undo2 size={13} />
+                <Undo2 className="transition-colors hover:text-foreground" size={13} />
               </button>
-            </div>
+            </Tooltip>
           </div>
-        </Tooltip>
+        </div>
       ) : null}
     </div>
   );

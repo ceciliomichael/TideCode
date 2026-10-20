@@ -1,4 +1,5 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { createPortal } from 'react-dom'
 import {
   GLOBAL_OVERLAY_SCROLLBAR_UPDATE_EVENT,
   getCustomOverlayScrollTarget,
@@ -36,6 +37,26 @@ interface ThumbGeometry {
 const SCROLLBAR_SIZE_PX = 8
 const MIN_THUMB_SIZE_PX = 24
 const OVERFLOW_VALUES = new Set(['auto', 'overlay', 'scroll'])
+
+function getScrollbarLayer(element: HTMLElement): HTMLElement {
+  let ancestor = element.parentElement
+
+  while (ancestor && ancestor !== document.body) {
+    const style = window.getComputedStyle(ancestor)
+    if (
+      (style.position !== 'static' && style.zIndex !== 'auto') ||
+      style.transform !== 'none' ||
+      style.filter !== 'none' ||
+      style.isolation === 'isolate' ||
+      Number(style.opacity) < 1
+    ) {
+      return ancestor
+    }
+    ancestor = ancestor.parentElement
+  }
+
+  return document.body
+}
 
 function getTargetElement(target: ActiveScrollTarget) {
   return target instanceof HTMLElement ? target : target.element
@@ -200,6 +221,10 @@ function applyThumbGeometry(element: HTMLDivElement | null, geometry: ThumbGeome
 
 export function GlobalOverlayScrollbars() {
   const activeTargetsRef = useRef<ActiveScrollTargets>({ horizontal: null, vertical: null })
+  const [thumbLayers, setThumbLayers] = useState<{ horizontal: HTMLElement | null; vertical: HTMLElement | null }>({
+    horizontal: null,
+    vertical: null,
+  })
   const dragStateRef = useRef<DragState | null>(null)
   const horizontalThumbRef = useRef<HTMLDivElement | null>(null)
   const verticalThumbRef = useRef<HTMLDivElement | null>(null)
@@ -260,6 +285,10 @@ export function GlobalOverlayScrollbars() {
       }
 
       activeTargetsRef.current = nextTargets
+      setThumbLayers({
+        horizontal: nextTargets.horizontal ? getScrollbarLayer(getTargetElement(nextTargets.horizontal)) : null,
+        vertical: nextTargets.vertical ? getScrollbarLayer(getTargetElement(nextTargets.vertical)) : null,
+      })
       updateObservedTargets()
       scheduleThumbUpdate()
     }
@@ -346,6 +375,10 @@ export function GlobalOverlayScrollbars() {
     }
   }, [])
 
+  useEffect(() => {
+    updateThumbsRef.current()
+  }, [thumbLayers])
+
   function startDrag(axis: ScrollAxis, event: ReactPointerEvent<HTMLDivElement>) {
     const target = activeTargetsRef.current[axis]
     if (!target) {
@@ -376,20 +409,20 @@ export function GlobalOverlayScrollbars() {
 
   return (
     <>
-      <div
+      {thumbLayers.vertical && createPortal(<div
         ref={verticalThumbRef}
         aria-hidden="true"
         data-global-overlay-scrollbar-thumb="vertical"
         className="global-overlay-scrollbar-thumb"
         onPointerDown={(event) => startDrag('vertical', event)}
-      />
-      <div
+      />, thumbLayers.vertical)}
+      {thumbLayers.horizontal && createPortal(<div
         ref={horizontalThumbRef}
         aria-hidden="true"
         data-global-overlay-scrollbar-thumb="horizontal"
         className="global-overlay-scrollbar-thumb"
         onPointerDown={(event) => startDrag('horizontal', event)}
-      />
+      />, thumbLayers.horizontal)}
     </>
   )
 }

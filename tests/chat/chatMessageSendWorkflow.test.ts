@@ -193,6 +193,8 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     consumePendingAbortBeforeStreamStart: () => options.consumePendingAbortBeforeStreamStart ?? false,
     conversationRuntimeStatesRef: runtimeStatesRef,
     draftChatMode: 'agent',
+    draftAttachmentScopeId: 'draft-1',
+    draftAttachmentScopeIdRef: { current: 'draft-1' },
     hasPendingAbortRequest: () => options.hasPendingAbortRequest ?? false,
     isUserMessageReverted: () => options.isUserMessageReverted ?? false,
     markTextStreamingPulse: () => undefined,
@@ -249,7 +251,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
       composerRevision += 1
       composerValues.push(value)
     },
-    setPendingDraftSendCount: () => undefined,
+    setDraftSendPending: () => undefined,
     setOptimisticDraftMessages: (messages) => {
       optimisticDraftMessages = messages
     },
@@ -279,6 +281,8 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   const streamId = 'stream-1'
 
   const windowStub = {
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
     clearTimeout,
     setTimeout,
     tidecodeChat: {
@@ -342,6 +346,8 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
 
   const globalScope = globalThis as Record<string, unknown>
   const previousWindow = globalScope.window
+  const previousDocument = globalScope.document
+  globalScope.document = { documentElement: { dataset: {} }, removeEventListener: () => undefined }
   globalScope.window = windowStub
   upsertConversationRecord(conversation)
 
@@ -360,6 +366,11 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     history,
     input,
     restoreWindow: () => {
+      if (previousDocument === undefined) {
+        delete globalScope.document
+      } else {
+        globalScope.document = previousDocument
+      }
       if (previousWindow === undefined) {
         delete globalScope.window
       } else {

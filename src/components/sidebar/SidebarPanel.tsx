@@ -5,6 +5,7 @@ import { Tooltip } from '../Tooltip'
 import type { ConversationGroupPreview } from '../../types/chat'
 import { isRemoteBrowserRuntime } from '../../remote/webBridge'
 import { ConversationHistoryList } from './ConversationHistoryList'
+import { SidebarHistoryFilter } from './SidebarHistoryFilter'
 import { NewThreadProjectDialog } from './NewThreadProjectDialog'
 import { ProjectThreadSelector } from './ProjectThreadSelector'
 import { RemoteFolderPickerDialog } from './RemoteFolderPickerDialog'
@@ -216,7 +217,6 @@ export function SidebarPanel({
         <div className="mt-2 flex items-center justify-between gap-1">
           <ProjectThreadSelector
             cachedSelectedProjectName={selectedProjectName}
-            hasArchivedConversations={hasArchivedConversations}
             projects={projects}
             selectedProjectId={resolvedSelectedProjectId}
             onDeleteProject={onDeleteFolder}
@@ -224,6 +224,11 @@ export function SidebarPanel({
             onSelectProject={handleSelectProject}
           />
           <div className="flex shrink-0 items-center">
+            <SidebarHistoryFilter
+              hasArchivedConversations={hasArchivedConversations}
+              selectedProjectId={resolvedSelectedProjectId}
+              onSelectProject={handleSelectProject}
+            />
             <Tooltip content="Add folder" side="right">
               <button
                 type="button"

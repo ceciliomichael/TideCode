@@ -80,6 +80,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
       tabs: ['Listing browser tabs', 'Listed browser tabs', 'Browser tabs failed'],
       terminate: ['Closing browser tab', 'Closed browser tab', 'Browser tab close failed'],
       interact: ['Interacting with browser', 'Interacted with browser', 'Browser interaction failed'],
+      devtools: ['Running browser.devtools', 'Ran browser.devtools', 'Browser devtools failed'],
     }
     const entry = descriptions[name]
     if (entry) return entry[invocation.state === 'running' ? 0 : invocation.state === 'completed' ? 1 : 2]

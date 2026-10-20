@@ -88,6 +88,8 @@ The Browser control is available only in the desktop Electron app. Remote web cl
 
 Desktop and remote Send show the accepted user message before checkpoint/context/history saving finishes, preserving its identity when saving completes. Required persistence still precedes provider execution. Saving or failure handling must not overwrite newly typed composer text or another conversation's draft.
 
+Each new draft has independent send, saving and stop state, including drafts in the same project. Opening a new chat while another response is running or saving permits a separate submission. Stop and Revert affect their originating chat; completing or rolling back an older send must not select it over a newer draft or clear the newer draft's message. Reverting an unresponded turn preserves its conversation record while removing the pending turn from saved history.
+
 Closed Diff/Source Control surfaces keep lightweight Git metadata without full-content refreshes unless an active workspace editor needs a Git baseline. Collapsed individual tool results show headers/counts without invisible editor premeasurement; opening uses the existing loading/size presentation. Browser toolbar toggling continues to preserve live pages, and closing the final tab releases that project's session. No Browser session/state policy changed as part of this optimization.
 
 The selected chat and ongoing background runs stay available. Three recent inactive transcripts may be reused within a memory budget; other chats reload from saved history when selected. Retention never deletes conversations or their attachments.

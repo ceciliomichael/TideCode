@@ -45,7 +45,8 @@ export interface PersistAndStreamMessageInput {
   completeEditingAfterPersist?: boolean
   conversationRuntimeStatesRef: { current: Record<string, ConversationRuntimeSnapshot> }
   compactionSourceConversationId?: string
-  draftAttachmentScopeId?: string
+  draftAttachmentScopeId: string
+  draftAttachmentScopeIdRef: { current: string }
   draftChatMode: ChatMode
   markTextStreamingPulse: (conversationId: string) => void
   removeLocalMessage: (conversationId: string, messageId: string) => void
@@ -66,8 +67,8 @@ export interface PersistAndStreamMessageInput {
   setMainComposerAttachments: (attachments: ChatAttachment[]) => void
   setMainComposerMentionPathMap: (mentionPathMap: Map<string, string>) => void
   setMainComposerValue: (value: string) => void
-  setPendingDraftSendCount: (updater: (currentValue: number) => number) => void
-  setOptimisticDraftMessages: (messages: Message[], folderId: string | null) => void
+  setDraftSendPending: (draftScopeId: string, pending: boolean) => void
+  setOptimisticDraftMessages: (messages: Message[], draftScopeId: string) => void
   resetMainComposerAfterSend?: boolean
   shouldRestoreMainComposerOnAbort?: () => boolean
   shouldApplyAbortRollbackToRuntime?: () => boolean

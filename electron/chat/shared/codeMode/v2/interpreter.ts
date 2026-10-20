@@ -327,6 +327,8 @@ export interface InterpreterResult {
 export class CodeModeInterpreter {
   private steps = 0
   private callDepth = 0
+  private nextTimerId = 1
+  private readonly timers = new Map<number, { timer: ReturnType<typeof setTimeout>; cancel: () => void }>()
   private readonly global = new Environment(undefined, true)
 
   constructor(
@@ -343,12 +345,36 @@ export class CodeModeInterpreter {
   async execute(program: ProgramNode): Promise<InterpreterResult> {
     let value: unknown
     try {
-      await this.executeStatements(program.body, this.global)
-    } catch (signal) {
-      if (signal instanceof ReturnSignal) value = await this.resolveAwaitable(signal.value)
-      else throw signal
+      try {
+        await this.executeStatements(program.body, this.global)
+      } catch (signal) {
+        if (signal instanceof ReturnSignal) value = await this.resolveAwaitable(signal.value)
+        else throw signal
+      }
+      return { value: copyFinalValue(value), steps: this.steps }
+    } finally {
+      for (const timer of this.timers.values()) timer.cancel()
     }
-    return { value: copyFinalValue(value), steps: this.steps }
+  }
+
+  private scheduleTimer(args: unknown[], node: AstNode): number {
+    const callback = args[0]
+    const delay = Number(args[1] ?? 0)
+    if (!(callback instanceof CodeFunction) || !Number.isFinite(delay) || delay < 0 || delay > 30_000) {
+      throw new CodeModeRuntimeError('TypeError', 'setTimeout expects a Code Mode function and a delay from 0 to 30000ms.', node)
+    }
+    this.tick(node)
+    const id = this.nextTimerId++
+    const timer = setTimeout(() => {
+      this.timers.delete(id)
+      if (this.abortSignal.aborted || Date.now() > this.deadline) return
+      void this.invokeFunction(callback, args.slice(2), node).catch(() => undefined)
+    }, delay)
+    this.timers.set(id, { timer, cancel: () => {
+      clearTimeout(timer)
+      this.timers.delete(id)
+    } })
+    return id
   }
 
   private tick(node?: AstNode): void {
@@ -364,6 +390,12 @@ export class CodeModeInterpreter {
 
   private installGlobals(): void {
     this.global.declare('tools', this.tools.root(), false)
+    this.global.declare('setTimeout', new NativeFunction('setTimeout', (args, node) => this.scheduleTimer(args, node)), false)
+    this.global.declare('clearTimeout', new NativeFunction('clearTimeout', (args) => {
+      const id = Number(args[0])
+      this.timers.get(id)?.cancel()
+      return undefined
+    }), false)
     for (const name of ['Array', 'Object', 'Math', 'JSON', 'Promise', 'console', 'Number', 'String'] as const) {
       this.global.declare(name, new GlobalNamespace(name), false)
     }
@@ -761,8 +793,21 @@ export class CodeModeInterpreter {
         return this.evaluateCall(node, environment)
       case 'NewExpression': {
         const callee = await this.evaluate(asNode(node.callee, 'callee'), environment)
+        if (callee instanceof GlobalNamespace && callee.name === 'Promise') {
+          const args = await this.evaluateArguments(node, environment)
+          const executor = args[0]
+          if (!(executor instanceof CodeFunction)) {
+            throw new CodeModeRuntimeError('TypeError', 'new Promise expects a Code Mode executor function.', node)
+          }
+          const promise = new Promise<unknown>((resolve, reject) => {
+            const safeResolve = new NativeFunction('resolve', (values) => { resolve(this.resolveAwaitable(values[0])); return undefined })
+            const safeReject = new NativeFunction('reject', (values) => { reject(values[0]); return undefined })
+            void this.invokeFunction(executor, [safeResolve, safeReject], node).catch(reject)
+          })
+          return new CodePromise(promise)
+        }
         if (!(callee instanceof NativeFunction) || !['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'RegExp'].includes(callee.name)) {
-          unsupported(node, 'Only standard Error values and RegExp may be constructed with new in Tidecode Code Mode.')
+          unsupported(node, 'Only Promise, standard Error values and RegExp may be constructed with new in Tidecode Code Mode.')
         }
         const args = await this.evaluateArguments(node, environment)
         return callee.invoke(args, node)

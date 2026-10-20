@@ -9,18 +9,16 @@ import { createAgentToolBundle } from '../../electron/chat/shared/tools'
 import { buildPromptContextManifest } from '../../electron/chat/cache/canonicalization'
 import { buildChatModeHiddenContext } from '../../src/lib/hiddenUserContext'
 
-test('native namespace guidance follows the current hidden chat-mode transition', () => {
+test('chat mode context delegates namespace discovery to available.list', () => {
   const plan = buildChatModeHiddenContext('plan').content
   const agent = buildChatModeHiddenContext('agent').content
-  assert.match(plan, /<native_tool_context mode="plan">/u)
-  assert.match(plan, /native_plan: Create/u)
+  assert.match(plan, /tools\.available\.list\(\{\}\)/u)
+  assert.doesNotMatch(plan, /<native_tool_context/u)
   assert.doesNotMatch(plan, /native_browser:/u)
   assert.doesNotMatch(plan, /native_terminal:/u)
-  assert.match(agent, /<native_tool_context mode="agent">/u)
-  assert.match(agent, /native_browser: Open/u)
-  assert.match(agent, /native_terminal: Execute/u)
-  assert.doesNotMatch(agent, /native_plan: Create/u)
-  assert.match(agent, /Unfiltered list and search discover connected MCP/u)
+  assert.match(agent, /tools\.available\.list\(\{\}\)/u)
+  assert.doesNotMatch(agent, /<native_tool_context/u)
+  assert.match(agent, /namespace is not part of the callable name/u)
 })
 import { buildExecDescription } from '../../electron/chat/shared/ai/exec/exec'
 
@@ -52,8 +50,8 @@ test('exec contract remains stable across modes while hidden mode context advert
     const plan = await createAgentToolBundle({ workspaceRootPath: root }, { chatMode: 'plan' })
     assert.equal(buildExecDescription(agent.registry), buildExecDescription(plan.registry))
     assert.doesNotMatch(buildExecDescription(agent.registry), /- native_browser:|- native_plan:/u)
-    assert.match(buildChatModeHiddenContext('agent').content, /native_browser: Open/u)
-    assert.match(buildChatModeHiddenContext('plan').content, /native_plan: Create/u)
+    assert.match(buildChatModeHiddenContext('agent').content, /tools\.available\.list\(\{\}\)/u)
+    assert.match(buildChatModeHiddenContext('plan').content, /tools\.available\.list\(\{\}\)/u)
     assert.deepEqual(Object.keys(agent.tools), ['exec'])
     assert.deepEqual(Object.keys(plan.tools), ['exec'])
     await agent.codeModeExecutor.dispose()

@@ -17,6 +17,7 @@ import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
 import { serializeChatMentionPathMap } from '../lib/chatMentions'
 import { isPlanStatusMessage } from '../lib/planStatusMessages'
 import { getPlanPathsCreatedByRevertedUserMessage } from '../lib/planPresentation'
+import { createClientId } from '../lib/clientId'
 import { readChatSelectionFromRefs } from '../lib/chatSelection'
 import {
   acquireChatSendScopeGate,
@@ -119,15 +120,28 @@ function sleep(milliseconds: number) {
 
 export function useChatSendActions(input: UseChatSendActionsInput) {
   const actionInFlightRef = useRef(false)
-  const abortOperationRef = useRef<Promise<void> | null>(null)
-  const abortResponseOperationRef = useRef<Promise<void> | null>(null)
+  const abortOperationsRef = useRef(new Map<string, Promise<void>>())
+  const abortResponseOperationsRef = useRef(new Map<string, Promise<void>>())
   const submissionInFlightRef = useRef<Set<string>>(new Set())
-  const pendingAbortBeforeStreamStartRef = useRef(false)
+  const pendingAbortScopesRef = useRef(new Set<string>())
+  const sendScopesByConversationRef = useRef(new Map<string, string>())
+  const conversationsBySendScopeRef = useRef(new Map<string, string>())
   const revertedUserMessageIdsRef = useRef<Set<string>>(new Set())
   const pendingPersistedUserTurnsRef = useRef<Map<string, PersistedUserTurn>>(new Map())
   const suppressAbortComposerRestoreConversationIdsRef = useRef<Set<string>>(new Set())
   const suppressAbortRollbackPresentationConversationIdsRef = useRef<Set<string>>(new Set())
-  const [isAbortInProgress, setIsAbortInProgress] = useState(false)
+  const [abortingScopes, setAbortingScopes] = useState<Set<string>>(() => new Set())
+  const getSendScope = useCallback((conversationId: string | null, draftScopeId: string) => {
+    if (conversationId) {
+      const registeredScope = sendScopesByConversationRef.current.get(conversationId)
+      if (registeredScope) {
+        return registeredScope
+      }
+    }
+    return getChatSendScopeKey(conversationId, draftScopeId)
+  }, [])
+  const selectedSendScope = getSendScope(input.activeConversationId, input.draftAttachmentScopeId)
+  const isAbortInProgress = abortingScopes.has(selectedSendScope)
 
   const beginHistoryCutoffImmediately = useCallback(
     (conversationId: string, messageId: string) => {
@@ -188,6 +202,22 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     }
     suppressAbortComposerRestoreConversationIdsRef.current.delete(turn.conversationId)
     suppressAbortRollbackPresentationConversationIdsRef.current.delete(turn.conversationId)
+  }, [])
+
+  const registerSendTurn = useCallback((scopeKey: string, turn: PersistedUserTurn) => {
+    sendScopesByConversationRef.current.set(turn.conversationId, scopeKey)
+    conversationsBySendScopeRef.current.set(scopeKey, turn.conversationId)
+    registerPersistedUserTurn(turn)
+  }, [registerPersistedUserTurn])
+
+  const releaseSendScope = useCallback((scopeKey: string) => {
+    releaseChatSendScopeGate(submissionInFlightRef, scopeKey)
+    pendingAbortScopesRef.current.delete(scopeKey)
+    const conversationId = conversationsBySendScopeRef.current.get(scopeKey)
+    if (conversationId) {
+      sendScopesByConversationRef.current.delete(conversationId)
+      conversationsBySendScopeRef.current.delete(scopeKey)
+    }
   }, [])
 
   const restoreUserMessageDraftToMainComposer = useCallback(
@@ -258,9 +288,11 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         }
       }
 
-      const trackedTurn = conversationId
-        ? pendingPersistedUserTurnsRef.current.get(conversationId)
-        : Array.from(pendingPersistedUserTurnsRef.current.values()).at(-1)
+      const draftScopeKey = getChatSendScopeKey(null, input.draftAttachmentScopeIdRef.current)
+      const targetConversationId = conversationId ?? conversationsBySendScopeRef.current.get(draftScopeKey)
+      const trackedTurn = targetConversationId
+        ? pendingPersistedUserTurnsRef.current.get(targetConversationId)
+        : null
       if (!trackedTurn) {
         return null
       }
@@ -272,7 +304,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
       return trackedTurn
     },
-    [getConversationState],
+    [getConversationState, input.draftAttachmentScopeIdRef],
   )
 
   const rollbackPendingUserMessage = useCallback(
@@ -287,25 +319,10 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         if (options.restoreComposer !== false) {
           restoreUserMessageDraftToMainComposer(turn.message)
         }
-      } else if (activeConversationId === null && options.restoreComposer !== false) {
-        restoreUserMessageDraftToMainComposer(turn.message)
       }
     },
     [input, restoreUserMessageDraftToMainComposer],
   )
-
-  const findActiveRunConversationId = useCallback(() => {
-    const activeConversationId = readChatSelectionFromRefs(input).activeConversationId
-    if (activeConversationId) {
-      return activeConversationId
-    }
-
-    const activeEntry = Object.values(input.conversationRuntimeStatesRef.current).find(
-      (conversationState) => conversationState.isSending || conversationState.activeStreamId !== null,
-    )
-
-    return activeEntry?.conversation.id ?? null
-  }, [input])
 
   const waitForConversationRunState = useCallback(
     async (
@@ -327,45 +344,6 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       throw new Error('Timed out while waiting for the current run state to settle.')
     },
     [getConversationState],
-  )
-
-  const waitForAbortableConversationId = useCallback(
-    async (options?: { preservePendingAbortForSubmission?: boolean }) => {
-      const preservePendingAbortForSubmission = options?.preservePendingAbortForSubmission === true
-      const immediateConversationId = findActiveRunConversationId()
-      if (immediateConversationId) {
-        const immediateState = getConversationState(immediateConversationId)
-        if (
-          !preservePendingAbortForSubmission ||
-          immediateState?.isSending === true ||
-          Boolean(immediateState?.activeStreamId) ||
-          submissionInFlightRef.current.size === 0
-        ) {
-          return immediateConversationId
-        }
-      }
-
-      const startedAt = Date.now()
-      while (Date.now() - startedAt < 4_000) {
-        const conversationId = findActiveRunConversationId()
-        if (conversationId) {
-          const conversationState = getConversationState(conversationId)
-          if (
-            !preservePendingAbortForSubmission ||
-            conversationState?.isSending === true ||
-            Boolean(conversationState?.activeStreamId) ||
-            submissionInFlightRef.current.size === 0
-          ) {
-            return conversationId
-          }
-        }
-
-        await sleep(25)
-      }
-
-      return null
-    },
-    [findActiveRunConversationId, getConversationState],
   )
 
   const waitForSendReadiness = useCallback(
@@ -399,6 +377,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     async (options?: {
       cancellationReason?: import('../types/chat').TerminalCancellationReason
       requestAbortBeforeStreamStart?: boolean
+      conversationId?: string
     }) => {
       const cancellation = {
         policy: 'terminate' as const,
@@ -406,29 +385,34 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         requestedAt: Date.now(),
         surface: 'desktop' as const,
       }
-      const selectedConversationId = readChatSelectionFromRefs(input).activeConversationId
+      const selectedConversationId = options?.conversationId ?? readChatSelectionFromRefs(input).activeConversationId
+      const scopeKey = getSendScope(selectedConversationId, input.draftAttachmentScopeIdRef.current)
       const isAttachedSharedRun = selectedConversationId
         ? Boolean(getConversationState(selectedConversationId)?.sharedRunId)
         : false
       const shouldRequestPreStreamAbort = options?.requestAbortBeforeStreamStart === true && !isAttachedSharedRun
-      if (shouldRequestPreStreamAbort) {
-        pendingAbortBeforeStreamStartRef.current = true
+      if (shouldRequestPreStreamAbort && submissionInFlightRef.current.has(scopeKey)) {
+        pendingAbortScopesRef.current.add(scopeKey)
       }
 
-      const existingAbortOperation = abortOperationRef.current
+      const existingAbortOperation = abortOperationsRef.current.get(scopeKey)
       if (existingAbortOperation) {
         await existingAbortOperation
         return
       }
 
       const abortOperation = (async () => {
-        const conversationId = await waitForAbortableConversationId({
-          preservePendingAbortForSubmission: shouldRequestPreStreamAbort,
-        })
-        if (!conversationId) {
-          if (shouldRequestPreStreamAbort && submissionInFlightRef.current.size === 0) {
-            pendingAbortBeforeStreamStartRef.current = false
+        let conversationId = selectedConversationId ?? conversationsBySendScopeRef.current.get(scopeKey)
+        const startedAt = Date.now()
+        while (!conversationId && submissionInFlightRef.current.has(scopeKey)) {
+          if (Date.now() - startedAt >= RUN_STATE_SETTLE_TIMEOUT_MS) {
+            throw new Error('Timed out while waiting for the message to finish saving.')
           }
+          await sleep(25)
+          conversationId = conversationsBySendScopeRef.current.get(scopeKey)
+        }
+        if (!conversationId) {
+          pendingAbortScopesRef.current.delete(scopeKey)
           return
         }
 
@@ -440,8 +424,8 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         if (!conversationState.isSending && conversationState.activeStreamId === null) {
           // A stop click can arrive just after the runtime has already
           // settled. Do not let that stale click cancel the user's next send.
-          if (shouldRequestPreStreamAbort && submissionInFlightRef.current.size === 0) {
-            pendingAbortBeforeStreamStartRef.current = false
+          if (shouldRequestPreStreamAbort && !submissionInFlightRef.current.has(scopeKey)) {
+            pendingAbortScopesRef.current.delete(scopeKey)
           }
           return
         }
@@ -483,7 +467,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           )
         }
 
-        const streamId = conversationState.activeStreamId ?? null
+        const streamId = conversationState?.activeStreamId ?? null
         if (streamId) {
           await window.tidecodeChat.cancelStream(streamId, cancellation)
         }
@@ -494,16 +478,16 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         )
       })()
 
-      abortOperationRef.current = abortOperation
+      abortOperationsRef.current.set(scopeKey, abortOperation)
       try {
         await abortOperation
       } finally {
-        if (abortOperationRef.current === abortOperation) {
-          abortOperationRef.current = null
+        if (abortOperationsRef.current.get(scopeKey) === abortOperation) {
+          abortOperationsRef.current.delete(scopeKey)
         }
       }
     },
-    [getConversationState, input, waitForAbortableConversationId, waitForConversationRunState],
+    [getConversationState, getSendScope, input, waitForConversationRunState],
   )
 
   const prepareMessageRevert = useCallback(
@@ -551,11 +535,12 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           try {
             if (hasActiveRun) {
               await abortActiveStreamIfNeeded({
+                conversationId,
                 cancellationReason: 'message_revert',
                 requestAbortBeforeStreamStart: true,
               })
             } else {
-              await abortActiveStreamIfNeeded({ cancellationReason: 'message_revert' })
+              await abortActiveStreamIfNeeded({ conversationId, cancellationReason: 'message_revert' })
             }
           } finally {
             clearSuppressionIfRunSettled()
@@ -577,10 +562,11 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
             abortActiveRun: () =>
               hasActiveRun
                 ? abortActiveStreamIfNeeded({
+                    conversationId,
                     cancellationReason: 'message_revert',
                     requestAbortBeforeStreamStart: true,
                   })
-                : abortActiveStreamIfNeeded({ cancellationReason: 'message_revert' }),
+                : abortActiveStreamIfNeeded({ conversationId, cancellationReason: 'message_revert' }),
             rollbackPersistedTurn: async () => {
               if (!pendingUserMessage) {
                 return
@@ -612,11 +598,12 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       try {
         if (hasActiveRun) {
           await abortActiveStreamIfNeeded({
+            conversationId,
             cancellationReason: 'message_revert',
             requestAbortBeforeStreamStart: true,
           })
         } else {
-          await abortActiveStreamIfNeeded({ cancellationReason: 'message_revert' })
+          await abortActiveStreamIfNeeded({ conversationId, cancellationReason: 'message_revert' })
         }
       } finally {
         clearSuppressionIfRunSettled()
@@ -698,7 +685,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
       const selection = readChatSelectionFromRefs(input)
       const activeConversationId = selection.activeConversationId
-      const sendScopeKey = getChatSendScopeKey(activeConversationId)
+      const sendScopeKey = getChatSendScopeKey(activeConversationId, input.draftAttachmentScopeIdRef.current)
       const isActiveConversationSending = activeConversationId
         ? (getConversationState(activeConversationId)?.isSending ?? false)
         : false
@@ -736,23 +723,16 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return { accepted: false, retryable: true }
       }
 
-      pendingAbortBeforeStreamStartRef.current = false
+      pendingAbortScopesRef.current.delete(sendScopeKey)
 
       try {
         const accepted = await persistAndStreamMessage({
           ...input,
           activeConversationId,
           attachments: firstMessage.attachments,
-          hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
-          consumePendingAbortBeforeStreamStart: () => {
-            if (!pendingAbortBeforeStreamStartRef.current) {
-              return false
-            }
-
-            pendingAbortBeforeStreamStartRef.current = false
-            return true
-          },
-          onUserTurnPersisted: registerPersistedUserTurn,
+          hasPendingAbortRequest: () => pendingAbortScopesRef.current.has(sendScopeKey),
+          consumePendingAbortBeforeStreamStart: () => pendingAbortScopesRef.current.delete(sendScopeKey),
+          onUserTurnPersisted: (turn) => registerSendTurn(sendScopeKey, turn),
           onUserTurnSettled: clearPersistedUserTurn,
           shouldApplyAbortRollbackToRuntime: () =>
             activeConversationId === null ||
@@ -776,7 +756,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           retryable: false,
         }
       } finally {
-        releaseChatSendScopeGate(submissionInFlightRef, sendScopeKey)
+        releaseSendScope(sendScopeKey)
       }
     },
     [
@@ -785,7 +765,8 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       getConversationState,
       input,
       isUserMessageReverted,
-      registerPersistedUserTurn,
+      registerSendTurn,
+      releaseSendScope,
       waitForSendReadiness,
     ],
   )
@@ -818,7 +799,8 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     ) => {
       const selection = readChatSelectionFromRefs(input)
       const activeConversationId = options?.forceNewConversation ? null : selection.activeConversationId
-      const sendScopeKey = getChatSendScopeKey(activeConversationId)
+      const draftScopeId = options?.forceNewConversation ? `VIRT_draft_${createClientId()}` : input.draftAttachmentScopeIdRef.current
+      const sendScopeKey = getChatSendScopeKey(activeConversationId, draftScopeId)
       const isActiveConversationSending = activeConversationId
         ? (getConversationState(activeConversationId)?.isSending ?? false)
         : false
@@ -841,23 +823,19 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return
       }
 
-      pendingAbortBeforeStreamStartRef.current = false
+      pendingAbortScopesRef.current.delete(sendScopeKey)
 
       try {
         await persistAndStreamMessage({
           ...input,
           attachments: [],
           activeConversationId,
-          draftAttachmentScopeId: options?.forceNewConversation ? undefined : input.draftAttachmentScopeId,
-          hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
-          consumePendingAbortBeforeStreamStart: () => {
-            if (!pendingAbortBeforeStreamStartRef.current) {
-              return false
-            }
-
-            pendingAbortBeforeStreamStartRef.current = false
-            return true
-          },
+          draftAttachmentScopeId: draftScopeId,
+          draftAttachmentScopeIdRef: options?.forceNewConversation ? { current: draftScopeId } : input.draftAttachmentScopeIdRef,
+          hasPendingAbortRequest: () => pendingAbortScopesRef.current.has(sendScopeKey),
+          consumePendingAbortBeforeStreamStart: () => pendingAbortScopesRef.current.delete(sendScopeKey),
+          onUserTurnPersisted: (turn) => registerSendTurn(sendScopeKey, turn),
+          onUserTurnSettled: clearPersistedUserTurn,
           isUserMessageReverted,
           clearUserMessageRevert,
           originalText: messageText,
@@ -873,14 +851,17 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           title: options?.title,
         })
       } finally {
-        releaseChatSendScopeGate(submissionInFlightRef, sendScopeKey)
+        releaseSendScope(sendScopeKey)
       }
     },
     [
       clearUserMessageRevert,
+      clearPersistedUserTurn,
       getConversationState,
       input,
       isUserMessageReverted,
+      registerSendTurn,
+      releaseSendScope,
     ],
   )
 
@@ -897,7 +878,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return
       }
 
-      const sendScopeKey = getChatSendScopeKey(conversationId)
+      const sendScopeKey = getChatSendScopeKey(conversationId, input.draftAttachmentScopeIdRef.current)
       const conversationState = getConversationState(conversationId)
       const hasActiveRun = Boolean(conversationState?.isSending || conversationState?.activeStreamId)
       const hasSubmissionInFlight = submissionInFlightRef.current.has(sendScopeKey)
@@ -990,7 +971,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           }
         }
 
-        pendingAbortBeforeStreamStartRef.current = false
+        pendingAbortScopesRef.current.delete(sendScopeKey)
         actionInFlightRef.current = false
 
         startedPersistAndStream = true
@@ -999,16 +980,9 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           attachments,
           activeConversationId: conversationId,
           completeEditingAfterPersist: true,
-          hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
-          consumePendingAbortBeforeStreamStart: () => {
-            if (!pendingAbortBeforeStreamStartRef.current) {
-              return false
-            }
-
-            pendingAbortBeforeStreamStartRef.current = false
-            return true
-          },
-          onUserTurnPersisted: registerPersistedUserTurn,
+          hasPendingAbortRequest: () => pendingAbortScopesRef.current.has(sendScopeKey),
+          consumePendingAbortBeforeStreamStart: () => pendingAbortScopesRef.current.delete(sendScopeKey),
+          onUserTurnPersisted: (turn) => registerSendTurn(sendScopeKey, turn),
           onUserTurnSettled: clearPersistedUserTurn,
           shouldApplyAbortRollbackToRuntime: () =>
             !suppressAbortRollbackPresentationConversationIdsRef.current.has(conversationId),
@@ -1048,7 +1022,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           })
         }
         if (ownsSendScopeGate) {
-          releaseChatSendScopeGate(submissionInFlightRef, sendScopeKey)
+          releaseSendScope(sendScopeKey)
         }
       }
     },
@@ -1061,12 +1035,15 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       input,
       isUserMessageReverted,
       prepareMessageRevert,
-      registerPersistedUserTurn,
+      registerSendTurn,
+      releaseSendScope,
     ],
   )
 
   const abortStreamingResponse = useCallback(async () => {
-    const existingAbortResponseOperation = abortResponseOperationRef.current
+    const selectedConversationId = readChatSelectionFromRefs(input).activeConversationId
+    const scopeKey = getSendScope(selectedConversationId, input.draftAttachmentScopeIdRef.current)
+    const existingAbortResponseOperation = abortResponseOperationsRef.current.get(scopeKey)
     if (existingAbortResponseOperation) {
       await existingAbortResponseOperation
       return
@@ -1076,7 +1053,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       return
     }
 
-    setIsAbortInProgress(true)
+    setAbortingScopes(current => new Set(current).add(scopeKey))
     const abortResponseOperation = (async () => {
       const conversationId = readChatSelectionFromRefs(input).activeConversationId
       const pendingStopTurn = resolvePendingStopTurn(conversationId)
@@ -1107,19 +1084,24 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         input.setError('Unable to stop the current response.')
       }
     })()
-    abortResponseOperationRef.current = abortResponseOperation
+    abortResponseOperationsRef.current.set(scopeKey, abortResponseOperation)
 
     try {
       await abortResponseOperation
     } finally {
-      if (abortResponseOperationRef.current === abortResponseOperation) {
-        abortResponseOperationRef.current = null
+      if (abortResponseOperationsRef.current.get(scopeKey) === abortResponseOperation) {
+        abortResponseOperationsRef.current.delete(scopeKey)
       }
-      setIsAbortInProgress(false)
+      setAbortingScopes(current => {
+        const next = new Set(current)
+        next.delete(scopeKey)
+        return next
+      })
     }
   }, [
     abortActiveStreamIfNeeded,
     clearUserMessageRevert,
+    getSendScope,
     input,
     resolvePendingStopTurn,
     restorePendingUserMessageToMainComposer,

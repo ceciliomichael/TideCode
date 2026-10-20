@@ -56,16 +56,16 @@ export function useChatMessages(input: UseChatMessagesInput) {
     initialSelectedFolderId: preferredDraftFolderId,
     initialSelectedFolderName: preferredDraftFolderName,
   })
-  const [optimisticDraft, setOptimisticDraft] = useState<{ folderId: string | null; messages: Message[] } | null>(null)
-  const setOptimisticDraftMessages = useCallback((messages: Message[], folderId: string | null) => {
+  const [optimisticDraft, setOptimisticDraft] = useState<{ draftScopeId: string; messages: Message[] } | null>(null)
+  const setOptimisticDraftMessages = useCallback((messages: Message[], draftScopeId: string) => {
     setOptimisticDraft(current => {
       if (messages.length > 0) {
-        return { folderId, messages }
+        return { draftScopeId, messages }
       }
-      return current?.folderId === folderId ? null : current
+      return current?.draftScopeId === draftScopeId ? null : current
     })
   }, [])
-  const optimisticDraftMessages = optimisticDraft?.folderId === sessionState.selectedFolderId
+  const optimisticDraftMessages = optimisticDraft?.draftScopeId === sessionState.draftAttachmentScopeId
     ? optimisticDraft.messages
     : EMPTY_MESSAGES
   const [historyCutoffByConversation, setHistoryCutoffByConversation] = useState<Record<string, string>>({})
@@ -118,7 +118,19 @@ export function useChatMessages(input: UseChatMessagesInput) {
   const startComposerEditingMessage = composerState.startEditingMessage
   const cancelComposerEditingMessage = composerState.cancelEditingMessage
   const [draftChatMode, setDraftChatMode] = useState<ChatMode>('agent')
-  const [pendingDraftSendCount, setPendingDraftSendCount] = useState(0)
+  const [pendingDraftSendScopes, setPendingDraftSendScopes] = useState<Set<string>>(() => new Set())
+  const setDraftSendPending = useCallback((draftScopeId: string, pending: boolean) => {
+    setPendingDraftSendScopes(current => {
+      const next = new Set(current)
+      if (pending) {
+        next.add(draftScopeId)
+      } else {
+        next.delete(draftScopeId)
+      }
+      return next
+    })
+  }, [])
+  const pendingDraftSendCount = pendingDraftSendScopes.has(sessionState.draftAttachmentScopeId) ? 1 : 0
   const [editSessionsByConversation, setEditSessionsByConversation] = useState<Record<string, ConversationEditSession>>(
     mergeConversationEditSessions(
       persistedEditSessionsByConversation,
@@ -696,6 +708,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     completeEditingMessage,
     conversationRuntimeStatesRef: streamingState.conversationRuntimeStatesRef,
     draftAttachmentScopeId: sessionState.draftAttachmentScopeId,
+    draftAttachmentScopeIdRef: sessionState.draftAttachmentScopeIdRef,
     draftChatMode,
     editComposerAttachments: composerState.editComposerAttachments,
     editComposerValue: composerState.editComposerValue,
@@ -713,7 +726,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     setMainComposerAttachments: composerState.setMainComposerAttachments,
     setMainComposerMentionPathMap: composerState.setMainComposerMentionPathMap,
     setMainComposerValue: composerState.setMainComposerValue,
-    setPendingDraftSendCount,
+    setDraftSendPending,
     setOptimisticDraftMessages,
     stopTextStreaming: streamingState.stopTextStreaming,
     updateConversationRuntimeState: sessionState.updateConversationRuntimeState,
@@ -771,7 +784,8 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
       if (
         sessionState.activeConversationId === null &&
-        sessionState.selectedFolderId === (resolvedFolderId ?? null)
+        sessionState.selectedFolderId === (resolvedFolderId ?? null) &&
+        !pendingDraftSendScopes.has(sessionState.draftAttachmentScopeId)
       ) {
         return
       }
@@ -791,6 +805,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
       conversationActions,
       deleteAbandonedActiveConversation,
       persistConversationLaunchPreference,
+      pendingDraftSendScopes,
       sessionState,
     ],
   )

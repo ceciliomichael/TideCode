@@ -106,8 +106,8 @@ test('Plan to Agent transition keeps the previous provider messages as an exact 
   assert.equal(agentTransitions.length, 1)
   assert.equal(agentTransitions[0]?.kind, 'chat_mode')
   assert.equal(agentTransitions[0]?.state, 'agent')
-  assert.match(agentTransitions[0]?.content ?? '', /<native_tool_context mode="agent">/u)
-  assert.match(agentTransitions[0]?.content ?? '', /native_browser: Open/u)
+  assert.match(agentTransitions[0]?.content ?? '', /tools\.available\.list\(\{\}\)/u)
+  assert.doesNotMatch(agentTransitions[0]?.content ?? '', /<native_tool_context/u)
   assert.doesNotMatch(agentTransitions[0]?.content ?? '', /native_plan: Create/u)
 
   const agentMessages: Message[] = [
@@ -130,8 +130,8 @@ test('Plan to Agent transition keeps the previous provider messages as an exact 
   assert.deepEqual(agentPrompt.messages.slice(0, planPrompt.messages.length), planPrompt.messages)
   const lastMessageContent = String(agentPrompt.messages.at(-1)?.content ?? '')
   assert.ok(lastMessageContent.includes('mode="agent" state="active_until_superseded"'))
-  assert.ok(lastMessageContent.includes('<native_tool_context mode="agent">'))
-  assert.ok(String(planPrompt.messages[0]?.content).includes('<native_tool_context mode="plan">'))
+  assert.ok(lastMessageContent.includes('tools.available.list({})'))
+  assert.ok(String(planPrompt.messages[0]?.content).includes('tools.available.list({})'))
   assert.equal(lastMessageContent.includes('mode="sandbox"'), false)
 })
 

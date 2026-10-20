@@ -88,6 +88,11 @@ async function rollbackAndRestoreComposer(input: PersistAndStreamMessageInput, o
   shouldKeepSelected: boolean
   userMessageId: string | null
 }) {
+  const stillSelected = () => options.shouldKeepSelected && (
+    input.activeConversationIdRef.current === options.conversationId ||
+    (input.activeConversationIdRef.current === null &&
+      input.draftAttachmentScopeIdRef.current === input.draftAttachmentScopeId)
+  )
   if (options.userMessageId) {
     const shouldApplyRollbackToRuntime = input.shouldApplyAbortRollbackToRuntime?.() ?? true
     const localRolledBackConversation = buildLocallyRolledBackConversation({
@@ -103,7 +108,7 @@ async function rollbackAndRestoreComposer(input: PersistAndStreamMessageInput, o
       input.updateConversationRuntimeState(options.conversationId, {
         isSending: true,
       })
-      if (options.shouldKeepSelected) {
+      if (stillSelected()) {
         input.applyConversation(localRolledBackConversation)
       }
       input.updateConversationSummary(localRolledBackConversation)
@@ -116,14 +121,14 @@ async function rollbackAndRestoreComposer(input: PersistAndStreamMessageInput, o
 
     if (shouldApplyRollbackToRuntime) {
       input.upsertConversation(rolledBackConversation)
-      if (options.shouldKeepSelected) {
+      if (stillSelected()) {
         input.applyConversation(rolledBackConversation)
       }
       input.updateConversationSummary(rolledBackConversation)
     }
   }
 
-  if (options.shouldKeepSelected && options.restoreComposer) {
+  if (stillSelected() && options.restoreComposer) {
     const restoredComposerDraft = restoreChatComposerDraft(input.originalText)
     input.setMainComposerValue(restoredComposerDraft.value)
     input.setMainComposerAttachments(input.attachments)
@@ -139,6 +144,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
 
   const initiatingConversationId = input.activeConversationId
   const initiatingFolderId = input.selectedFolderId
+  const initiatingDraftScopeId = input.draftAttachmentScopeId
   let conversationIdForCleanup = initiatingConversationId
   let draftManager: ReturnType<typeof createChatAssistantDraftManager> | null = null
   let streamProgressPersistence: ReturnType<typeof createChatStreamProgressPersistenceController> | null = null
@@ -160,6 +166,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     (input.activeConversationIdRef.current === initiatingConversationId ||
       (initiatingConversationId === null && input.activeConversationIdRef.current === conversationIdForCleanup)) &&
     input.selectedFolderIdRef.current === initiatingFolderId &&
+    (initiatingConversationId !== null || input.draftAttachmentScopeIdRef.current === initiatingDraftScopeId) &&
     (clearedComposerRevision === null || input.getMainComposerRevision() === clearedComposerRevision)
   const shouldRollbackUserMessageOnAbort = input.targetEditMessageId === null
   const canRestoreMainComposerOnAbort =
@@ -173,7 +180,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     }
 
     hasPendingDraftReservation = false
-    input.setPendingDraftSendCount((currentValue) => Math.max(0, currentValue - 1))
+    input.setDraftSendPending(initiatingDraftScopeId, false)
   }
 
   input.clearError()
@@ -184,7 +191,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     })
   } else {
     hasPendingDraftReservation = true
-    input.setPendingDraftSendCount((currentValue) => currentValue + 1)
+    input.setDraftSendPending(initiatingDraftScopeId, true)
   }
 
   const submittedMessages = input.messageBatch ?? [{ attachments: input.attachments, text: input.trimmedText }]
@@ -227,7 +234,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       }
     }
   } else {
-    input.setOptimisticDraftMessages(optimisticMessages, initiatingFolderId)
+    input.setOptimisticDraftMessages(optimisticMessages, initiatingDraftScopeId)
     optimisticDraftApplied = true
   }
 
@@ -274,7 +281,9 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     conversationIdForCleanup = conversationForRun.id
     const shouldKeepSelected =
       initiatingConversationId === null
-        ? input.activeConversationIdRef.current === null && input.selectedFolderIdRef.current === initiatingFolderId
+        ? input.activeConversationIdRef.current === null &&
+          input.selectedFolderIdRef.current === initiatingFolderId &&
+          input.draftAttachmentScopeIdRef.current === initiatingDraftScopeId
         : input.activeConversationIdRef.current === conversationForRun.id
 
     requestAccepted = true
@@ -284,7 +293,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
 
     if (isUserMessageReverted || hasPendingAbort) {
       if (optimisticDraftApplied) {
-        input.setOptimisticDraftMessages([], initiatingFolderId)
+        input.setOptimisticDraftMessages([], initiatingDraftScopeId)
         optimisticDraftApplied = false
       }
       if (shouldRollbackUserMessageOnAbort) {
@@ -314,7 +323,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       input.applyConversation(conversationForRun)
     }
     if (optimisticDraftApplied) {
-      input.setOptimisticDraftMessages([], initiatingFolderId)
+      input.setOptimisticDraftMessages([], initiatingDraftScopeId)
       optimisticDraftApplied = false
     }
 
@@ -530,7 +539,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
         ))
       }
       if (optimisticDraftApplied) {
-        input.setOptimisticDraftMessages([], initiatingFolderId)
+        input.setOptimisticDraftMessages([], initiatingDraftScopeId)
         optimisticDraftApplied = false
       }
       if (optimisticallyClearedMainComposer && ownsComposer()) {

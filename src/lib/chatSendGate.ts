@@ -36,8 +36,8 @@ export function canBeginChatEditedSend({
   return !actionInFlight && (!hasSubmissionInFlight || hasActiveRun)
 }
 
-export function getChatSendScopeKey(conversationId: string | null) {
-  return conversationId === null ? 'draft' : `conversation:${conversationId}`
+export function getChatSendScopeKey(conversationId: string | null, draftScopeId: string) {
+  return conversationId === null ? `draft:${draftScopeId}` : `conversation:${conversationId}`
 }
 
 export function acquireChatSendGate(gate: MutableChatSendGate) {

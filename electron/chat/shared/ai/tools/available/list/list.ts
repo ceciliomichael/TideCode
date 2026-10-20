@@ -3,7 +3,7 @@ import { availableNamespaces, discoveryToolDescription, inNamespace, mcpNamespac
 export type AvailableListEntry = DiscoveryEntry
 
 export function listAvailableApis(entries: readonly AvailableListEntry[], page: number, namespace = 'root') {
-  const servers = availableNamespaces(entries).filter((name) => !Object.hasOwn(NATIVE_NAMESPACE_DESCRIPTIONS, name))
+  const servers = availableNamespaces(entries)
   const matching = namespace === 'root'
     ? servers.map((name) => ({
       name,
@@ -31,7 +31,7 @@ export function formatAvailableApiList(result: ReturnType<typeof listAvailableAp
     '',
     ...(names.length ? names : ['No tools on this page.']),
     '',
-    ...(result.namespace === 'root' ? ['Native namespaces are provided in the initial instructions. Use their exact names directly, such as `tools.available.list({ namespace: "native_browser" })`. The root list shows connected MCP servers only.', ''] : []),
+    ...(result.namespace === 'root' ? ['Each listed namespace is a discovery category, not a callable tool. Use `tools.available.list({ namespace: "listed_namespace" })` to see exact callable names such as `tools.read`, then retrieve their contracts with `tools.available.get({ name: "tools.read" })`. Do not call `tools.native_files.list`.', ''] : []),
     result.hasMore
       ? `More entries available. Continue with \`tools.available.list({ namespace: ${JSON.stringify(result.namespace)}, page: ${result.page + 1} })\`.`
       : 'End of available tool list.',
