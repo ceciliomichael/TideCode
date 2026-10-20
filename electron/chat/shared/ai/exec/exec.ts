@@ -17,7 +17,7 @@ const EXEC_INPUT_SCHEMA = {
       type: 'object',
       additionalProperties: { type: 'string' },
       maxProperties: 64,
-      description: 'Exact opaque text, available in the program as payloads.<key>. Use for raw patches and multiline source.',
+      description: 'Exact opaque text, available as payloads.<key>. Required for literal multiline source, replacements, patches, and documents. Preserve embedded backticks and ${...} as data instead of nesting them in code template literals.',
     },
   },
   required: ['code'],

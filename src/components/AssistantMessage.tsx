@@ -149,15 +149,11 @@ export function AssistantMessage({
   );
   const renderedToolBlocks = buildRenderedToolBlocks(toolDisplayEntries);
   const hasVisibleToolBlocks = renderedToolBlocks.length > 0;
-  const hasActiveToolInvocation = toolInvocations.some(
-    (invocation) => invocation.state === 'running' || invocation.decisionRequest !== undefined,
-  );
   const shouldShowWaitingIndicator =
     isStreaming &&
     !isCompactionInProgress &&
     !isTextStreaming &&
-    !hasActiveReasoningBlock &&
-    !hasActiveToolInvocation;
+    !hasActiveReasoningBlock;
   const effectiveWaitingIndicatorVariant = resolveAssistantWaitingIndicatorVariant({
     hasVisibleAssistantText,
     toolInvocations,

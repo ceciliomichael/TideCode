@@ -5,6 +5,12 @@ import type { AppSettings, GitCommitAction, GitCommitResult } from '../types/cha
 
 export type ChatInterfaceRightPanelTab = 'diff' | 'source-control'
 
+interface PendingDiscardAction {
+  filePaths: string[]
+  isBatch: boolean
+  workspacePath: string
+}
+
 interface CommitSuccessDialogState {
   action: GitCommitAction
   result: GitCommitResult
@@ -66,6 +72,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
   const [isCommitModalOpen, setIsCommitModalOpen] = useState(false)
   const [commitSuccessDialog, setCommitSuccessDialog] = useState<CommitSuccessDialogState | null>(null)
   const [pendingFileActionPath, setPendingFileActionPath] = useState<string | null>(null)
+  const [pendingDiscardAction, setPendingDiscardAction] = useState<PendingDiscardAction | null>(null)
   const [fileActionErrorMessage, setFileActionErrorMessage] = useState<string | null>(null)
   const previousWorkspacePathRef = useRef<string | null>(null)
   const activeWorkspacePathRef = useRef<string | null>(activeWorkspacePath?.trim() ?? null)
@@ -85,12 +92,14 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
     if (!hasRepository) {
       setPendingFileActionPath(null)
       setFileActionErrorMessage(null)
+      setPendingDiscardAction(null)
     }
   }, [hasRepository])
 
   useEffect(() => {
     activeWorkspacePathRef.current = activeWorkspacePath?.trim() ?? null
     setFileActionErrorMessage(null)
+    setPendingDiscardAction(null)
   }, [activeWorkspacePath])
 
   useEffect(() => {
@@ -186,13 +195,21 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
   )
 
   const handleGitFileAction = useCallback(
-    async (filePath: string, action: 'stage' | 'unstage' | 'discard') => {
+    async (filePath: string, action: 'stage' | 'unstage' | 'discard', confirmedDiscard = false) => {
       const normalizedWorkspacePath = activeWorkspacePath?.trim() ?? ''
       if (!hasRepository || normalizedWorkspacePath.length === 0) {
         return
       }
 
-      if (action === 'discard' && !window.confirm(`Discard unstaged changes to ${filePath}? This cannot be undone.`)) return
+      if (action === 'discard' && !confirmedDiscard) {
+        setPendingDiscardAction({
+          filePaths: [filePath],
+          isBatch: false,
+          workspacePath: normalizedWorkspacePath,
+        })
+        return
+      }
+
       setPendingFileActionPath(filePath)
       setFileActionErrorMessage(null)
       try {
@@ -217,13 +234,21 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
   )
 
   const handleGitFileBatchAction = useCallback(
-    async (filePaths: string[], action: 'stage' | 'unstage' | 'discard') => {
+    async (filePaths: string[], action: 'stage' | 'unstage' | 'discard', confirmedDiscard = false) => {
       const normalizedWorkspacePath = activeWorkspacePath?.trim() ?? ''
       if (!hasRepository || normalizedWorkspacePath.length === 0 || filePaths.length === 0) {
         return
       }
 
-      if (action === 'discard' && !window.confirm(`Discard unstaged changes in ${filePaths.length} files? Untracked files will be deleted. This cannot be undone.`)) return
+      if (action === 'discard' && !confirmedDiscard) {
+        setPendingDiscardAction({
+          filePaths: [...filePaths],
+          isBatch: true,
+          workspacePath: normalizedWorkspacePath,
+        })
+        return
+      }
+
       setPendingFileActionPath(filePaths[0] ?? null)
       setFileActionErrorMessage(null)
       try {
@@ -253,6 +278,33 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
     },
     [activeWorkspacePath, hasRepository, onDiffRefresh],
   )
+
+  const handleCancelDiscard = useCallback(() => {
+    setPendingDiscardAction(null)
+  }, [])
+
+  const handleConfirmDiscard = useCallback(() => {
+    const pendingAction = pendingDiscardAction
+    setPendingDiscardAction(null)
+
+    if (
+      !pendingAction ||
+      !hasRepository ||
+      pendingAction.workspacePath !== (activeWorkspacePath?.trim() ?? '')
+    ) {
+      return
+    }
+
+    if (pendingAction.isBatch) {
+      void handleGitFileBatchAction(pendingAction.filePaths, 'discard', true)
+      return
+    }
+
+    const filePath = pendingAction.filePaths[0]
+    if (filePath) {
+      void handleGitFileAction(filePath, 'discard', true)
+    }
+  }, [activeWorkspacePath, handleGitFileAction, handleGitFileBatchAction, hasRepository, pendingDiscardAction])
 
   const handleOpenRightPanelTab = useCallback(
     (tab: ChatInterfaceRightPanelTab) => {
@@ -379,6 +431,8 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
     handleCloseCommitModal,
     handleCloseCommitSuccessDialog,
     handleCommit,
+    handleCancelDiscard,
+    handleConfirmDiscard,
     handleDiscardDiffFiles: (filePaths: string[]) => handleGitFileBatchAction(filePaths, 'discard'),
     handleDiscardDiffFile: (filePath: string) => handleGitFileAction(filePath, 'discard'),
     handleOpenCommitModal,
@@ -397,6 +451,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
     isDiffPanelOpen,
     isSidebarOpen,
     isSourceControlPanelOpen,
+    pendingDiscardAction,
     pendingFileActionPath,
     setActiveWorkspaceTerminalOpen,
     setIsSidebarOpen,

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { BrowserWorkspacePanel } from '../../components/browser/BrowserWorkspacePanel'
 import { ConversationDiffPanel, type DiffPanelScope } from '../../components/chat/ConversationDiffPanel'
+import { DiscardChangesDialog } from '../../components/git/DiscardChangesDialog'
 import { SourceControlPanel } from '../../components/sourceControl/SourceControlPanel'
 import { WorkspaceExplorerPanel } from '../../components/workspaceExplorer/WorkspaceExplorerPanel'
 import { WorkspaceFileTabsPanel } from '../../components/workspaceExplorer/WorkspaceFileTabsPanel'
@@ -132,6 +133,14 @@ export function ChatWorkspaceSidePanels({
           onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
           onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
           selectedScope={diffPanelSelectedScope}
+        />
+      ) : null}
+      {interfaceController.pendingDiscardAction ? (
+        <DiscardChangesDialog
+          filePaths={interfaceController.pendingDiscardAction.filePaths}
+          isBatch={interfaceController.pendingDiscardAction.isBatch}
+          onCancel={interfaceController.handleCancelDiscard}
+          onConfirm={interfaceController.handleConfirmDiscard}
         />
       ) : null}
       {!isBrowserOpen && interfaceController.isSourceControlPanelOpen ? (

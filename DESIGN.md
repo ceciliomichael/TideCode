@@ -64,6 +64,8 @@ When a model attempts an authorized API without retrieving its contract first, t
 
 Code Mode accepts native JavaScript rather than a custom language subset. Standard functions, classes, collections, Promises, callbacks and error handling follow V8 semantics. Programs use top-level await/return, copied JSON-compatible tool inputs/results, bounded timers and captured console output. Machine access stays behind registered `tools.*` calls. Each execution has a fresh isolate and a disposable worker; cancellation and resource failures end that execution without blocking TideCode's UI.
 
+Source transport instructions require literal multiline file contents, replacements, patches and documents in outer `exec.payloads`, referenced from the executable program. The main exec guidance, payload schema description, shared source-quality guidance and mutation contracts reinforce this rule so embedded backticks and interpolation expressions remain destination-file data. Computed content remains supported. A wrapper parse error directs the model to move the raw text into a payload before retrying.
+
 ## Light and dark color system
 
 Source Control retains the existing Commit split button, Staged/Unstaged sections, file rows, history graph, and accent palette. File status indicators use the established Git semantic colors; conflicted paths are identified explicitly. Destructive discard actions require user confirmation. When no changes are staged, quick and advanced commits use the same TideCode-styled confirmation dialog before staging all current changes; operation notices distinguish complete success, partial success (local commit followed by failed remote action), and errors without clearing an unsuccessful commit message.
