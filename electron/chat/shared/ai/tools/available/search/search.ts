@@ -39,6 +39,8 @@ export function searchAvailableApis(items: readonly AvailableApiMatch[], input: 
     const haystack = `${name} ${description} ${server}`
     return { item, score, haystack, matchesServer: selectedServer !== null && server === selectedServer }
   }).filter(({ item, score, haystack, matchesServer }) =>
+    (Boolean(namespace) || item.namespace === 'mcp')
+    &&
     (!namespace || inNamespace({ name: item.path, namespace: item.namespace, description: item.description }, namespace))
     && (matchesServer || terms.length === 0 || terms.every((term) => haystack.includes(term)) && score > 0))
     .sort((left, right) => right.score - left.score || left.item.path.localeCompare(right.item.path))

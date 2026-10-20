@@ -8,6 +8,11 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron'
 import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+import { registerVisibleBrowserTab, isNormalAgentBrowserSession } from './agentTabs'
+import { resolveAgentBrowserTab } from './agentTabs'
+import { isBrowserDeveloperModeEnabled, setBrowserDeveloperMode } from './agentPageDiagnostics'
+import { listBrowserAnnotations, saveBrowserAnnotation, removeBrowserAnnotation } from '../history/browserAnnotations'
 import { resolveBrowserScreenshot, saveBrowserScreenshot } from './screenshots'
 import {
   createIncognitoTab,
@@ -54,6 +59,45 @@ export function registerBrowserPageActions(
   ipcMain.handle('browser:createIncognitoTab', (event, input) => {
     requireOwner(event)
     return createIncognitoTab(event.sender, input?.projectKey)
+  })
+  ipcMain.handle('browser:registerAgentTab', async (event, input) => {
+    const guest = requireGuest(event, input)
+    if (!await isNormalAgentBrowserSession(guest)) return
+    if (typeof input?.tabId !== 'string' || !input.tabId || typeof input?.projectPath !== 'string') {
+      throw new Error('Invalid browser tab registration.')
+    }
+    registerVisibleBrowserTab({
+      id: input.tabId,
+      projectPath: input.projectPath,
+      contents: guest,
+      ownerId: event.sender.id,
+    })
+  })
+  ipcMain.handle('browser:getDeveloperMode', (event, projectPath: string) => {
+    requireOwner(event)
+    return isBrowserDeveloperModeEnabled(path.resolve(projectPath))
+  })
+  ipcMain.handle('browser:setDeveloperMode', (event, input) => {
+    requireOwner(event)
+    if (typeof input?.projectPath !== 'string' || !input.projectPath || input.projectPath === '__no-workspace__'
+      || typeof input?.enabled !== 'boolean') throw new Error('Invalid developer mode request.')
+    return setBrowserDeveloperMode(path.resolve(input.projectPath), input.enabled)
+  })
+  ipcMain.handle('browser:listAnnotations', (event, input) => {
+    requireOwner(event)
+    return listBrowserAnnotations(input?.conversationId, input?.projectPath)
+  })
+  ipcMain.handle('browser:saveAnnotation', (event, input) => {
+    const guest = requireGuest(event, input)
+    const tab = resolveAgentBrowserTab(input.projectPath, input.tabId)
+    if (tab.contents !== guest || !isNormalBrowserSession(guest.session) || guest.getURL() !== input.url) {
+      throw new Error('The selected element no longer belongs to this browser page.')
+    }
+    return saveBrowserAnnotation(input)
+  })
+  ipcMain.handle('browser:removeAnnotation', (event, input) => {
+    requireOwner(event)
+    return removeBrowserAnnotation(input)
   })
   ipcMain.handle('browser:releaseIncognitoTab', async (event, input) => {
     requireOwner(event)

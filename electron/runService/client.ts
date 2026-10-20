@@ -39,6 +39,7 @@ import type {
 } from '../../src/types/chat'
 import {
   RUN_SERVICE_PROTOCOL_VERSION,
+  type RunServiceBrowserRequestEnvelope,
   type RunServiceHello,
   type RunServiceResponse,
   type RunServiceWireMessage,
@@ -68,6 +69,7 @@ export class TideCodeRunServiceClient {
   private readonly pending = new Map<string, PendingRequest>()
   private readonly eventListeners = new Set<(event: TideCodeRunEvent) => void>()
   private readonly terminalEventListeners = new Set<(event: TerminalBrokerEvent) => void>()
+  private readonly browserRequestListeners = new Set<(event: RunServiceBrowserRequestEnvelope) => void>()
   readonly terminalClientId = randomUUID()
   private buffered = ''
   private token = ''
@@ -175,6 +177,25 @@ export class TideCodeRunServiceClient {
   onTerminalEvent(listener: (event: TerminalBrokerEvent) => void) {
     this.terminalEventListeners.add(listener)
     return () => this.terminalEventListeners.delete(listener)
+  }
+
+  onBrowserRequest(listener: (event: RunServiceBrowserRequestEnvelope) => void) {
+    this.browserRequestListeners.add(listener)
+    return () => this.browserRequestListeners.delete(listener)
+  }
+
+  async registerBrowserHost() {
+    await this.connect()
+    await this.requestControlRaw<null>('registerBrowserHost')
+  }
+
+  async replyBrowserHost(input: {
+    requestId: string
+    ok: boolean
+    result?: import('./browserService').BrowserHostResponse
+    error?: string
+  }) {
+    await this.requestControlRaw<null>('browserHostReply', input)
   }
 
   async getCompactionState(conversationId: string) {
@@ -399,6 +420,10 @@ export class TideCodeRunServiceClient {
         if (message.event.clientIds.includes(this.terminalClientId)) {
           for (const listener of this.terminalEventListeners) listener(message.event)
         }
+        continue
+      }
+      if ('type' in message && message.type === 'browser_request') {
+        for (const listener of this.browserRequestListeners) listener(message)
         continue
       }
 

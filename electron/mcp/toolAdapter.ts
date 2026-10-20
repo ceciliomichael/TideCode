@@ -55,10 +55,11 @@ function toToolBody(content: CallToolResult['content']) {
   return lines.join('\n').trim()
 }
 
-function createToolDescription(config: McpServerConfig, tool: McpTool) {
+function createToolDescription(config: McpServerConfig, tool: McpTool, serverDescription?: string) {
   const baseDescription = tool.description?.trim() ?? ''
   const sourceLabel = config.owner === 'tidecode' ? 'TideCode' : config.owner
-  const sourceContext = `${sourceLabel} MCP server "${config.name}"; original tool "${tool.name}"; namespace "${config.toolNamespace || config.name}"`
+  const cleanServerDescription = (serverDescription || config.description || '').replace(/[\r\n"[\]]/gu, ' ').trim().slice(0, 160)
+  const sourceContext = `${sourceLabel} MCP server "${config.name}"; original tool "${tool.name}"; namespace "${config.toolNamespace || config.name}"${cleanServerDescription ? '; server description "' + cleanServerDescription + '"' : ''}`
   return baseDescription.length > 0 ? `[${sourceContext}] ${baseDescription}` : `[${sourceContext}] MCP tool`
 }
 
@@ -87,7 +88,7 @@ export function createMcpToolSetForServer(config: McpServerConfig, client: Clien
         operation: 'mcp_execute',
       }
       const adaptedTool = tool({
-        description: createToolDescription(config, mcpTool),
+        description: createToolDescription(config, mcpTool, client.getServerVersion()?.description),
         inputSchema: jsonSchema(mcpTool.inputSchema),
         execute: async (rawInput, options) => {
           try {

@@ -30,6 +30,9 @@ import { registerRemoteWorkspaceHostIpc } from './remote/ipc'
 import { REMOTE_EVENT_CHANNELS } from '../src/remote/protocol'
 import { hasSharedAppSettingsInput } from '../src/lib/appSettingsScopes'
 import { disconnectRunServiceForApplication } from './runService/ensureService'
+import { ensureRunServiceClient } from './runService/ensureService'
+import { configureDesktopBrowserHost } from './runService/desktopBrowserHostConnection'
+import { executeDesktopBrowserRequest } from './browser/agentBrowserHost'
 import { createTrayPopupController } from './window/trayPopup'
 import { synchronizeDevSettingsSnapshot } from './settings/devSnapshot'
 
@@ -356,6 +359,13 @@ app.whenReady().then(async () => {
   })
 
   await createWindow(parseTideCodeLaunchRequest(process.argv))
+  configureDesktopBrowserHost((request) => executeDesktopBrowserRequest(
+    request,
+    win && !win.isDestroyed() ? win.webContents : null,
+  ))
+  void ensureRunServiceClient().catch((error) => {
+    console.error('[browser] Desktop browser host registration failed:', error)
+  })
   void mcpServerManager.getState().catch((error) => {
     console.error('Failed to initialize MCP server connections.', error)
   })

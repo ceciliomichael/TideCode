@@ -9,6 +9,7 @@ import {
 } from './buildIdentity'
 import { RunServiceBuildMismatchError, TideCodeRunServiceClient } from './client'
 import { configureDevelopmentRunServiceNamespace, resolveRunServiceNamespace } from './namespace'
+import { registerDesktopBrowserHostIfConfigured } from './desktopBrowserHostConnection'
 
 let sharedClientPromise: Promise<TideCodeRunServiceClient> | null = null
 let existingServiceProbe: Promise<TideCodeRunServiceClient | null> | null = null
@@ -218,6 +219,13 @@ export function ensureRunServiceClient(): Promise<TideCodeRunServiceClient> {
       return sharedClientPromise
     }
     return ensureRunServiceClient()
+  }).then(async (client) => {
+    try {
+      await registerDesktopBrowserHostIfConfigured(client)
+    } catch (error) {
+      console.error('[browser] Failed to connect TideCode Desktop to browser service:', error)
+    }
+    return client
   })
 }
 
@@ -256,6 +264,9 @@ export async function connectRunServiceClientIfAvailable() {
   }
 
   sharedClientPromise = Promise.resolve(client)
+  void registerDesktopBrowserHostIfConfigured(client).catch((error) => {
+    console.error('[browser] Failed to attach desktop browser host:', error)
+  })
   return client
 }
 

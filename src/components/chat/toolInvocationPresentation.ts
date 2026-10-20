@@ -72,6 +72,18 @@ function getReadToolRange(invocation: ToolInvocationTrace) {
 }
 
 function getToolVerb(invocation: ToolInvocationTrace) {
+  if (invocation.toolName.startsWith('browser.')) {
+    const name = invocation.toolName.slice('browser.'.length)
+    const descriptions: Record<string, [string, string, string]> = {
+      open: ['Opening browser', 'Opened browser', 'Browser open failed'],
+      read: ['Reading browser', 'Read browser', 'Browser read failed'],
+      tabs: ['Listing browser tabs', 'Listed browser tabs', 'Browser tabs failed'],
+      terminate: ['Closing browser tab', 'Closed browser tab', 'Browser tab close failed'],
+      interact: ['Interacting with browser', 'Interacted with browser', 'Browser interaction failed'],
+    }
+    const entry = descriptions[name]
+    if (entry) return entry[invocation.state === 'running' ? 0 : invocation.state === 'completed' ? 1 : 2]
+  }
   const discoveryVerb = getDiscoveryToolVerb(invocation)
   if (discoveryVerb) return discoveryVerb
   const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null

@@ -59,6 +59,7 @@ import {
 } from './messages'
 import { isUnsupportedImageInputError, resolveModelImageInputSupport } from './modelImageSupport'
 import { appendStoredMessages } from '../../history/store'
+import { appendBrowserAnnotationsToModelMessages } from '../../history/browserAnnotations'
 import { createAgentToolBundle } from './tools'
 import type { CodeModeExecutor } from './codeMode/executor'
 import { createTerminalSessionOwner, releaseTerminalToolStateForTurn } from './tools/terminalToolShared'
@@ -294,6 +295,7 @@ export async function runToolEnabledChatStream(input: {
       initialStoredSettings?.workspaceMemoryEnabled ?? true,
     )
     modelMessages = applyConversationMemoryContext(modelMessages, replayConversationMemory)
+    modelMessages = await appendBrowserAnnotationsToModelMessages(modelMessages, conversationId, workspaceRootPath)
 
     const anchorUserMessageId = [...input.startInput.messages].reverse()
       .find((message) => message.role === 'user')?.id ?? null

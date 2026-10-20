@@ -27,6 +27,7 @@ import { createTerminalReadApi } from '../ai/tools/terminal/read/read'
 import { createTerminalInteractApi } from '../ai/tools/terminal/interact/interact'
 import { createTerminalTerminateApi } from '../ai/tools/terminal/terminate/terminate'
 import { createToolContext } from './workspaceTools'
+import { createBrowserToolSet } from './browserTools'
 
 export interface CreateAgentToolsOptions {
   activePlanPath?: string | null
@@ -93,6 +94,9 @@ export async function createAgentToolBundle(
     register('terminal.read', createTerminalReadApi(terminal))
     register('terminal.interact', createTerminalInteractApi(terminal))
     register('terminal.terminate', createTerminalTerminateApi(terminal))
+    for (const [name, definition] of Object.entries(createBrowserToolSet(input))) {
+      register(name, definition)
+    }
     register('patch', createPatchApi(context, state))
     register('edit', createEditTool(context, state))
     register('write', createWriteApi(context))

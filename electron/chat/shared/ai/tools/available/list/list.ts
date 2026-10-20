@@ -1,11 +1,14 @@
-import { availableNamespaces, discoveryToolDescription, inNamespace, type DiscoveryEntry } from '../discoveryCatalog'
+import { availableNamespaces, discoveryToolDescription, inNamespace, mcpNamespaceDescription, NATIVE_NAMESPACE_DESCRIPTIONS, type DiscoveryEntry } from '../discoveryCatalog'
 
 export type AvailableListEntry = DiscoveryEntry
 
 export function listAvailableApis(entries: readonly AvailableListEntry[], page: number, namespace = 'root') {
-  const servers = availableNamespaces(entries)
+  const servers = availableNamespaces(entries).filter((name) => !Object.hasOwn(NATIVE_NAMESPACE_DESCRIPTIONS, name))
   const matching = namespace === 'root'
-    ? servers.map((name) => ({ name, description: name === 'native' ? 'TideCode native tools.' : 'Connected MCP server namespace.' }))
+    ? servers.map((name) => ({
+      name,
+      description: NATIVE_NAMESPACE_DESCRIPTIONS[name] ?? mcpNamespaceDescription(entries, name),
+    }))
     : entries.filter((entry) => inNamespace(entry, namespace))
       .map((entry) => ({
         name: entry.name,
@@ -28,7 +31,7 @@ export function formatAvailableApiList(result: ReturnType<typeof listAvailableAp
     '',
     ...(names.length ? names : ['No tools on this page.']),
     '',
-    ...(result.namespace === 'root' ? ['Select a namespace with `tools.available.list({ namespace: "native" })` or `tools.available.list({ namespace: "server-name" })`.', ''] : []),
+    ...(result.namespace === 'root' ? ['Native namespaces are provided in the initial instructions. Use their exact names directly, such as `tools.available.list({ namespace: "native_browser" })`. The root list shows connected MCP servers only.', ''] : []),
     result.hasMore
       ? `More entries available. Continue with \`tools.available.list({ namespace: ${JSON.stringify(result.namespace)}, page: ${result.page + 1} })\`.`
       : 'End of available tool list.',

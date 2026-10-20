@@ -8,6 +8,20 @@ import { buildChatModeSystemPrompt, buildChatModeSystemPromptBreakdown } from '.
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
 import { buildPromptContextManifest } from '../../electron/chat/cache/canonicalization'
 import { buildChatModeHiddenContext } from '../../src/lib/hiddenUserContext'
+
+test('native namespace guidance follows the current hidden chat-mode transition', () => {
+  const plan = buildChatModeHiddenContext('plan').content
+  const agent = buildChatModeHiddenContext('agent').content
+  assert.match(plan, /<native_tool_context mode="plan">/u)
+  assert.match(plan, /native_plan: Create/u)
+  assert.doesNotMatch(plan, /native_browser:/u)
+  assert.doesNotMatch(plan, /native_terminal:/u)
+  assert.match(agent, /<native_tool_context mode="agent">/u)
+  assert.match(agent, /native_browser: Open/u)
+  assert.match(agent, /native_terminal: Execute/u)
+  assert.doesNotMatch(agent, /native_plan: Create/u)
+  assert.match(agent, /Unfiltered list and search discover connected MCP/u)
+})
 import { buildExecDescription } from '../../electron/chat/shared/ai/exec/exec'
 
 test('system prompt uses exec-only TideCode tool boundary and keeps workspace constraints', () => {
@@ -31,15 +45,15 @@ test('Agent and Plan use the same stable system instructions and mode-specific c
   assert.doesNotMatch(buildChatModeHiddenContext('plan').content, /tools\.plan_edit|tools\.plan_create/u)
 })
 
-test('Mode-authorized exec catalog does not advertise unavailable mutations', async () => {
+test('exec contract remains stable across modes while hidden mode context advertises authorized namespaces', async () => {
   const root = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-exec-prompts-'))
   try {
     const agent = await createAgentToolBundle({ workspaceRootPath: root }, { chatMode: 'agent' })
     const plan = await createAgentToolBundle({ workspaceRootPath: root }, { chatMode: 'plan' })
-    assert.match(buildExecDescription(agent.registry), /tools\.terminal\.execute/u)
-    assert.doesNotMatch(buildExecDescription(plan.registry), /tools\.terminal\.execute/u)
-    assert.match(buildExecDescription(plan.registry), /tools\.plan\.create/u)
-    assert.doesNotMatch(buildExecDescription(agent.registry), /tools\.plan\.create/u)
+    assert.equal(buildExecDescription(agent.registry), buildExecDescription(plan.registry))
+    assert.doesNotMatch(buildExecDescription(agent.registry), /- native_browser:|- native_plan:/u)
+    assert.match(buildChatModeHiddenContext('agent').content, /native_browser: Open/u)
+    assert.match(buildChatModeHiddenContext('plan').content, /native_plan: Create/u)
     assert.deepEqual(Object.keys(agent.tools), ['exec'])
     assert.deepEqual(Object.keys(plan.tools), ['exec'])
     await agent.codeModeExecutor.dispose()

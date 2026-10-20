@@ -43,11 +43,12 @@ test('Browser retains sessions, restores its sidebar, and respects chat-safe pan
       function Fixture() {
         const [mode, setMode] = useState('browser')
         const [project, setProject] = useState('a')
+        const [agentTab, setAgentTab] = useState(null)
         const [width, setWidth] = useState(448)
         const [editor, setEditor] = useState(false)
         const [sidebarWidth, setSidebarWidth] = useState(336)
         const chat = useResizableChatPanel()
-        window.fixture = { setMode, setProject, setEditor, getWidth: () => width }
+        window.fixture = { setMode, setProject, setAgentTab, setEditor, getWidth: () => width }
         return <ResizableSidebarPanel isSidebarOpen sidebar={<div />} sidebarWidth={sidebarWidth} onSidebarWidthChange={setSidebarWidth}
           getMaxResizeWidth={(current) => {
             const editorWidth = document.querySelector('[data-workspace-editor]')?.getBoundingClientRect().width ?? 0
@@ -59,7 +60,7 @@ test('Browser retains sessions, restores its sidebar, and respects chat-safe pan
               {editor && <div role="separator" aria-label="Resize chat panel" onPointerDown={chat.handleChatResizePointerDown} className="absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize" />}
             </div>
             {editor && <section data-workspace-editor className="min-w-[200px] flex-1" />}
-            <BrowserWorkspacePanel active={mode === 'browser'} onClose={() => setMode('none')} projectKey={project} width={width} onWidthChange={setWidth} onWidthCommit={setWidth} />
+            <BrowserWorkspacePanel agentTab={agentTab} active={mode === 'browser'} onClose={() => setMode('none')} projectKey={project} width={width} onWidthChange={setWidth} onWidthCommit={setWidth} />
             {mode === 'diff' && <ConversationDiffPanel isOpen currentBranch="main" expandedFilePaths={[]} fileDiffs={[]} onDiscardFile={async () => {}} onExpandedFilePathsChange={() => {}} onStageFile={async () => {}} onUnstageFile={async () => {}} onSelectedScopeChange={() => {}} onWidthChange={setWidth} onWidthCommit={setWidth} pendingFileActionPath={null} selectedScope="unstaged" width={width} />}
             <OtherPanel mode={mode} width={width} setWidth={setWidth} />
           </div>
@@ -197,6 +198,9 @@ test('Browser retains sessions, restores its sidebar, and respects chat-safe pan
           await change('window.fixture.setMode("browser")')
           await assertSharedWidth('browser')
           assert.equal(await count('[aria-label="Close New Tab"]'), 1, 'reopening creates one fresh tab')
+          await change('window.fixture.setAgentTab({tabId:"fixture-ai-tab",projectPath:"a",url:"http://localhost:3000/"})')
+          assert.equal(await count('[aria-label="AI browser tab"]'), 1, 'AI tab appears in the native tab strip')
+          assert.equal(await count('webview[src="http://localhost:3000/"]'), 1, 'AI tab owns exactly one webview')
           await change('window.fixture.setProject("b")')
           await change('window.fixture.setProject("c")')
           assert.equal(await count('[aria-label="Close New Tab"]'), 2, 'only two project sessions are retained')

@@ -306,6 +306,7 @@ synchronizeDraftFolder,
   const [isCompressingChat, setIsCompressingChat] = useState(false)
   const isMobileViewport = useIsMobileViewport()
   const [workspaceViewMode, setWorkspaceViewMode] = useState<ChatWorkspaceViewMode>('chat')
+  const [agentBrowserTab, setAgentBrowserTab] = useState<{ tabId: string; projectPath: string; url: string } | null>(null)
   const [mobileSurface, setMobileSurface] = useState<MobileWorkspaceSurface>('chat')
   const isRemoteBrowser = isRemoteBrowserRuntime()
   const isBrowserOpen = !isRemoteBrowser && !isMobileViewport && workspaceViewMode === 'browser'
@@ -316,6 +317,13 @@ synchronizeDraftFolder,
   )
   const setIsSidebarOpen = interfaceController.setIsSidebarOpen
   const { handleCloseSidePanels } = workspaceState
+  useEffect(() => {
+    if (isRemoteBrowser || !window.tidecodeBrowserPageActions?.onAgentTabOpen) return
+    return window.tidecodeBrowserPageActions.onAgentTabOpen((input) => {
+      if (input.projectPath.toLowerCase() !== activeWorkspacePath?.toLowerCase()) return
+      setAgentBrowserTab(input)
+    })
+  }, [activeWorkspacePath, isRemoteBrowser])
 
   const handleCloseBrowser = useCallback(() => {
     setWorkspaceViewMode('chat')
@@ -787,6 +795,8 @@ synchronizeDraftFolder,
           </div>
           {!isMobileViewport ? (
             <ChatWorkspaceSidePanels
+              agentTab={agentBrowserTab}
+              conversationId={chatMessages.activeConversationId}
               isBrowserOpen={isBrowserOpen}
               onCloseBrowser={handleCloseBrowser}
               diffPanelExpandedFilePaths={diffPanelExpandedFilePaths}

@@ -17,6 +17,22 @@ function createInvocation(toolName: string): ToolInvocationTrace {
   }
 }
 
+test('browser calls are summarized as Used browser rather than separate generic actions', () => {
+  assert.equal(buildToolInvocationGroupSummary([
+    createInvocation('exec'),
+    createInvocation('browser.open'),
+    createInvocation('browser.read'),
+    createInvocation('browser.interact'),
+  ]), 'Used browser')
+  assert.equal(buildToolInvocationGroupSummary([
+    { ...createInvocation('browser.read'), state: 'running' },
+  ]), 'Using browser')
+  assert.equal(buildToolInvocationGroupSummary([
+    createInvocation('read'),
+    createInvocation('browser.read'),
+  ]), 'Used browser, explored 1 file')
+})
+
 function createMutationInvocation(
   id: string,
   kind: 'add' | 'delete' | 'update',
@@ -97,7 +113,7 @@ test('buildToolInvocationGroupSummary reports failed Code Mode even with success
       },
       createInvocation('list'),
     ]),
-    'Explored 1 list, local orchestration failed',
+    'Explored 1 list',
   )
 })
 

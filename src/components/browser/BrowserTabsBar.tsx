@@ -1,5 +1,5 @@
 import { BrowserNewTabMenu } from './BrowserNewTabMenu'
-import { Globe2, Maximize, Minimize, VenetianMask, X } from 'lucide-react'
+import { Bot, Globe2, Maximize, Minimize, VenetianMask, X } from 'lucide-react'
 import { useState } from 'react'
 import type { WheelEvent as ReactWheelEvent } from 'react'
 import { Tooltip } from '../Tooltip'
@@ -100,10 +100,12 @@ export function BrowserTabsBar({
               >
                 <span
                   className="flex shrink-0 items-center"
-                  aria-label={tab.incognito ? 'Incognito tab' : undefined}
+                  aria-label={tab.incognito ? 'Incognito tab' : tab.aiOwned ? 'AI browser tab' : undefined}
                 >
                   {tab.incognito ? (
                     <VenetianMask size={14} />
+                  ) : tab.aiOwned ? (
+                    <Bot size={14} />
                   ) : (
                     <BrowserTabFavicon faviconUrl={tab.faviconUrl} />
                   )}

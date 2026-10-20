@@ -64,6 +64,7 @@ import { applyWindowTheme } from '../window/theme'
 import { createSkill, listAvailableSkills, loadSkill, updateSkill } from '../skills/service'
 import type { BrowserDevToolsTargetInput } from '../../src/types/browser'
 import { closeBrowserGuestDevTools, openBrowserGuestDevTools } from '../window/createApplicationWindow'
+import { releaseBrowserProtocol } from '../browser/agentCdpSession'
 import { registerBrowserPageActions } from '../browser/pageActions'
 import {
   addCodexAccountWithOAuth,
@@ -126,6 +127,7 @@ onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>, surface
     if (!target || activeWindow.isDestroyed()) {
       return false
     }
+    releaseBrowserProtocol(target)
     await openBrowserGuestDevTools(target, activeWindow)
     return true
   })

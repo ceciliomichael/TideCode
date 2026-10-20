@@ -40,10 +40,11 @@ export function isDynamicAgentTool(entry: Pick<AgentToolRegistryEntry, 'namespac
 
 function resolveToolNamespace(name: string): string {
   if (name.startsWith('mcp_')) return 'mcp'
-  if (name.startsWith('terminal.')) return 'shell'
-  if (name.startsWith('skill.')) return 'skills'
-  if (name.startsWith('plan.')) return 'planning'
-  return 'filesystem'
+  if (name.startsWith('terminal.')) return 'native_terminal'
+  if (name.startsWith('browser.')) return 'native_browser'
+  if (name.startsWith('skill.')) return 'native_skills'
+  if (name.startsWith('plan.')) return 'native_plan'
+  return 'native_files'
 }
 
 function scoreMatch(entry: AgentToolRegistryEntry, terms: string[]): number {

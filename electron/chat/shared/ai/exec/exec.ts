@@ -55,8 +55,8 @@ export function buildExecDescription() {
   return [
     getExecInstructions(),
     authority,
-    'Prefer available.list: native by default, mcp lists server namespaces, and each server namespace lists its tools. Use available.search for targeted discovery. Names and contracts are not preloaded.',
-    'tools.available.list({ namespace?: string, page?: number }): Promise<string> // Markdown: native, MCP server namespaces, or server-specific tool pages',
+    'The current hidden chat-mode context identifies native namespaces. Unfiltered available.list lists connected MCP server namespaces only, and unfiltered available.search searches MCP tools only. Explicitly set namespace to discover authorized native tools. Exact API contracts are retrieved on demand.',
+    'tools.available.list({ namespace?: string, page?: number }): Promise<string> // Markdown: connected MCP servers by default; explicit native or MCP namespace tool pages',
     'tools.available.search({ query?: string, namespace?: string, limit?: number, offset?: number }): Promise<string> // Markdown names-only results with continuation',
     'tools.available.get({ name: string }): Promise<string> // Markdown contract with typed arguments',
     listing,

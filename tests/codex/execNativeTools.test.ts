@@ -26,28 +26,28 @@ async function execute(bundle: Awaited<ReturnType<typeof createAgentToolBundle>>
 }
 
 test('native tool pagination is lexically stable, bounded, and names-only', () => {
-  const names = Array.from({ length: 13 }, (_, index) => ({ name: `tools.tool${String(index).padStart(2, '0')}`, namespace: 'filesystem', description: 'test' })).reverse()
-  const first = listAvailableApis(names, 1, 'native')
-  const second = listAvailableApis(names, 2, 'native')
+  const names = Array.from({ length: 13 }, (_, index) => ({ name: `tools.tool${String(index).padStart(2, '0')}`, namespace: 'native_files', description: 'test' })).reverse()
+  const first = listAvailableApis(names, 1, 'native_files')
+  const second = listAvailableApis(names, 2, 'native_files')
   assert.equal(first.items.length, 10)
   assert.equal(first.hasMore, true)
   assert.deepEqual(first.items.map((item) => item.name), names.map((item) => item.name).sort().slice(0, 10))
   assert.equal(second.items.length, 3)
   assert.equal(second.hasMore, false)
   assert.deepEqual(Object.keys(first.items[0] ?? {}), ['name', 'description'])
-  assert.deepEqual(listAvailableApis(names, 3, 'native').items, [])
+  assert.deepEqual(listAvailableApis(names, 3, 'native_files').items, [])
 })
 
 test('listing namespaces pages independently', () => {
   const natives = Array.from({ length: 13 }, (_, i) => `tools.native${String(i).padStart(2, '0')}`)
-  const names = [...natives.map((name) => ({ name, namespace: 'filesystem', description: 'Native' })),
+  const names = [...natives.map((name) => ({ name, namespace: 'native_files', description: 'Native' })),
     { name: 'tools.mcp.github_first', namespace: 'mcp', description: '[User MCP server "github"; original tool "first"]' },
     { name: 'tools.mcp.github_second', namespace: 'mcp', description: '[User MCP server "github"; original tool "second"]' },
     { name: 'tools.mcp.other_first', namespace: 'mcp', description: '[User MCP server "other"; original tool "first"]' }]
-  assert.deepEqual(listAvailableApis(names, 1).items.map(({ name }) => name), ['github', 'native', 'other'])
-  assert.deepEqual(listAvailableApis(names, 1, 'native').items.map(({ name }) => name), natives.slice(0, 10))
-  assert.deepEqual(listAvailableApis(names, 2, 'native').items.map(({ name }) => name), natives.slice(10))
-  assert.equal(listAvailableApis(names, 2, 'native').hasMore, false)
+  assert.deepEqual(listAvailableApis(names, 1).items.map(({ name }) => name), ['github', 'other'])
+  assert.deepEqual(listAvailableApis(names, 1, 'native_files').items.map(({ name }) => name), natives.slice(0, 10))
+  assert.deepEqual(listAvailableApis(names, 2, 'native_files').items.map(({ name }) => name), natives.slice(10))
+  assert.equal(listAvailableApis(names, 2, 'native_files').hasMore, false)
   assert.deepEqual(listAvailableApis(names, 1, 'mcp').items, [])
   assert.deepEqual(listAvailableApis(names, 1, 'github').items.map(({ name }) => name), ['tools.mcp.github_first', 'tools.mcp.github_second'])
   assert.deepEqual(listAvailableApis(names, 1, 'other').items.map(({ name }) => name), ['tools.mcp.other_first'])
@@ -55,8 +55,43 @@ test('listing namespaces pages independently', () => {
   assert.deepEqual(listAvailableApis(renamed, 1).items.map(({ name }) => name), ['github_enterprise'])
   assert.deepEqual(listAvailableApis(renamed, 1, 'github_enterprise').items.map(({ name }) => name), ['tools.mcp.github_enterprise_get'])
   assert.equal(listAvailableApis(renamed, 1, 'github_enterprise').items[0]?.description, 'Read issue')
-  assert.equal(listAvailableApis([{ name: 'tools.edit', namespace: 'filesystem', description: 'full API contract' }], 1, 'native').items[0]?.description, 'Preferred for exact text replacements across files.')
+  assert.equal(listAvailableApis([{ name: 'tools.edit', namespace: 'native_files', description: 'full API contract' }], 1, 'native_files').items[0]?.description, 'Preferred for exact text replacements across files.')
   assert.equal(searchAvailableApis(renamed.map(({ name, namespace, description }) => ({ path: name, namespace, description, signature: 'mock' })), { namespace: 'github_enterprise', query: 'issue' }).items.length, 1)
+})
+
+test('MCP namespace descriptions use server metadata while tool descriptions stay independent', () => {
+  const connected = [
+    {
+      name: 'tools.mcp.github_issues',
+      namespace: 'mcp',
+      description: '[User MCP server "GitHub"; original tool "issues"; namespace "github"; server description "Manage repositories and issues"] List repository issues.',
+    },
+    {
+      name: 'tools.mcp.search_query',
+      namespace: 'mcp',
+      description: '[User MCP server "Search"; original tool "query"; namespace "search"] Search information.',
+    },
+  ]
+  const namespaces = listAvailableApis(connected, 1).items
+  assert.deepEqual(namespaces, [
+    { name: 'github', description: 'Manage repositories and issues' },
+    { name: 'search', description: 'Connected MCP server.' },
+  ])
+  assert.deepEqual(listAvailableApis(connected, 1, 'github').items, [
+    { name: 'tools.mcp.github_issues', description: 'List repository issues.' },
+  ])
+})
+
+test('MCP namespaces cannot merge into reserved TideCode native groups', () => {
+  const entries = [
+    { name: 'tools.browser.read', namespace: 'native_browser', description: 'Read browser' },
+    { name: 'tools.mcp_browser_scan', namespace: 'mcp',
+      description: '[User MCP server "Custom"; original tool "scan"; namespace "native_browser"] Scan remote service.' },
+  ]
+  const root = listAvailableApis(entries, 1)
+  assert.deepEqual(root.items.map((entry) => entry.name), ['mcp_native_browser'])
+  assert.deepEqual(listAvailableApis(entries, 1, 'native_browser').items.map((entry) => entry.name), ['tools.browser.read'])
+  assert.deepEqual(listAvailableApis(entries, 1, 'mcp_native_browser').items.map((entry) => entry.name), ['tools.mcp_browser_scan'])
 })
 
 test('root namespace index stays capped at 10 per page', () => {
@@ -65,10 +100,10 @@ test('root namespace index stays capped at 10 per page', () => {
     namespace: 'mcp',
     description: `[User MCP server "server${String(index).padStart(2, '0')}"; original tool "action"] Perform action`,
   }))
-  servers.push({ name: 'tools.read', namespace: 'filesystem', description: 'Read file' })
+  servers.push({ name: 'tools.read', namespace: 'native_files', description: 'Read file' })
   assert.equal(listAvailableApis(servers, 1).items.length, 10)
   assert.equal(listAvailableApis(servers, 1).hasMore, true)
-  assert.equal(listAvailableApis(servers, 2).items.length, 5)
+  assert.equal(listAvailableApis(servers, 2).items.length, 4)
   assert.deepEqual(listAvailableApis(servers, 1, 'server12').items.map((item) => item.name), ['tools.mcp.server12_action'])
   assert.deepEqual(listAvailableApis(servers, 1, 'mcp').items, [])
 })
@@ -147,25 +182,27 @@ test('exec exposes only discovery APIs and has stable metadata across modes', as
 test('native list is paged, names-only and mode-aware', async () => withWorkspace(async (workspaceRootPath) => {
   const agent = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
   const plan = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'plan' })
-  const agentList = await execute(agent, 'return await tools.available.list({ namespace: "native", page: 1 });')
-  const planList = await execute(plan, 'return await tools.available.list({ namespace: "native", page: 1 });')
+  const agentList = await execute(agent, 'return await tools.available.list({ namespace: "native_browser", page: 1 });')
+  const planList = await execute(plan, 'return await tools.available.list({ namespace: "native_plan", page: 1 });')
   assert.equal(agentList.status, 'success', agentList.body)
   assert.equal(planList.status, 'success', planList.body)
-  assert.match(agentList.body ?? '', /tools\.terminal\.execute/u)
+  assert.match(agentList.body ?? '', /tools\.browser\.open/u)
   assert.doesNotMatch(planList.body ?? '', /tools\.terminal\.|tools\.write|tools\.mcp\./u)
   assert.match(planList.body ?? '', /tools\.plan\.create/u)
   assert.doesNotMatch(agentList.body ?? '', /tools\.plan\.create/u)
   assert.doesNotMatch(agentList.body ?? '', /inputSchema|description/u)
-  assert.match(agentList.body ?? '', /# Available native tools \(page 1\)/u)
-  assert.match(agentList.body ?? '', /- `tools\.read`/u)
+  assert.match(agentList.body ?? '', /# Available native_browser tools \(page 1\)/u)
+  assert.match(agentList.body ?? '', /- `tools\.browser\.read`/u)
   assert.doesNotMatch(agentList.body ?? '', /"items"|"hasMore"/u)
   const invalid = await execute(agent, 'return await tools.available.list({ page: 0 });')
   assert.equal(invalid.status, 'error')
   const rootList = await execute(agent, 'return await tools.available.list();')
   assert.match(rootList.body ?? '', /# Available tool namespaces \(page 1\)/u)
-  assert.match(rootList.body ?? '', /- `native`/u)
-  const later = await execute(agent, 'return await tools.available.list({ namespace: "native", page: 2 });')
+  assert.doesNotMatch(rootList.body ?? '', /- `native_browser`/u)
+  assert.doesNotMatch(rootList.body ?? '', /- `native`/u)
+  const later = await execute(agent, 'return await tools.available.list({ namespace: "native_terminal", page: 1 });')
   assert.equal(later.status, 'success', later.body)
+  assert.match(later.body ?? '', /tools\.terminal\.execute/u)
   await agent.codeModeExecutor.dispose()
   await plan.codeModeExecutor.dispose()
 }))
@@ -173,7 +210,7 @@ test('native list is paged, names-only and mode-aware', async () => withWorkspac
 test('search returns names only; exact get exposes documentation and schema', async () => withWorkspace(async (workspaceRootPath) => {
   const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
   const result = await execute(bundle, [
-    'const found = await tools.available.search({ query: "tools.read", namespace: "native" });',
+    'const found = await tools.available.search({ query: "tools.read", namespace: "native_files" });',
     'const info = await tools.available.get({ name: "tools.read" });',
     'return { found, info };',
   ].join('\n'))
@@ -183,7 +220,7 @@ test('search returns names only; exact get exposes documentation and schema', as
   assert.match(body, /await tools\.read\(input:/u)
   assert.doesNotMatch(body, /"inputSchema"/u)
   assert.match(body, /Read the contents of one existing text file or image/u)
-  const searchOnly = await execute(bundle, 'return await tools.available.search({ query: "tools.read", namespace: "native" });')
+  const searchOnly = await execute(bundle, 'return await tools.available.search({ query: "tools.read", namespace: "native_files" });')
   assert.match(searchOnly.body ?? '', /Read file or image contents\./u)
   assert.doesNotMatch(searchOnly.body ?? '', /## Call|## Parameters/u)
   assert.match(searchOnly.body ?? '', /# Tool search: tools\.read/u)
@@ -301,7 +338,7 @@ test('exec orchestrates nested tools and discovers exact callable paths', async 
   await fs.writeFile(path.join(workspaceRootPath, 'sample.txt'), 'actual file contents\n')
   const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
   const result = await execute(bundle, [
-    'const found = await tools.available.search({ query: "terminal execute" });',
+    'const found = await tools.available.search({ query: "terminal execute", namespace: "native_terminal" });',
     'await tools.available.get({ name: "tools.read" });',
     'const file = await tools.read({ path: "sample.txt" });',
     'return { found, file: file.body };',

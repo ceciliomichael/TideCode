@@ -13,6 +13,8 @@ import type { PlanReviewComment } from '../../lib/planContracts'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 
 interface ChatWorkspaceSidePanelsProps {
+  agentTab?: { tabId: string; projectPath: string; url: string } | null
+  conversationId: string | null
   isBrowserOpen: boolean
   onCloseBrowser: () => void
   diffPanelExpandedFilePaths: readonly string[]
@@ -30,6 +32,8 @@ interface ChatWorkspaceSidePanelsProps {
 }
 
 export function ChatWorkspaceSidePanels({
+  agentTab,
+  conversationId,
   isBrowserOpen,
   onCloseBrowser,
   diffPanelExpandedFilePaths,
@@ -101,6 +105,8 @@ export function ChatWorkspaceSidePanels({
         workspaceRootPath={workspaceState.activeWorkspacePath}
       />
       <BrowserWorkspacePanel
+        agentTab={agentTab}
+        conversationId={conversationId}
         active={isBrowserOpen}
         onClose={onCloseBrowser}
         projectKey={workspaceState.activeWorkspacePath ?? '__no-workspace__'}

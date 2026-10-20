@@ -4,6 +4,8 @@ import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from '../../lib/diffPanelS
 import { clampWorkspacePanelWidth } from '../../lib/workspacePanelSizing'
 
 interface BrowserWorkspacePanelProps {
+  agentTab?: { tabId: string; projectPath: string; url: string } | null
+  conversationId: string | null
   active: boolean
   onClose: () => void
   projectKey: string
@@ -14,7 +16,7 @@ interface BrowserWorkspacePanelProps {
 
 const MAX_RETAINED_SESSIONS = 2
 
-export function BrowserWorkspacePanel({ active, onClose, projectKey, width, onWidthChange, onWidthCommit }: BrowserWorkspacePanelProps) {
+export function BrowserWorkspacePanel({ active, onClose, projectKey, conversationId, width, onWidthChange, onWidthCommit, agentTab }: BrowserWorkspacePanelProps) {
   const [projects, setProjects] = useState<string[]>([])
   const [isFullscreen, setIsFullscreen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -36,6 +38,15 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, width, onWi
       return [...previous.filter((key) => key !== projectKey), projectKey].slice(-MAX_RETAINED_SESSIONS)
     })
   }, [active, projectKey])
+
+  // AI tabs must mount even when the user has not opened the browser panel.
+  // Keep the project webview alive so the agent can use the same tab later.
+  useEffect(() => {
+    if (!agentTab || agentTab.projectPath.toLowerCase() !== projectKey.toLowerCase()) return
+    setProjects((previous) => previous.includes(projectKey)
+      ? previous
+      : [...previous, projectKey].slice(-MAX_RETAINED_SESSIONS))
+  }, [agentTab, projectKey])
 
   useLayoutEffect(() => {
     const panel = panelRef.current
@@ -136,15 +147,36 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, width, onWi
       className={isFullscreen && active
         ? 'absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-background'
         : 'relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-background max-md:hidden'}
-      style={isFullscreen && active ? undefined : { width: active ? `${width}px` : 0, borderLeftWidth: active ? undefined : 0, visibility: active ? undefined : 'hidden' }}
+      style={isFullscreen && active
+        ? undefined
+        : active
+          ? { width: `${width}px` }
+          : {
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: `${width}px`,
+              borderLeftWidth: 0,
+              opacity: 0,
+              pointerEvents: 'none',
+            }}
       aria-hidden={!active}
     >
       {active && !isFullscreen ? (
         <div role="separator" aria-label="Resize browser panel" aria-orientation="vertical" onPointerDown={startResize} className="absolute inset-y-0 left-0 z-20 w-3 -translate-x-1/2 cursor-col-resize" />
       ) : null}
       {projects.map((key) => (
-        <div key={key} className={active && key === projectKey ? 'flex min-h-0 min-w-0 flex-1 flex-col' : 'hidden'}>
+        <div
+          key={key}
+          className={active && key === projectKey
+            ? 'relative flex min-h-0 min-w-0 flex-1 flex-col'
+            : 'pointer-events-none absolute inset-0 flex min-h-0 min-w-0 flex-col opacity-0'}
+          aria-hidden={!(active && key === projectKey)}
+        >
           <BrowserPanel
+            agentTab={agentTab?.projectPath.toLowerCase() === key.toLowerCase() ? agentTab : null}
+            conversationId={conversationId}
             active={active && key === projectKey}
             projectKey={key}
             onClose={() => closeProject(key)}

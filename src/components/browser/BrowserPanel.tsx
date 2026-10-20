@@ -1,4 +1,5 @@
 import { BrowserScreenshotButton } from './BrowserScreenshotButton'
+import { BrowserAnnotations } from './BrowserAnnotations'
 import { createElement, FormEvent, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { ArrowLeft, ArrowRight, Globe2, Home, LoaderCircle, RefreshCw, Search, VenetianMask, X } from 'lucide-react'
 import { useBrowserPageActions, type BrowserPageControls, type BrowserPageState } from './useBrowserPageActions'
@@ -36,6 +37,8 @@ interface BrowserLoadFailure {
 }
 
 interface BrowserPanelProps {
+  agentTab?: { tabId: string; projectPath: string; url: string } | null
+  conversationId: string | null
   active: boolean
   isFullScreen: boolean
   onToggleFullScreen: () => void
@@ -44,6 +47,9 @@ interface BrowserPanelProps {
 }
 
 interface BrowserTabSessionProps {
+  aiOwned?: boolean
+  initialUrl?: string
+  conversationId: string | null
   incognito: boolean
   partition: string
   projectPath: string
@@ -59,6 +65,8 @@ interface BrowserTabSessionProps {
 }
 
 function BrowserTabSession({
+  initialUrl,
+  conversationId,
   incognito,
   partition,
   projectPath,
@@ -84,8 +92,8 @@ function BrowserTabSession({
     () => normalizeEmbeddedBrowserUserAgent(navigator.userAgent),
     [],
   )
-  const [address, setAddress] = useState('')
-  const [currentUrl, setCurrentUrl] = useState('')
+  const [address, setAddress] = useState(initialUrl ?? '')
+  const [currentUrl, setCurrentUrl] = useState(initialUrl ?? '')
   const [iframeUrl, setIframeUrl] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [canGoBack, setCanGoBack] = useState(false)
@@ -157,6 +165,14 @@ function BrowserTabSession({
 
     const handleDomReady = () => {
       webviewReadyRef.current = true
+      const webContentsId = webview.getWebContentsId?.()
+      if (!incognito && webContentsId && window.tidecodeBrowserPageActions?.registerAgentTab) {
+        void window.tidecodeBrowserPageActions.registerAgentTab({
+          tabId,
+          projectPath,
+          webContentsId,
+        }).catch(console.error)
+      }
       if (active) return
 
       try {
@@ -293,7 +309,7 @@ function BrowserTabSession({
       webview.removeEventListener('page-title-updated', handleTitle)
       webview.removeEventListener('render-process-gone', handleRenderProcessGone)
     }
-  }, [active, currentUrl, incognito, isElectron, onCacheFavicon, onFaviconChange, onVisit, syncNavigationState, tabId, updateTitle])
+  }, [active, currentUrl, incognito, isElectron, onCacheFavicon, onFaviconChange, onVisit, projectPath, syncNavigationState, tabId, updateTitle])
 
   const navigate = useCallback(
     (rawValue: string) => {
@@ -367,7 +383,13 @@ function BrowserTabSession({
   }
 
   return (
-    <div ref={panelRef} className={active ? 'relative flex min-h-0 min-w-0 flex-1 flex-col bg-background' : 'hidden'}>
+    <div
+      ref={panelRef}
+      className={active
+        ? 'relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-background'
+        : 'pointer-events-none absolute inset-0 flex min-h-0 min-w-0 flex-col bg-background opacity-0'}
+      aria-hidden={!active}
+    >
       <div
         className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border px-2"
         onPointerDownCapture={(event) => {
@@ -463,6 +485,14 @@ function BrowserTabSession({
             <Search size={14} />
           </button>
         </form>
+        <BrowserAnnotations
+          active={active && isElectron}
+          conversationId={conversationId}
+          disabled={incognito || isNewTab || projectPath === '__no-workspace__'}
+          projectPath={projectPath}
+          tabId={tabId}
+          getWebview={() => webviewRef.current}
+        />
         <BrowserScreenshotButton
           toastContainerRef={panelRef}
           active={active}
@@ -489,7 +519,8 @@ function BrowserTabSession({
           {isNewTab ? (
             <BrowserNewTabPage onNavigate={navigate} visitedSites={incognito ? [] : visitedSites} />
           ) : isElectron
-            ? createElement('webview', {
+            ? <div style={{ position: 'absolute', inset: 0 }}>
+              {createElement('webview', {
               ref: handleWebviewRef,
               src: currentUrl,
               useragent: embeddedBrowserUserAgent,
@@ -503,7 +534,8 @@ function BrowserTabSession({
                 height: '100%',
                 pointerEvents: active ? 'auto' : 'none',
               },
-            })
+            })}
+            </div>
           : (
               <iframe
                 key={iframeUrl}
@@ -553,7 +585,7 @@ function BrowserTabSession({
   )
 }
 
-export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose, projectKey }: BrowserPanelProps) {
+export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose, projectKey, conversationId, agentTab }: BrowserPanelProps) {
   const initialTabRef = useRef<BrowserTab | null>(null)
   if (!initialTabRef.current) {
     initialTabRef.current = createBrowserTab()
@@ -561,6 +593,20 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
 
   const [tabs, setTabs] = useState<BrowserTab[]>([initialTabRef.current])
   const [activeTabId, setActiveTabId] = useState(initialTabRef.current.id)
+  useEffect(() => {
+    if (!agentTab || agentTab.projectPath.toLowerCase() !== projectKey.toLowerCase()) return
+    setTabs((current) => {
+      if (current.some((tab) => tab.id === agentTab.tabId)) return current
+      return [...current, {
+        ...createBrowserTab(),
+        id: agentTab.tabId,
+        title: new URL(agentTab.url).hostname,
+        initialUrl: agentTab.url,
+        aiOwned: true,
+      }]
+    })
+    setActiveTabId(agentTab.tabId)
+  }, [agentTab, projectKey])
   const pageControlsRef = useRef<BrowserPageControls | null>(null)
   const privateTabIdsRef = useRef(new Set<string>())
   const mountedRef = useRef(true)
@@ -612,6 +658,11 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
       void window.tidecodeBrowserPageActions.releaseIncognitoTab({ tabId }).catch(console.error)
     }
     if (tabs.length === 1) {
+      if (tabs[0]?.aiOwned) {
+        const replacement = createBrowserTab()
+        setTabs([replacement])
+        setActiveTabId(replacement.id)
+      }
       onClose()
       return
     }
@@ -620,6 +671,22 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
     setTabs(tabs.filter((tab) => tab.id !== tabId))
     setActiveTabId(nextActiveTabId)
   }, [activeTabId, onClose, tabs])
+
+  useEffect(() => {
+    if (!window.tidecodeBrowserPageActions?.onAgentTabTermination) return
+    return window.tidecodeBrowserPageActions.onAgentTabTermination(({ tabId, projectPath }) => {
+      if (projectPath !== projectKey) return
+      if (!tabs.some((tab) => tab.id === tabId)) return
+      if (tabs.length === 1) {
+        const replacement = createBrowserTab()
+        setTabs([replacement])
+        setActiveTabId(replacement.id)
+        onClose()
+      } else {
+        handleCloseTab(tabId)
+      }
+    })
+  }, [handleCloseTab, onClose, projectKey, tabs])
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -647,6 +714,9 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
       <div className="relative flex min-h-0 flex-1 flex-col">
         {tabs.map((tab) => (
           <BrowserTabSession
+            aiOwned={tab.aiOwned}
+            initialUrl={tab.initialUrl}
+            conversationId={conversationId}
             projectPath={projectKey}
             incognito={tab.incognito}
             partition={tab.partition}

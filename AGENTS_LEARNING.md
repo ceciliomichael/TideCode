@@ -1,5 +1,11 @@
 # Durable project knowledge
 
+- On 2026-10-20 the user requested native tool namespace guidance in TideCode's existing mode-transition hidden user context rather than the stable exec tool description. Plan Mode should receive planning-safe namespace guidance and a later Agent Mode implementation turn should receive Agent-native namespace guidance without inventing plan approval. Root tool discovery remains MCP-only, while native discovery requires an explicitly named namespace or exact contract lookup.
+
+- On 2026-10-20 the user required AI-created browser tabs to be visible in TideCode's existing browser panel so they can watch and interact with the same live page. The user also approved replacing the single `native` discovery namespace with five descriptively named native groups (`native_browser`, `native_files`, `native_terminal`, `native_skills`, `native_plan`) while preserving callable tool paths. Connected MCP namespaces should display their own server descriptions when available, otherwise a neutral fallback; every listed tool retains a concise description.
+
+- On 2026-10-20 the user approved TideCode-native visual browser automation using the embedded Electron Chromium engine, not an external Google Chrome installation. Use six Code Mode browser APIs (open/read/tabs/interact/terminate/devtools), combine 1280x720 screenshot + DOM/accessibility readings, prefer semantic element interactions, include page annotations tied to chat prompts, and make privileged raw CDP opt-in through Full Developer Mode. Preserve the browser's existing UI and theme.
+
 - The user confirmed on 2026-10-18 that TideCode durable memory should be per chat, with Markdown stored inside each chat's existing history as the single source of truth, rather than a separate project DURABLE.md file. This storage choice is confirmed; implementation still requires approval of the concrete plan.
 
 - For the RAM/CPU optimization work discussed on 2026-10-17, the user prefers improving the current Electron app first. Rust is an option to evaluate against measured remaining bottlenecks, not an approved migration.
@@ -31,3 +37,5 @@
 - Keep Markdown instructions and feature documentation limited to the current supported behavior. Remove obsolete rules and migration commentary instead of retaining them as historical instructions.
 
 - Generated UI action buttons should keep their labels unchanged and omit routine progress/success messages after clicks. Retain pending/duplicate-send protection and show actionable failures only.
+
+- For generated-source readability, the user wants language-agnostic AI instructions without code examples. They explicitly declined a TideCode-managed formatter and prefer improving the AI's adherence and source review; readable output must not depend on a project formatter being installed.

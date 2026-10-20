@@ -52,6 +52,8 @@ import {
   mergeConversationModeModelPreference,
 } from '../../src/lib/conversationModelPreference'
 import { getTerminalBroker } from '../terminal/broker/instance'
+import { RunServiceBrowserBroker } from './browserBroker'
+import { setRunServiceBrowserHandler } from './browserService'
 
 const TERMINAL_RUN_RETENTION_MS = 60_000
 const TEXT_STREAM_IDLE_GRACE_MS = 1_500
@@ -128,6 +130,7 @@ async function listenOnEndpoint(server: net.Server, endpoint: string) {
 }
 
 export class TideCodeRunServiceServer {
+  private readonly browserBroker = new RunServiceBrowserBroker()
   private readonly server = net.createServer((socket) => this.acceptClient(socket))
   private readonly clients = new Set<Socket>()
   private readonly terminalClientIdsBySocket = new Map<Socket, Set<string>>()
@@ -146,6 +149,7 @@ export class TideCodeRunServiceServer {
   private token = ''
 
   constructor(private readonly options: TideCodeRunServiceServerOptions) {
+    setRunServiceBrowserHandler((input) => this.browserBroker.request(input))
     this.unsubscribeTerminalEvents = this.terminalBroker.onEvent((event) => this.emitTerminalEvent(event))
   }
 
@@ -166,6 +170,8 @@ export class TideCodeRunServiceServer {
   }
 
   async close() {
+    this.browserBroker.close()
+    setRunServiceBrowserHandler(null)
     this.unsubscribeTerminalEvents()
     for (const timer of this.runRetentionTimers.values()) {
       clearTimeout(timer)
@@ -202,13 +208,17 @@ export class TideCodeRunServiceServer {
       }
     })
     socket.on('close', () => {
+      this.browserBroker.disconnect(socket)
       buffered = ''
       this.clients.delete(socket)
       const terminalClientIds = this.terminalClientIdsBySocket.get(socket)
       this.terminalClientIdsBySocket.delete(socket)
       for (const clientId of terminalClientIds ?? []) this.terminalBroker.disconnectClient(clientId)
     })
-    socket.on('error', () => this.clients.delete(socket))
+    socket.on('error', () => {
+      this.browserBroker.disconnect(socket)
+      this.clients.delete(socket)
+    })
   }
 
   private async handleLine(socket: Socket, line: string) {
@@ -242,6 +252,14 @@ export class TideCodeRunServiceServer {
 
     try {
       switch (parsed.method) {
+        case 'registerBrowserHost':
+          this.browserBroker.register(socket)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: null })
+          return
+        case 'browserHostReply':
+          this.browserBroker.receive(socket, parsed.params)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: null })
+          return
         case 'hello':
           this.sendResponse(socket, {
             id: parsed.id,

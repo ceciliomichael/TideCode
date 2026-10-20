@@ -167,6 +167,32 @@ export function buildWorkspaceInstructionsTransition(input: {
 }
 
 export function buildChatModeHiddenContext(chatMode: ChatMode): HiddenUserContext {
+  const nativeNamespaceContext = chatMode === 'plan'
+    ? [
+        '<native_tool_context mode="plan">',
+        'Authorized native namespace categories for this mode:',
+        '- native_files: Read, list, glob, and grep workspace files; edit/patch only the active plan where permitted.',
+        '- native_plan: Create the canonical implementation plan.',
+        '- native_skills: Discover and load skills only when enabled and registered.',
+        'Browser automation, terminal execution, ordinary workspace writes, and MCP execution are unavailable in Plan Mode.',
+        'Use tools.available.get({ name }) for known exact native API contracts.',
+        'Use tools.available.list({ namespace: "native_files" }) or explicit native namespace search to inspect available tools.',
+        'Unfiltered list and search discover connected MCP namespaces/tools only.',
+        '</native_tool_context>',
+      ]
+    : [
+        '<native_tool_context mode="agent">',
+        'Native namespace categories for Agent Mode:',
+        '- native_browser: Open, read, and interact with visible browser tabs.',
+        '- native_files: Read, search, create, edit, and patch workspace files.',
+        '- native_terminal: Execute commands and manage terminal sessions.',
+        '- native_skills: Discover and load skills only when enabled and registered.',
+        'native_plan is not available in Agent Mode.',
+        'Use tools.available.get({ name }) for known exact native API contracts.',
+        'Use tools.available.list({ namespace: "native_browser" }) or explicit native namespace search to inspect authorized tools.',
+        'Unfiltered list and search discover connected MCP namespaces/tools only.',
+        '</native_tool_context>',
+      ]
   if (chatMode === 'plan') {
     return wrapHiddenUserContext(CHAT_MODE_HIDDEN_CONTEXT_KIND, chatMode, [
       '<chat_mode_context mode="plan" state="active_until_superseded">',
@@ -191,10 +217,11 @@ export function buildChatModeHiddenContext(chatMode: ChatMode): HiddenUserContex
       '- Once an active plan exists, do not create another. Use tools.patch only to revise that active plan, with its exact path and current source as patch context.',
       '- tools.patch is host-restricted in Plan Mode to updating the active plan. It cannot add, delete, move, or modify other files.',
       '- Never mutate source files, tests, configuration, documentation, or other workspace files in Plan Mode. If a mutation API is unavailable, do not substitute another mutation mechanism.',
-       '- The previous Agent Mode tool catalog is no longer authoritative. Discover current authorized tool names with tools.available.list or tools.available.search, and retrieve needed contracts with tools.available.get. Terminal, source writes, and MCP tools are unavailable in Plan Mode.',
+      '- The previous Agent Mode tool catalog is no longer authoritative. Use the mode-specific native_tool_context below and retrieve needed contracts with tools.available.get. Terminal, source writes, and MCP tools are unavailable in Plan Mode.',
       '- Plan Mode runtime policy permits read-only workspace APIs, skill APIs, tools.plan.create and restricted tools.patch; the host enforces the plan-artifact boundary.',
       '- After a successful plan create or revision, return the normal Plan preview result instead of duplicating the full artifact in chat.',
       '</chat_mode_context>',
+      ...nativeNamespaceContext,
     ].join('\n'))
   }
 
@@ -207,9 +234,11 @@ export function buildChatModeHiddenContext(chatMode: ChatMode): HiddenUserContex
     '- Resolve low-risk technical choices from current evidence and existing patterns. Ask only when user-owned intent, material risk, irreversible behavior, or new authority is required.',
     '- Read the smallest relevant source before changing it, preserve user work, stay in scope, and avoid unrelated cleanup or speculative refactors.',
     '- When mutation is authorized, implement the complete requested change and run the narrowest decisive verification before reporting completion.',
-     '- The previous Plan Mode tool catalog is no longer authoritative. Refresh currently authorized tool names with tools.available.list or tools.available.search; obtain exact contracts with tools.available.get. Implementation, terminal, and source-editing tools may now be available, while Plan-only creation is unavailable.',
+    '- When entering Agent Mode to implement a user-approved plan, continue from the latest approved plan in the conversation. Reuse its file scope and decisions instead of starting a new plan. A mode switch alone does not imply approval; check the user request and plan state.',
+     '- The previous Plan Mode tool catalog is no longer authoritative. Use the mode-specific native_tool_context below and retrieve exact contracts with tools.available.get. Implementation, terminal, and source-editing tools may now be available, while Plan-only creation is unavailable.',
      '- Use the active provider tool contract as authoritative. TideCode-owned APIs are invoked inside exec; provider-native tools may be exposed separately when supported.',
     '</chat_mode_context>',
+    ...nativeNamespaceContext,
   ].join('\n'))
 }
 

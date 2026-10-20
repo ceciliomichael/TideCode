@@ -20,6 +20,7 @@ interface ToolInvocationSummaryCounts {
   toolSearchCount: number
   toolGetCount: number
   skillCount: number
+  browserCount: number
 }
 
 function pluralize(count: number, singular: string) {
@@ -54,6 +55,7 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
   if (toolName.startsWith('mcp.')) {
     return 'mcpCount'
   }
+  if (toolName.startsWith('browser.')) return 'browserCount'
 
   if (toolName === 'tool_search' || toolName === 'available.search' || toolName === 'available.list') {
     return 'toolSearchCount'
@@ -140,6 +142,7 @@ function getMixedBucketPriority(bucketKey: string) {
   if (bucketKey === 'command') {
     return 8
   }
+  if (bucketKey === 'browser') return 9
   if (bucketKey === 'web-search') {
     return 10
   }
@@ -198,6 +201,15 @@ export function buildToolInvocationGroupSummary(
   const hasOnlyCodeModeInvocations = invocations.length > 0 && invocations.every(
     (invocation) => invocation.toolName === 'exec',
   )
+  const actualTools = invocations.filter((invocation) => invocation.toolName !== 'exec')
+  const onlyBrowserTools = actualTools.length > 0
+    && actualTools.every((invocation) => invocation.toolName.startsWith('browser.'))
+  if (onlyBrowserTools && !hasFailedCodeMode) {
+    return (summaryVerbOverride === 'Exploring' ||
+      (summaryVerbOverride === undefined && hasActiveInvocation))
+      ? 'Using browser'
+      : 'Used browser'
+  }
   if (summaryVerbOverride === 'Exploring' || (summaryVerbOverride === undefined && hasActiveInvocation)) {
     return 'Exploring'
   }
@@ -210,7 +222,7 @@ export function buildToolInvocationGroupSummary(
   ) {
     const summaryVerb = summaryVerbOverride
     const summary = `${summaryVerb} ${pluralize(countDistinctMutationFiles(invocations), 'file')}`
-    return hasFailedCodeMode ? `${summary}, local orchestration failed` : summary
+    return summary
   }
 
   if (hasOnlyCodeModeInvocations) {
@@ -239,6 +251,7 @@ export function buildToolInvocationGroupSummary(
     toolSearchCount: 0,
     toolGetCount: 0,
     skillCount: 0,
+    browserCount: 0,
   }
   const otherToolCounts = new Map<string, number>()
   const mutationFilesByKind = new Map<string, Set<string>>()
@@ -322,6 +335,8 @@ export function buildToolInvocationGroupSummary(
         recordMixedBucket('skill')
       } else if (classifiedBucket === 'commandCount') {
         recordMixedBucket('command')
+      } else if (classifiedBucket === 'browserCount') {
+        recordMixedBucket('browser')
       } else if (classifiedBucket === 'exploredFileCount') {
         recordMixedBucket('explored-file')
       } else if (classifiedBucket === 'fileCount') {
@@ -339,9 +354,6 @@ export function buildToolInvocationGroupSummary(
     recordMixedBucket(`other:${label}`)
   }
 
-  if (hasFailedCodeMode) {
-    recordMixedBucket('code-mode-failed')
-  }
 
   if (hasFileMutationBuckets) {
     const formatMixedBucket = (bucketKey: string, count: number) => {
@@ -378,6 +390,7 @@ export function buildToolInvocationGroupSummary(
       if (bucketKey === 'command') {
         return `ran ${pluralize(count, 'terminal tool')}`
       }
+      if (bucketKey === 'browser') return 'used browser'
       if (bucketKey === 'file') {
         return `explored ${pluralize(count, 'file')}`
       }
@@ -389,9 +402,6 @@ export function buildToolInvocationGroupSummary(
       }
       if (bucketKey === 'memory') {
         return `handled ${pluralize(count, 'memory operation')}`
-      }
-      if (bucketKey === 'code-mode-failed') {
-        return 'local orchestration failed'
       }
 
       return pluralize(count, bucketKey.replace(/^other:/u, ''))
@@ -422,6 +432,7 @@ export function buildToolInvocationGroupSummary(
   if (counts.commandCount > 0) {
     summaryParts.push(`ran ${pluralize(counts.commandCount, 'terminal tool')}`)
   }
+  if (counts.browserCount > 0) summaryParts.push('used browser')
   if (counts.exploredFileCount + counts.fileCount > 0) {
     summaryParts.push(`explored ${pluralize(counts.exploredFileCount + counts.fileCount, 'file')}`)
   }
@@ -433,9 +444,6 @@ export function buildToolInvocationGroupSummary(
     summaryParts.push(`handled ${pluralize(counts.memoryCount, 'memory operation')}`)
   }
 
-  if (hasFailedCodeMode) {
-    summaryParts.push('local orchestration failed')
-  }
 
   for (const [toolLabel, count] of otherToolCounts) {
     summaryParts.push(`explored ${pluralize(count, toolLabel)}`)

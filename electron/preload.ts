@@ -421,6 +421,22 @@ const browserDevToolsApi: TideCodeBrowserDevToolsApi = {
 }
 
 const browserPageActionsApi: TideCodeBrowserPageActionsApi = {
+  onAgentTabOpen: (listener) => {
+    const wrapped = (_event: unknown, input: { tabId: string; projectPath: string; url: string }) => listener(input)
+    ipcRenderer.on('browser:openAgentTab', wrapped)
+    return () => ipcRenderer.off('browser:openAgentTab', wrapped)
+  },
+  getDeveloperMode: (projectPath) => ipcRenderer.invoke('browser:getDeveloperMode', projectPath),
+  setDeveloperMode: (input) => ipcRenderer.invoke('browser:setDeveloperMode', input),
+  listAnnotations: (input) => ipcRenderer.invoke('browser:listAnnotations', input),
+  saveAnnotation: (input) => ipcRenderer.invoke('browser:saveAnnotation', input),
+  removeAnnotation: (input) => ipcRenderer.invoke('browser:removeAnnotation', input),
+  registerAgentTab: (input) => ipcRenderer.invoke('browser:registerAgentTab', input),
+  onAgentTabTermination: (listener) => {
+    const wrappedListener = (_event: unknown, payload: { tabId: string; projectPath: string }) => listener(payload)
+    ipcRenderer.on('browser:terminateAgentTab', wrappedListener)
+    return () => ipcRenderer.off('browser:terminateAgentTab', wrappedListener)
+  },
   createIncognitoTab: (input) => ipcRenderer.invoke('browser:createIncognitoTab', input),
   releaseIncognitoTab: (input) => ipcRenderer.invoke('browser:releaseIncognitoTab', input),
   screenshotAction: (input) => ipcRenderer.invoke('browser:screenshotAction', input),

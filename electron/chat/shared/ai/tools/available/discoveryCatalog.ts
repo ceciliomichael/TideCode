@@ -4,6 +4,14 @@ export interface DiscoveryEntry {
   description: string
 }
 
+export const NATIVE_NAMESPACE_DESCRIPTIONS: Record<string, string> = {
+  native_browser: 'Browse websites, inspect pages, interact with elements, and debug browser behavior.',
+  native_files: 'Read, search, create, edit, and patch workspace files.',
+  native_plan: 'Create and manage implementation plans.',
+  native_skills: 'Discover and load available AI skills.',
+  native_terminal: 'Execute commands, inspect output, and manage terminal sessions.',
+}
+
 const NATIVE_SUMMARIES: Record<string, string> = {
   'tools.read': 'Read file or image contents.',
   'tools.list': 'Explore folders and discover paths.',
@@ -20,17 +28,35 @@ const NATIVE_SUMMARIES: Record<string, string> = {
   'tools.skill.list': 'List available skills.',
   'tools.skill.search': 'Find relevant skills.',
   'tools.skill.load': 'Load skill instructions.',
+  'tools.browser.open': 'Create a visible browser tab once and return its reusable tab_id.',
+  'tools.browser.read': 'Inspect screenshots, DOM structure, and annotations.',
+  'tools.browser.interact': 'Click, type, fill, scroll, and navigate browser pages.',
+  'tools.browser.tabs': 'List the project’s browser tabs.',
+  'tools.browser.terminate': 'Close a browser tab.',
+  'tools.browser.devtools': 'Inspect browser console, network, and performance diagnostics.',
 }
 
 export function mcpServerNamespace(description: string): string | null {
-  const authoritative = /; namespace "([^"]+)"\]/u.exec(description)?.[1]
+  const authoritative = /; namespace "([^"]+)"(?:;[^\]]*)?\]/u.exec(description)?.[1]
   if (authoritative) return authoritative
   return /^\[[^\]]+ MCP server "([^"]+)"; original tool "/u.exec(description)?.[1] ?? null
 }
 
+export function mcpNamespaceDescription(entries: readonly DiscoveryEntry[], namespace: string) {
+  for (const entry of entries) {
+    if (entry.namespace !== 'mcp' || entryNamespace(entry) !== namespace) continue
+    const metadata = /; server description "([^"]+)"\]/u.exec(entry.description)?.[1]
+    if (metadata?.trim()) return metadata.trim()
+  }
+  return 'Connected MCP server.'
+}
+
 export function entryNamespace(entry: DiscoveryEntry): string {
-  if (entry.namespace !== 'mcp') return 'native'
-  return mcpServerNamespace(entry.description)?.toLowerCase() ?? ''
+  if (entry.namespace !== 'mcp') return entry.namespace
+  const namespace = mcpServerNamespace(entry.description)?.toLowerCase() ?? ''
+  return Object.hasOwn(NATIVE_NAMESPACE_DESCRIPTIONS, namespace)
+    ? `mcp_${namespace}`
+    : namespace
 }
 
 export function availableNamespaces(entries: readonly DiscoveryEntry[]) {

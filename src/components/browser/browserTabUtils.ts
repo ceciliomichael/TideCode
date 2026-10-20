@@ -5,6 +5,8 @@ import {
 } from '../../types/browser'
 
 export interface BrowserTab {
+  initialUrl?: string
+  aiOwned?: boolean
   incognito: boolean
   partition: string
   faviconUrl: string
