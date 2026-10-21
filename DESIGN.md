@@ -1,5 +1,7 @@
 # Design
 
+Workspace memory (2026-10-21): keep saving instruction-driven through normal file tools. When disabled, inject no workspace-memory instructions, index, or disabled notice. When enabled, tell the AI when to read and save, update existing topics, and correct stale facts. Detail files hold reusable knowledge; TideCode owns the generated MEMORY.md index.
+
 ## User-facing errors (2026-10-20)
 
 Application errors use the browser screenshot notification's neutral raised surface, subtle border, compact typography, shadow, dismiss button, and action styling. Transient action failures use the global, timed, hover/focus-pausing notification host; persistent file, settings, and connection problems remain visible in their own panels using the same shared surface. Do not use competing red error banners or expose raw exception messages, stack traces, local paths, or numeric engine codes as primary error copy. Preserve validation next to its field and preserve destructive confirmation styling. Developer-facing tool/terminal diagnostics and generated-content errors remain available separately or behind a disclosure.

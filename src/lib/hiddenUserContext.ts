@@ -89,15 +89,8 @@ export function buildWorkspaceInstructionsHiddenContext(
 
 export function buildWorkspaceMemoryHiddenContext(input: {
   content?: string | null
-  enabled: boolean
   revision?: string | null
 }): HiddenUserContext {
-  if (!input.enabled) {
-    return wrapHiddenUserContext(
-      WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND, 'disabled',
-      renderInjectedPrompt('workspaceMemoryDisabled'),
-    )
-  }
   const content = input.content?.trim() ?? ''
   const state = input.revision ? `enabled:${input.revision}` : 'enabled:missing'
   const memoryIndex = content

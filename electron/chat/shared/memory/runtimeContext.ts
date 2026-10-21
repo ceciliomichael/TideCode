@@ -61,14 +61,15 @@ export async function applyWorkspaceMemoryContext(
   optionalMemoryEnabled: boolean,
 ): Promise<ModelMessage[]> {
   const projected = stripWorkspaceMemoryContextsFromMessages(messages)
-  if (!workspaceRootPath) return projected
+  if (!workspaceRootPath || !optionalMemoryEnabled) {
+    return projected
+  }
 
-  const memory = optionalMemoryEnabled ? await refreshWorkspaceMemoryIndex(workspaceRootPath) : null
+  const memory = await refreshWorkspaceMemoryIndex(workspaceRootPath)
 
   const contexts = [
     buildWorkspaceMemoryHiddenContext({
       content: memory?.content ?? null,
-      enabled: optionalMemoryEnabled,
       revision: memory?.revision ?? null,
     }),
   ]

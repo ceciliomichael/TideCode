@@ -1,5 +1,7 @@
 # Durable project knowledge
 
+- On 2026-10-21 the user confirmed that shared workspace MEMORY.md should remain instruction-driven without a separate memory model call or dedicated tool. Disabled memory should inject no notice or instructions. Enabled instructions should be easy to follow, with TideCode managing the generated index and the AI maintaining topic files.
+
 - On 2026-10-21 the user confirmed that edit and patch must continue to run through exec and approved deterministic recovery of misplaced string payloads, exact bare bindings, and unique case/underscore/hyphen naming mismatches. Preserve source validation and reject conflicting or ambiguous interpretations rather than guessing unrelated names.
 
 - On 2026-10-21 the user requested editable Markdown sources for injected user-role instructions, separate from system prompt files. Keep dynamically generated compaction, tool results, and actual runtime values in code rather than migrating them to Markdown.

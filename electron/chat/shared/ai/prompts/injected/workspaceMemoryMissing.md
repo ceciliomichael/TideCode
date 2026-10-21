@@ -1,1 +1,1 @@
-No MEMORY.md index currently exists. Workspace memory is still enabled; create the first indexed detail entry when persistent workspace memory becomes useful.
+No MEMORY.md index currently exists. When useful knowledge should carry into future chats, create the first topic file under .tidecode/memory/details/. TideCode will generate the index on the next refresh.

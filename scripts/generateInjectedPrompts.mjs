@@ -5,7 +5,7 @@ const directory = path.join(root,'electron/chat/shared/ai/prompts/injected')
 const names = [
  'agentMode','planMode','executionSandbox','executionFullAccess',
  'workspaceInstructions','workspaceInstructionsChanged','workspaceMemoryEnabled',
- 'workspaceMemoryDisabled','workspaceMemoryIndex','workspaceMemoryMissing',
+ 'workspaceMemoryIndex','workspaceMemoryMissing',
  'terminalEnvironment','terminalEnvironmentUnavailable',
  'pythonEnvironment','pythonEnvironmentUnavailable',
 ]
