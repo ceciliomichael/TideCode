@@ -57,6 +57,7 @@ export function ProjectThreadSelector({
   const menuStyle = useFloatingMenuPosition({
     anchorRef: buttonRef,
     isOpen,
+    horizontalAlignment: 'center',
     matchAnchorWidth: false,
     menuRef,
   })

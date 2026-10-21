@@ -14,6 +14,7 @@ interface UseFloatingMenuPositionInput {
   positionKey?: string | number | boolean | null
   preferredPlacement?: 'above' | 'below'
   preferredHorizontalPlacement?: 'left' | 'right'
+  horizontalAlignment?: 'left' | 'center'
 }
 
 const DEFAULT_OFFSET = 6
@@ -57,8 +58,24 @@ export function resolveFloatingMenuHorizontalPlacement({
   if (preferredSpace >= menuWidth || preferredSpace >= alternateSpace) {
     return preferredPlacement
   }
-
   return preferredPlacement === 'left' ? 'right' : 'left'
+}
+
+export function resolveFloatingMenuCenteredLeft({
+  anchorLeft,
+  anchorWidth,
+  menuWidth,
+  maxLeft,
+  minLeft,
+}: {
+  anchorLeft: number
+  anchorWidth: number
+  menuWidth: number
+  maxLeft: number
+  minLeft: number
+}) {
+  const centeredLeft = anchorLeft + (anchorWidth - menuWidth) / 2
+  return Math.min(Math.max(centeredLeft, minLeft), maxLeft)
 }
 
 export function resolveFloatingMenuSideTop({
@@ -127,6 +144,7 @@ export function useFloatingMenuPosition({
   positionKey = null,
   preferredPlacement = 'below',
   preferredHorizontalPlacement,
+  horizontalAlignment = 'left',
 }: UseFloatingMenuPositionInput) {
   const [isPositioned, setIsPositioned] = useState(false)
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({
@@ -238,7 +256,15 @@ export function useFloatingMenuPosition({
       } else if (horizontalPlacement === 'left') {
         unclampedLeft = anchorRect.left - menuWidth - offset
       }
-      const left = Math.min(Math.max(unclampedLeft, minLeft), maxLeft)
+      const left = horizontalAlignment === 'center' && !horizontalPlacement
+        ? resolveFloatingMenuCenteredLeft({
+            anchorLeft: anchorRect.left,
+            anchorWidth: anchorRect.width,
+            menuWidth,
+            maxLeft,
+            minLeft,
+          })
+        : Math.min(Math.max(unclampedLeft, minLeft), maxLeft)
       let top: number
       if (horizontalPlacement) {
         const minTop = viewportTop + minViewportMargin
@@ -303,6 +329,7 @@ export function useFloatingMenuPosition({
     positionKey,
     preferredPlacement,
     preferredHorizontalPlacement,
+    horizontalAlignment,
   ])
 
   const resolvedMenuStyle: CSSProperties = {

@@ -1,11 +1,30 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  resolveFloatingMenuCenteredLeft,
   resolveFloatingMenuHorizontalPlacement,
   resolveFloatingMenuPlacement,
   resolveFloatingMenuPointPosition,
   resolveFloatingMenuSideTop,
 } from '../src/hooks/useFloatingMenuPosition'
+
+test('centered floating menus align to the anchor and clamp to viewport margins', () => {
+  assert.equal(resolveFloatingMenuCenteredLeft({
+    anchorLeft: 100,
+    anchorWidth: 300,
+    menuWidth: 200,
+    minLeft: 8,
+    maxLeft: 792,
+  }), 150)
+
+  assert.equal(resolveFloatingMenuCenteredLeft({
+    anchorLeft: 10,
+    anchorWidth: 100,
+    menuWidth: 240,
+    minLeft: 8,
+    maxLeft: 792,
+  }), 8)
+})
 
 test('floating menus keep the preferred side when it has enough room', () => {
   assert.equal(resolveFloatingMenuPlacement({
