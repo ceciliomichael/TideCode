@@ -1,5 +1,7 @@
 # Durable project knowledge
 
+- On 2026-10-21 the user confirmed that edit and patch must continue to run through exec and approved deterministic recovery of misplaced string payloads, exact bare bindings, and unique case/underscore/hyphen naming mismatches. Preserve source validation and reject conflicting or ambiguous interpretations rather than guessing unrelated names.
+
 - On 2026-10-21 the user requested editable Markdown sources for injected user-role instructions, separate from system prompt files. Keep dynamically generated compaction, tool results, and actual runtime values in code rather than migrating them to Markdown.
 
 - On 2026-10-21 the user requested no em dashes in responses. The response prompt applies this rule to prose and generated UI text.
@@ -43,7 +45,7 @@
 - Resource/speed optimizations must retain existing UX and user state. The user specifically wants desktop Send to display the bubble immediately; preserve editing, queues, cancellation, attachments and navigation when making presentation optimistic.
 - Distinguish current checkout behavior, installed application measurements, and historical profiling reports. Do not attribute installed-process resource use to a source change without establishing artifact parity.
 
-- For the sidebar project selector, preserve two-row project items, let hover highlighting follow the pointer, and keep the ellipsis action's hover separate from the project row. Do not show checkmarks in the project dropdown. Choosing a project should immediately filter history to it and retain that filter while its new conversation is created. Keep Chats in the history filter, not the project dropdown.
+- For the sidebar project selector, preserve two-row project items and let row highlighting follow hover. On desktop, reveal the ellipsis action on row hover; give its icon its own scale/color hover feedback and tooltip to the right of the icon, above the dropdown menus, without a button background. Hovering the icon also highlights its project row without selecting it. The Rename/remove actions menu opens at the icon's click position, like the Explorer context menu, and stays inside the viewport; close the tooltip while that menu is open. Do not show checkmarks in the project dropdown. Choosing a project should immediately filter history to it and retain that filter while its new conversation is created. Keep Chats in the history filter, not the project dropdown.
 
 - Opening/reopening Diff must show its known changed-file list immediately; refresh metadata and hydrate previews without clearing the list while full file contents load. This includes accurate Staged/Unstaged +/− counts alongside file names; do not defer counts until preview contents arrive.
 

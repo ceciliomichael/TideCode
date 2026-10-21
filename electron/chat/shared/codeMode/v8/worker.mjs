@@ -12,6 +12,50 @@ function bootstrap(callTool, startTimer, cancelTimer, configuration) {
   const objectPrototype = Object.prototype
   const getPrototypeOf = Object.getPrototypeOf
   const arrayIsArray = Array.isArray
+  const hasOwn = Object.hasOwn
+  const recoveries = new Set()
+  let recoveryBytes = 0
+  const noteRecovery = (note) => {
+    const boundedNote = note.slice(0, 400)
+    const bytes = byteLength(stringify(boundedNote)) + 1
+    if (!recoveries.has(boundedNote) && recoveries.size < 128 && recoveryBytes + bytes <= 8000) {
+      recoveries.add(boundedNote)
+      recoveryBytes += bytes
+    }
+  }
+  const payloadValues = Object.freeze(Object.assign(Object.create(null), config.payloads))
+  const payloadNames = Object.keys(payloadValues)
+  const normalizeName = (name) => name.replace(/[_-]/g, '').toLowerCase()
+  const normalizedNames = new Map()
+  for (const name of payloadNames) {
+    const normalized = normalizeName(name)
+    const candidates = normalizedNames.get(normalized) ?? []
+    candidates.push(name)
+    normalizedNames.set(normalized, candidates)
+  }
+  const payloadProxy = new Proxy(payloadValues, {
+    get(target, name) {
+      if (typeof name !== 'string') {
+        return undefined
+      }
+      if (hasOwn(target, name)) {
+        return target[name]
+      }
+      // JSON serialization and Promise assimilation probe these properties.
+      if (name === 'toJSON' || name === 'then') {
+        return undefined
+      }
+      const candidates = normalizedNames.get(normalizeName(name)) ?? []
+      if (candidates.length === 1) {
+        noteRecovery(`Recovered exec payload: "${name}" resolved to "${candidates[0]}".`)
+        return target[candidates[0]]
+      }
+      if (candidates.length > 1) {
+        throw new NativeError(`Ambiguous exec payload "${name}". Candidates: ${candidates.join(', ')}. Use an exact key.`)
+      }
+      throw new NativeError(`Unknown exec payload "${name}". Available keys: ${payloadNames.join(', ') || '(none)'}.`)
+    },
+  })
   const byteLength = (text) => {
     let bytes = 0
     for (const character of text) {
@@ -23,19 +67,35 @@ function bootstrap(callTool, startTimer, cancelTimer, configuration) {
     }
     return bytes
   }
-  const serialize = (value) => stringify(value, (_key, item) => {
-    const kind = typeof item
-    if (kind === 'function' || kind === 'symbol' || kind === 'bigint') {
-      throw new TypeError('Tool inputs and returned output must be JSON-compatible data. Convert functions, symbols, and BigInts explicitly.')
-    }
-    if (item && kind === 'object' && !arrayIsArray(item)) {
-      const prototype = getPrototypeOf(item)
-      if (prototype !== null && prototype !== objectPrototype) {
-        throw new TypeError('Tool inputs and returned output must be JSON-compatible data. Await Promises and convert Map/Set/class instances explicitly.')
+  const serialize = (value, toolName) => {
+    const argumentPaths = new WeakMap()
+    let isRoot = true
+    return stringify(value, function (key, item) {
+      let argumentPath = ''
+      if (toolName && !isRoot) {
+        const parentPath = argumentPaths.get(this) ?? ''
+        argumentPath = arrayIsArray(this) ? `${parentPath}[${key}]` : `${parentPath}.${key}`
+        if (item === undefined) {
+          throw new TypeError(`Cannot call tools.${toolName}: arguments${argumentPath} is undefined. Supply a value or omit the optional property.`)
+        }
       }
-    }
-    return item
-  })
+      if (toolName && item && typeof item === 'object') {
+        argumentPaths.set(item, argumentPath)
+      }
+      isRoot = false
+      const kind = typeof item
+      if (kind === 'function' || kind === 'symbol' || kind === 'bigint') {
+        throw new TypeError('Tool inputs and returned output must be JSON-compatible data. Convert functions, symbols, and BigInts explicitly.')
+      }
+      if (item && kind === 'object' && !arrayIsArray(item)) {
+        const prototype = getPrototypeOf(item)
+        if (prototype !== null && prototype !== objectPrototype) {
+          throw new TypeError('Tool inputs and returned output must be JSON-compatible data. Await Promises and convert Map/Set/class instances explicitly.')
+        }
+      }
+      return item
+    })
+  }
   const location = (error) => {
     const match = /tidecode-exec\.js:(\d+):(\d+)/.exec(nativeString(error?.stack ?? ''))
     if (!match) return undefined
@@ -77,7 +137,7 @@ function bootstrap(callTool, startTimer, cancelTimer, configuration) {
           error.name = 'UnknownTool'
           throw error
         }
-        const input = serialize(args)
+        const input = serialize(args, path)
         if (byteLength(input) > config.limits.maxPayloadBytes) {
           throw new RangeError(`Tool arguments exceeded the ${config.limits.maxPayloadBytes}-byte limit.`)
         }
@@ -139,11 +199,24 @@ function bootstrap(callTool, startTimer, cancelTimer, configuration) {
   }
   Object.defineProperties(globalThis, {
     tools: { value: proxyFor('') },
-    payloads: { value: Object.freeze(Object.assign(Object.create(null), config.payloads)) },
+    payloads: { value: payloadProxy },
     setTimeout: { value: schedule },
     clearTimeout: { value: clear },
     console: { value: Object.freeze({ log, info: log, warn: log, error: log, debug: log }) },
   })
+  // Only expose exact, ordinary identifiers. Never replace runtime or ambient globals.
+  const reservedNames = new Set(('await break case catch class const continue debugger default delete do else enum export extends false finally for function if implements import in instanceof interface let new null package private protected public return static super switch this throw true try typeof var void while with yield arguments eval process require module exports __dirname __filename Buffer fetch global Reference ExternalCopy ivm').split(' '))
+  for (const name of payloadNames) {
+    if (!/^[A-Za-z_$][\w$]*$/.test(name) || reservedNames.has(name) || name in globalThis) {
+      continue
+    }
+    Object.defineProperty(globalThis, name, {
+      get() {
+        noteRecovery(`Recovered exec binding: "${name}" resolved to payloads["${name}"].`)
+        return payloadValues[name]
+      },
+    })
+  }
   const receive = (serialized) => {
     const message = parse(serialized)
     if (message.type === 'tool-result') {
@@ -170,7 +243,7 @@ function bootstrap(callTool, startTimer, cancelTimer, configuration) {
       if (output !== undefined && byteLength(output) > config.limits.maxOutputBytes) {
         return stringify({ type: 'result', output: { message: `Code Mode output exceeded the ${config.limits.maxOutputBytes}-byte limit. Return a smaller summary from the program.` }, outputTruncated: true })
       }
-      return stringify({ type: 'result', output: output === undefined ? undefined : parse(output), outputTruncated: false })
+      return stringify({ type: 'result', output: output === undefined ? undefined : parse(output), outputTruncated: false, recoveries: [...recoveries] })
     } catch (error) {
       return stringify({ type: 'error', diagnostic: diagnostic(error) })
     }

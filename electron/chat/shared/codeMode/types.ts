@@ -34,6 +34,7 @@ export interface CodeModeToolCallRecord {
 }
 
 export interface CodeModeExecutionResult {
+  recoveries?: string[]
   diagnostic?: {
     kind: string
     location?: { line: number; column: number }

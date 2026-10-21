@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resolveFloatingMenuPlacement } from '../src/hooks/useFloatingMenuPosition'
+import {
+  resolveFloatingMenuHorizontalPlacement,
+  resolveFloatingMenuPlacement,
+  resolveFloatingMenuPointPosition,
+  resolveFloatingMenuSideTop,
+} from '../src/hooks/useFloatingMenuPosition'
 
 test('floating menus keep the preferred side when it has enough room', () => {
   assert.equal(resolveFloatingMenuPlacement({
@@ -27,4 +32,61 @@ test('floating menus choose the roomier side when neither side can fully fit', (
     menuHeight: 220,
     preferredPlacement: 'below',
   }), 'above')
+})
+
+test('horizontal floating menus keep the preferred side when it has enough room', () => {
+  assert.equal(resolveFloatingMenuHorizontalPlacement({
+    availableLeft: 240,
+    availableRight: 220,
+    menuWidth: 180,
+    preferredPlacement: 'right',
+  }), 'right')
+})
+
+test('horizontal floating menus flip left when the right side cannot fit', () => {
+  assert.equal(resolveFloatingMenuHorizontalPlacement({
+    availableLeft: 260,
+    availableRight: 120,
+    menuWidth: 180,
+    preferredPlacement: 'right',
+  }), 'left')
+})
+
+test('pointer menus open at the click position and clamp to viewport margins', () => {
+  const viewport = {
+    menuHeight: 90,
+    menuWidth: 180,
+    minViewportMargin: 8,
+    viewportBottom: 600,
+    viewportLeft: 0,
+    viewportRight: 800,
+    viewportTop: 0,
+  }
+
+  assert.deepEqual(resolveFloatingMenuPointPosition({
+    ...viewport,
+    pointX: 120,
+    pointY: 80,
+  }), {
+    left: 120,
+    top: 80,
+  })
+  assert.deepEqual(resolveFloatingMenuPointPosition({
+    ...viewport,
+    pointX: 790,
+    pointY: 590,
+  }), {
+    left: 612,
+    top: 502,
+  })
+})
+
+test('side menus align near the clicked button and open upward near the viewport edge', () => {
+  assert.equal(resolveFloatingMenuSideTop({
+    anchorBottom: 356,
+    anchorTop: 320,
+    maxTop: 292,
+    menuHeight: 100,
+    minTop: 8,
+  }), 256)
 })

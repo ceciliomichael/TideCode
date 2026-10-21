@@ -18,9 +18,9 @@ Branching keeps visible messages through the selected assistant response plus th
 
 Splitting reasoning/tools from final response text must preserve the saved response identity on the actionable final text. Branching copies the complete original message, including its reasoning/tool history, rather than its shortened presentation fragment.
 
-## Sidebar project selector (2026-10-20)
+## Sidebar project selector (2026-10-21)
 
-Project rows keep the title above the path or description, with hover highlighting following the pointer and the ellipsis action's neutral button hover kept separate from the row. The project dropdown shows no checkmarks. Choosing a project immediately filters history to that project and keeps the filter selected while its new conversation is created. Chats belongs in the history filter, not the project dropdown. The reasoning-effort dropdown prefers opening below and flips only when viewport space requires it.
+Project rows keep the title above the path or description, with hover highlighting following the pointer. On desktop, the ellipsis action appears on row hover; its icon alone gets scale and color hover feedback plus a tooltip to the right of the icon, above the dropdown menus. Hovering the icon also highlights its project row without selecting it. The project actions menu opens at the icon's click position, like the Explorer context menu, and stays inside the viewport; its tooltip closes while the menu is open. The project dropdown shows no checkmarks. Choosing a project immediately filters history to that project and keeps the filter selected while its new conversation is created. Chats belongs in the history filter, not the project dropdown. The reasoning-effort dropdown prefers opening below and flips only when viewport space requires it.
 
 ## TideUI component language and visual system (2026-10-20)
 

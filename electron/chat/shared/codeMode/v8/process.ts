@@ -35,6 +35,7 @@ export function resolveCodeModeWorker() {
 }
 
 export interface WorkerResult {
+  recoveries?: string[]
   output?: unknown
   outputTruncated?: boolean
 }
@@ -96,6 +97,12 @@ export function runCodeModeProcess(options: {
       }
       const data = message as Record<string, unknown>
       if (data.type === 'result') {
+        const recoveries = data.recoveries
+        if (recoveries !== undefined && (!Array.isArray(recoveries) || recoveries.length > 128
+          || recoveries.some((note) => typeof note !== 'string' || note.length > 400))) {
+          finish(new CodeModeRuntimeError('ExecutionError', 'Invalid Code Mode recovery receipt.'))
+          return
+        }
         const output = JSON.stringify(data.output)
         if (output !== undefined && Buffer.byteLength(output, 'utf8') > options.limits.maxOutputBytes) {
           finish(undefined, {
@@ -103,7 +110,7 @@ export function runCodeModeProcess(options: {
             outputTruncated: true,
           })
         } else {
-          finish(undefined, { output: data.output, outputTruncated: data.outputTruncated === true })
+          finish(undefined, { output: data.output, outputTruncated: data.outputTruncated === true, recoveries: recoveries as string[] | undefined })
         }
       } else if (data.type === 'error') {
         const diagnostic = data.diagnostic as CodeModeDiagnostic

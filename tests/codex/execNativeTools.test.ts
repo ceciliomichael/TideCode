@@ -18,6 +18,91 @@ async function withWorkspace(run: (workspaceRootPath: string) => Promise<void>) 
   finally { await fs.rm(workspaceRootPath, { recursive: true, force: true }) }
 }
 
+test('exec recovers misplaced payloads and mismatched references for real edit and patch calls', async () => withWorkspace(async (workspaceRootPath) => {
+  const target = path.join(workspaceRootPath, 'sample.ts')
+  const original = 'const offset = 6\r\n'
+  const replacement = 'const text = `literal ${value}`; // C:\\folder\r\n'
+  await fs.writeFile(target, original)
+  const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
+  try {
+    const api = bundle.tools.exec as { execute: (input: unknown, options: unknown) => Promise<{ status: string; body?: string }> }
+    const options = { messages: [], toolCallId: 'payload-recovery' }
+    const edited = await api.execute({
+      code: 'await tools.available.get({ name: "tools.edit" }); return await tools.edit({ changes: [{ path: "sample.ts", oldText: payloads.before_text, newText: afterText }] });',
+      payloads: { beforeText: original },
+      afterText: replacement,
+    }, options)
+    assert.equal(edited.status, 'success', edited.body)
+    assert.equal(await fs.readFile(target, 'utf8'), replacement)
+    assert.match(edited.body ?? '', /included top-level "afterText"/)
+    assert.match(edited.body ?? '', /"before_text" resolved to "beforeText"/)
+    assert.match(edited.body ?? '', /Recovered exec binding/)
+
+    const patched = await api.execute({
+      code: 'await tools.available.get({ name: "tools.patch" }); return await tools.patch({ patch: payloads.patch_text });',
+      patchText: '*** Begin Patch\n*** Update File: sample.ts\n@@\n-' + replacement.trimEnd() + '\n+const offset = 8\n*** End Patch',
+    }, options)
+    assert.equal(patched.status, 'success', patched.body)
+    assert.equal(await fs.readFile(target, 'utf8'), 'const offset = 8\r\n')
+    assert.match(patched.body ?? '', /"patch_text" resolved to "patchText"/)
+
+    const duplicate = await api.execute({ code: 'return payloads.text;', payloads: { text: 'same' }, text: 'same' }, options)
+    assert.equal(duplicate.status, 'success', duplicate.body)
+    const conflict = await api.execute({
+      code: 'return await tools.edit({ changes: [{ path: "sample.ts", oldText: "const offset = 8", newText: payloads.text }] });',
+      payloads: { text: 'first' }, text: 'second',
+    }, options)
+    assert.equal(conflict.status, 'error')
+    assert.match(conflict.body ?? '', /different values/)
+    assert.equal(await fs.readFile(target, 'utf8'), 'const offset = 8\r\n')
+  } finally {
+    await bundle.codeModeExecutor.dispose()
+  }
+}))
+
+test('exec payload recovery preserves edit ambiguity and patch validation safeguards', async () => withWorkspace(async (workspaceRootPath) => {
+  const target = path.join(workspaceRootPath, 'sample.txt')
+  const original = 'same\nsame\n'
+  await fs.writeFile(target, original)
+  const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
+  try {
+    const edited = await execute(bundle, 'await tools.available.get({ name: "tools.edit" }); return await tools.edit({ changes: [{ path: "sample.txt", oldText: payloads.before_text, newText: afterText }] });', { beforeText: 'same', afterText: 'changed' })
+    assert.equal(edited.status, 'error')
+    assert.match(edited.body ?? '', /2 matches/)
+    const patched = await execute(bundle, 'await tools.available.get({ name: "tools.patch" }); return await tools.patch({ patch: payloads.patch_text });', { patchText: '*** Begin Patch\n*** Update File: sample.txt\n@@\n-missing\n+changed\n*** End Patch' })
+    assert.equal(patched.status, 'error')
+    const ambiguous = await execute(bundle, 'return await tools.patch({ patch: payloads.PATCH_TEXT });', { patchText: 'first', patch_text: 'second' })
+    assert.equal(ambiguous.status, 'error')
+    assert.match(ambiguous.body ?? '', /Ambiguous exec payload/)
+    assert.equal(await fs.readFile(target, 'utf8'), original)
+  } finally {
+    await bundle.codeModeExecutor.dispose()
+  }
+}))
+
+test('exec validates recovered payloads against the existing type, name, count and byte limits', async () => withWorkspace(async (workspaceRootPath) => {
+  const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
+  try {
+    const schema = await asSchema(bundle.tools.exec.inputSchema).jsonSchema
+    assert.deepEqual(schema.additionalProperties, { type: 'string' })
+    const api = bundle.tools.exec as { execute: (input: unknown, options: unknown) => Promise<{ status: string; body?: string; semantics?: { tool_call_count: number } }> }
+    const cases = [
+      { input: { text: 42 }, error: /must be a string/ },
+      { input: { ['__proto__']: 'blocked' }, error: /Invalid Code Mode payload key/ },
+      { input: Object.fromEntries(Array.from({ length: 65 }, (_, index) => [`text${index}`, 'text'])), error: /64-item limit/ },
+      { input: { text: 'x'.repeat(2_000_001) }, error: /byte limit/ },
+    ]
+    for (const { input, error } of cases) {
+      const result = await api.execute({ code: 'return 1;', ...input }, { messages: [], toolCallId: 'invalid-recovered-payload' })
+      assert.equal(result.status, 'error')
+      assert.match(result.body ?? '', error)
+      assert.equal(result.semantics?.tool_call_count ?? 0, 0)
+    }
+  } finally {
+    await bundle.codeModeExecutor.dispose()
+  }
+}))
+
 async function execute(bundle: Awaited<ReturnType<typeof createAgentToolBundle>>, code: string, payloads?: Record<string, string>) {
   const api = bundle.tools.exec as { execute: (input: unknown, options: unknown) => Promise<unknown> }
   return api.execute({ code, ...(payloads ? { payloads } : {}) }, {

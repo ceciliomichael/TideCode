@@ -6,7 +6,7 @@ import { getApiInstructions, getExecInstructions } from '../registry/documentati
 
 const EXEC_INPUT_SCHEMA = {
   type: 'object',
-  additionalProperties: false,
+  additionalProperties: { type: 'string' },
   properties: {
     code: {
       type: 'string',
@@ -17,13 +17,14 @@ const EXEC_INPUT_SCHEMA = {
       type: 'object',
       additionalProperties: { type: 'string' },
       maxProperties: 64,
-      description: 'Exact opaque text, available as payloads.<key>. Required for literal multiline source, replacements, patches, and documents. Preserve embedded backticks and ${...} as data instead of nesting them in code template literals.',
+      description: 'Exact opaque text, available as payloads.<key>. Use for literal multiline source, replacements, patches, and documents. Top-level string fields are merged into payloads; exact names win, with unique case/underscore/hyphen recovery. Nonreserved identifier keys are also available as bare bindings. Conflicts and ambiguous aliases reject. Preserve embedded backticks and ${...} as data instead of nesting them in code template literals.',
     },
   },
   required: ['code'],
 } as const
 
 interface ExecInput {
+  [key: string]: unknown
   code: string
   payloads?: Record<string, string>
 }
@@ -92,16 +93,32 @@ export function createExecTool(
           return { status: 'error', summary: 'Invalid exec payload values.', body: 'Every payload value must be a string.' }
         }
       }
+      const payloads: Record<string, string> = Object.assign(Object.create(null), input.payloads)
+      const recoveries: string[] = []
+      for (const [name, value] of Object.entries(input)) {
+        if (name === 'code' || name === 'payloads') {
+          continue
+        }
+        if (typeof value !== 'string') {
+          return { status: 'error', summary: 'Invalid exec payload value.', body: `Unexpected field "${name}" must be a string payload.` }
+        }
+        if (Object.hasOwn(payloads, name) && payloads[name] !== value) {
+          return { status: 'error', summary: 'Conflicting exec payloads.', body: `Payload "${name}" has different values at the top level and inside payloads. No code was executed.` }
+        }
+        payloads[name] = value
+        recoveries.push(`Recovered exec input: included top-level "${name}" in payloads.`)
+      }
       const result = await executor.run(code, {
         abortSignal: executionOptions.abortSignal,
-        payloads: input.payloads,
+        payloads,
       })
       const output = result.status !== 'success'
         ? ''
         : result.output === undefined
           ? formatImplicitCodeModeToolResults(result.toolCalls)
           : formatExplicitCodeModeOutput(result.output)
-      const body = [result.status === 'error' ? result.error ?? result.summary : result.summary, output]
+      recoveries.push(...(result.recoveries ?? []))
+      const body = [result.status === 'error' ? result.error ?? result.summary : result.summary, ...recoveries, output]
         .filter(Boolean).join('\n\n')
       return {
         body,
@@ -113,6 +130,7 @@ export function createExecTool(
           engine: result.engine ?? 'v8',
           operation: 'exec',
           output_limited: result.outputTruncated ?? false,
+          ...(recoveries.length ? { input_recoveries: recoveries } : {}),
           ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}),
           tool_call_count: result.toolCalls.length,
           tool_calls: result.toolCalls.map((call) => ({

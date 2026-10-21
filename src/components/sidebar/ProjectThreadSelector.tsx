@@ -2,6 +2,7 @@ import { ChevronDown, Folder, MoreHorizontal, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
+import { Tooltip } from '../Tooltip'
 import { RemoveProjectFolderDialog } from './RemoveProjectFolderDialog'
 import type { SidebarProjectOption } from './sidebarProjectThreads'
 import { resolveSidebarProjectLabel } from './sidebarProjectThreads'
@@ -31,6 +32,7 @@ export function ProjectThreadSelector({
   const [searchValue, setSearchValue] = useState('')
   const [highlightedProjectId, setHighlightedProjectId] = useState<string | null>(selectedProjectId)
   const [actionsProject, setActionsProject] = useState<SidebarProjectOption | null>(null)
+  const [actionsMenuPosition, setActionsMenuPosition] = useState<{ x: number; y: number } | null>(null)
   const [projectPendingRemoval, setProjectPendingRemoval] = useState<SidebarProjectOption | null>(null)
   const [isRemovingProject, setIsRemovingProject] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -60,9 +62,12 @@ export function ProjectThreadSelector({
   })
   const actionsMenuStyle = useFloatingMenuPosition({
     anchorRef: actionsButtonRef,
+    anchorPoint: actionsMenuPosition,
     isOpen: actionsProject !== null,
     matchAnchorWidth: false,
     menuRef: actionsMenuRef,
+    positionKey: actionsProject?.id ?? null,
+    preferredHorizontalPlacement: 'right',
   })
 
   useEffect(() => {
@@ -245,23 +250,35 @@ export function ProjectThreadSelector({
                             ) : null}
                           </span>
                         </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          aria-label={`Project actions for ${project.name}`}
-                          aria-haspopup="menu"
-                          aria-expanded={actionsProject?.id === project.id}
-                          onMouseEnter={() => setHighlightedProjectId(null)}
-                          onClick={(event) => {
-                            actionsButtonRef.current = event.currentTarget
-                            setActionsProject((currentValue) =>
-                              currentValue?.id === project.id ? null : project,
-                            )
-                          }}
-                          className="mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:rounded-xl hover:bg-surface-muted hover:text-foreground"
+                        <Tooltip
+                          content="Project actions"
+                          hideWhenTriggerExpanded
+                          panelClassName="!z-[1800]"
+                          side="right"
                         >
-                          <MoreHorizontal size={16} strokeWidth={2.1} />
-                        </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            aria-label={`Project actions for ${project.name}`}
+                            aria-haspopup="menu"
+                            aria-expanded={actionsProject?.id === project.id}
+                            onMouseEnter={() => setHighlightedProjectId(project.id)}
+                            onClick={(event) => {
+                              actionsButtonRef.current = event.currentTarget
+                              setActionsMenuPosition(
+                                event.detail > 0
+                                  ? { x: event.clientX, y: event.clientY }
+                                  : null,
+                              )
+                              setActionsProject((currentValue) =>
+                                currentValue?.id === project.id ? null : project,
+                              )
+                            }}
+                            className="mr-1 flex h-9 w-9 shrink-0 origin-center transform-gpu items-center justify-center rounded-full text-subtle-foreground transition-[color,opacity,transform] duration-150 ease-out hover:scale-110 hover:text-foreground md:hidden md:group-hover/project:flex"
+                          >
+                            <MoreHorizontal size={16} strokeWidth={2.1} />
+                          </button>
+                        </Tooltip>
                       </div>
                     )
                   })
@@ -281,7 +298,7 @@ export function ProjectThreadSelector({
               data-floating-menu-root="true"
               role="menu"
               aria-label={`Actions for ${actionsProject.name}`}
-              className="fixed z-[1600] min-w-[180px] rounded-xl border border-border bg-surface p-1 shadow-soft"
+              className="fixed z-[1600] min-w-[180px] overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-soft"
               style={actionsMenuStyle}
             >
               <button

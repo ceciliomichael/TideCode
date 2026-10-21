@@ -11,6 +11,61 @@ function registry(entries: AgentToolRegistryEntry[] = []): AgentToolRegistry {
   }
 }
 
+test('V8 recovers unique payload aliases and bare bindings without evaluating source text', async () => withExecutor(async (executor) => {
+  const literal = 'const text = `literal ${value}`;\\path\nnext line'
+  const result = await executor.run('return { normalized: payloads.patch_text, bare: patchText, exact: payloads.patchText, keys: Object.keys(payloads), copy: JSON.stringify(payloads) };', {
+    payloads: { patchText: literal },
+  })
+  assert.equal(result.status, 'success', result.error)
+  assert.deepEqual(result.output, {
+    normalized: literal, bare: literal, exact: literal, keys: ['patchText'], copy: JSON.stringify({ patchText: literal }),
+  })
+  assert.equal(result.recoveries?.length, 2)
+  const local = await executor.run('const patchText = "local"; return patchText;', { payloads: { patchText: literal } })
+  assert.equal(local.output, 'local')
+}))
+
+test('V8 rejects unknown and ambiguous payload references while exact keys take precedence', async () => withExecutor(async (executor) => {
+  const payloads = { patchText: 'first', patch_text: 'second' }
+  const ambiguous = await executor.run('return payloads.PATCH_TEXT;', { payloads })
+  assert.equal(ambiguous.status, 'error')
+  assert.match(ambiguous.error ?? '', /Ambiguous exec payload.*patchText, patch_text/)
+  const exact = await executor.run('return payloads.patch_text;', { payloads })
+  assert.equal(exact.output, 'second')
+  const unknown = await executor.run('return payloads.unrelated;', { payloads })
+  assert.equal(unknown.status, 'error')
+  assert.match(unknown.error ?? '', /Unknown exec payload "unrelated"/)
+}))
+
+test('V8 payload bindings cannot replace runtime globals or expose host globals', async () => withExecutor(async (executor) => {
+  const result = await executor.run('return { tools: typeof tools.available.get, json: typeof JSON.parse, process: typeof process, buffer: typeof Buffer, then: await payloads, reserved: payloads.tools };', {
+    payloads: { tools: 'text', JSON: 'text', process: 'text', Buffer: 'text', return: 'text' },
+  })
+  assert.equal(result.status, 'success', result.error)
+  assert.deepEqual(result.output, {
+    tools: 'function', json: 'function', process: 'undefined', buffer: 'undefined',
+    then: { tools: 'text', JSON: 'text', process: 'text', Buffer: 'text', return: 'text' }, reserved: 'text',
+  })
+}))
+
+test('V8 reports undefined nested tool arguments before invoking the tool', async () => {
+  let invoked = false
+  await withExecutor(async (executor) => {
+    const result = await executor.run('await tools.available.get({ name: "tools.echo" }); return await tools.echo({ changes: [{ newText: undefined }] });')
+    assert.equal(result.status, 'error')
+    assert.match(result.error ?? '', /arguments\[0\]\.changes\[0\]\.newText is undefined/)
+    assert.equal(invoked, false)
+    const empty = await executor.run('return;')
+    assert.equal(empty.status, 'success', empty.error)
+  }, [{
+    name: 'echo', namespace: 'test', description: 'Echo.', inputSchema: { type: 'object' },
+    execute: async () => {
+      invoked = true
+      return { status: 'success', summary: 'Echoed' }
+    },
+  }])
+})
+
 async function withExecutor(run: (executor: CodeModeExecutor) => Promise<void>, entries: AgentToolRegistryEntry[] = []) {
   const executor = new CodeModeExecutor(registry(entries))
   try {

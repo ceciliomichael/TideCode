@@ -27,3 +27,6 @@ Workspace memory index. Detailed entries live under `details/`. Treat entries as
 
 ## details/security
 - [TideCode Workspace, Tools, and Safety Boundaries](details/security/workspace-tools-and-safety.md) - updated 2026-10-11T19:22:58.443Z
+
+## details
+- [Sidebar Project Selector](details/sidebar-project-selector.md) - updated 2026-10-21T05:42:28.233Z

@@ -119,6 +119,7 @@ export async function executeCodeMode(options: ExecuteCodeModeOptions): Promise<
       engine: 'v8',
       executionId: options.executionId,
       output: result.output,
+      recoveries: result.recoveries,
       outputTruncated: result.outputTruncated,
       status: 'success',
       summary: failed > 0

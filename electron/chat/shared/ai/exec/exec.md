@@ -6,6 +6,30 @@ When supplying literal multiline file contents, replacement text, patches, or do
 
 If a source-writing exec fails to parse, move its literal source into `exec.payloads` before retrying. Do not resubmit the same malformed wrapper or remove valid syntax from the destination file to make the wrapper parse.
 
+Payload placement and references recover deterministically: extra top-level string fields are included in `payloads`; identical duplicate values are accepted and conflicting values reject before execution. Exact payload keys take precedence. When an exact key is absent, a unique match ignoring ASCII case, underscores, and hyphens is accepted (`payloads.patch_text` can read `patchText`). Multiple candidates or unrelated names reject. Keys that are ordinary nonreserved JavaScript identifiers are also available as exact bare bindings (`patchText`); local declarations still take precedence, and runtime globals and host-related names are never replaced. Recovery does not evaluate payload text, infer missing code, bypass tool validation, or change edit/patch source matching. Recovered references are noted in the execution receipt. Prefer exact explicit references when authoring a new call.
+
+Complete edit example:
+```json
+{
+  "code": "return await tools.edit({ changes: [{ path: 'src/example.ts', oldText: payloads.beforeText, newText: payloads.afterText }] });",
+  "payloads": {
+    "beforeText": "const offset = 6\n",
+    "afterText": "const offset = 8\n"
+  }
+}
+```
+
+Complete patch example:
+```json
+{
+  "code": "return await tools.patch({ patch: payloads.patchText });",
+  "payloads": {
+    "patchText": "*** Begin Patch\n*** Update File: src/example.ts\n@@\n-const offset = 6\n+const offset = 8\n*** End Patch"
+  }
+}
+```
+Obtain the exact tool contract first as required below. Both examples use payload strings as data; source backticks and `${...}` remain literal. Missing payload errors identify available keys; ambiguous errors require an exact key. Undefined values supplied inside tool arguments reject before serialization rather than silently disappearing; omit unused optional properties.
+
 Top-level await and return are supported. Use await or Promise.all/Promise.allSettled to order tool operations; ordinary JavaScript concurrency rules apply. Timers accept function callbacks and delays up to the execution deadline. Timers are cleared when execution ends. console.log/info/warn/error/debug are captured within the output limit and used when no explicit value is returned.
 
 Return JSON-compatible data. Convert Map, Set, class instances, BigInt, and other non-JSON values explicitly before returning them or passing them to a tool. Execution has time, memory, tool-concurrency, tool-call, payload, and output limits. Each exec starts with fresh JavaScript state; retrieved tool contracts remain available across calls in the same chat runtime.
