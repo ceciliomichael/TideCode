@@ -54,11 +54,25 @@ function installHtmlPreviewBridge(token: string, credential: string) {
       return
     }
     if (message.type === 'theme' && message.variables && typeof message.variables === 'object') {
-      for (const [name, value] of Object.entries(message.variables)) {
-        if (/^--(?:color|font|shadow|radius)-[\w-]+$/.test(name) && typeof value === 'string') document.documentElement.style.setProperty(name, value)
+      // Theme tokens are defaults, not inline declarations. Inline styles on
+      // :root would override the generated page's own CSS customizations.
+      let themeStyle = document.head.querySelector<HTMLStyleElement>('[data-tide-theme]')
+      if (!themeStyle) {
+        themeStyle = document.createElement('style')
+        themeStyle.setAttribute('data-tide-theme', '')
+        document.head.insertBefore(themeStyle, document.head.querySelector('style'))
       }
-      document.documentElement.dataset.theme = message.mode === 'dark' ? 'dark' : 'light'
-      document.documentElement.style.colorScheme = message.mode === 'dark' ? 'dark' : 'light'
+      const declarations: string[] = []
+      for (const [name, value] of Object.entries(message.variables)) {
+        if (/^--(?:color|font|shadow|radius)-[\w-]+$/.test(name) && typeof value === 'string') {
+          // Escape CSS text boundaries; values originate from computed theme
+          // tokens, not generated HTML or the preview's JavaScript.
+          declarations.push(`${name}:${value.replace(/[;{}]/g, '')}`)
+        }
+      }
+      const mode = message.mode === 'dark' ? 'dark' : 'light'
+      themeStyle.textContent = `:root{color-scheme:${mode};${declarations.join(';')}}`
+      document.documentElement.dataset.theme = mode
       return
     }
     if (message.type === 'state' && typeof message.isStreaming === 'boolean') {

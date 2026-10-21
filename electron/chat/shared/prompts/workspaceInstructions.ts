@@ -4,7 +4,6 @@ import type { ModelMessage } from 'ai'
 import {
   buildWorkspaceInstructionsHiddenContext,
   extractHiddenUserContexts,
-  WORKSPACE_INSTRUCTIONS_REVISION_CHANGED_PROMPT,
 } from '../../../../src/lib/hiddenUserContext'
 
 const WORKSPACE_INSTRUCTIONS_REPO_PATH = 'AGENTS.md'
@@ -78,7 +77,9 @@ function isWorkspaceInstructionsRevisionChanged(
   const previous = contexts.at(-2)
   return previous !== undefined
     && previous.context.state !== latest.context.state
-    && !latest.context.content.includes(WORKSPACE_INSTRUCTIONS_REVISION_CHANGED_PROMPT)
+    && !latest.context.content.includes(
+      buildWorkspaceInstructionsHiddenContext(latest.context.state, { revisionChanged: true }).content,
+    )
 }
 
 export function applyWorkspaceInstructionsContext(

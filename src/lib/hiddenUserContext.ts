@@ -5,6 +5,7 @@ import type {
   HiddenUserContext,
   Message,
 } from '../types/chat'
+import { renderInjectedPrompt } from './injectedPrompts'
 
 export const CHAT_MODE_HIDDEN_CONTEXT_KIND = 'chat_mode'
 export const EXECUTION_MODE_HIDDEN_CONTEXT_KIND = 'execution_mode'
@@ -13,9 +14,6 @@ export const TERMINAL_SHELL_HIDDEN_CONTEXT_KIND = 'terminal_shell'
 export const WORKSPACE_INSTRUCTIONS_HIDDEN_CONTEXT_KIND = 'workspace_instructions'
 export const WORKSPACE_DURABLE_MEMORY_HIDDEN_CONTEXT_KIND = 'workspace_durable_memory'
 export const WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND = 'workspace_memory'
-export const WORKSPACE_INSTRUCTIONS_REVISION_CHANGED_PROMPT =
-  'AGENTS.md changed. Read it again in full and treat it as authoritative workspace instructions. Follow every applicable requirement and exception; do not treat it as optional reference data.'
-
 const HIDDEN_USER_CONTEXT_PATTERN =
   /<hidden_user_context\b[^>]*>[\s\S]*?<\/hidden_user_context>/gu
 const PARSED_HIDDEN_USER_CONTEXT_PATTERN =
@@ -57,19 +55,13 @@ function buildPythonVenvState(environment: ChatRuntimeEnvironmentSnapshot) {
 function buildTerminalShellHiddenContext(environment: ChatRuntimeEnvironmentSnapshot): HiddenUserContext {
   const shell = environment.terminalShell
   const state = buildTerminalShellState(environment)
-  return wrapHiddenUserContext(TERMINAL_SHELL_HIDDEN_CONTEXT_KIND, state, shell
-    ? [
-        '<terminal_environment state="active_until_superseded">',
-        'This terminal shell context remains active until a later terminal_shell context supersedes it.',
-        '- Active terminal shell: ' + escapeHiddenUserContextMarkup(shell.label) + ' (' + escapeHiddenUserContextMarkup(shell.command) + ').',
-        '- Write terminal commands using this shell syntax. Do not assume another shell.',
-        '</terminal_environment>',
-      ].join('\\n')
-    : [
-        '<terminal_environment state="unavailable_until_superseded">',
-        'No active terminal shell is currently resolved. This state remains active until a later terminal_shell context supersedes it.',
-        '</terminal_environment>',
-      ].join('\\n'))
+  const content = shell
+    ? renderInjectedPrompt('terminalEnvironment', {
+        SHELL_LABEL: escapeHiddenUserContextMarkup(shell.label),
+        SHELL_COMMAND: escapeHiddenUserContextMarkup(shell.command),
+      })
+    : renderInjectedPrompt('terminalEnvironmentUnavailable')
+  return wrapHiddenUserContext(TERMINAL_SHELL_HIDDEN_CONTEXT_KIND, state, content)
 }
 
 function buildPythonVenvHiddenContext(environment: ChatRuntimeEnvironmentSnapshot): HiddenUserContext {
@@ -77,34 +69,22 @@ function buildPythonVenvHiddenContext(environment: ChatRuntimeEnvironmentSnapsho
   const state = buildPythonVenvState(environment)
   const venvLabel = venv && venv.relativePath !== venv.name && venv.relativePath !== '.'
     ? `${escapeHiddenUserContextMarkup(venv.name)} (${escapeHiddenUserContextMarkup(venv.relativePath)})`
-    : venv
-      ? escapeHiddenUserContextMarkup(venv.name)
-      : null
-  return wrapHiddenUserContext(PYTHON_VENV_HIDDEN_CONTEXT_KIND, state, venvLabel
-    ? [
-        '<python_environment state="active_until_superseded">',
-        'This Python environment context remains active until a later python_venv context supersedes it.',
-        `Python virtual environment activated: ${venvLabel}`,
-        '</python_environment>',
-      ].join('\\n')
-    : [
-        '<python_environment state="none_until_superseded">',
-        'No Python virtual environment is currently detected for this workspace. This state remains active until a later python_venv context supersedes it.',
-        '</python_environment>',
-      ].join('\\n'))
+    : venv ? escapeHiddenUserContextMarkup(venv.name) : null
+  const content = venvLabel
+    ? renderInjectedPrompt('pythonEnvironment', { VENV_LABEL: venvLabel })
+    : renderInjectedPrompt('pythonEnvironmentUnavailable')
+  return wrapHiddenUserContext(PYTHON_VENV_HIDDEN_CONTEXT_KIND, state, content)
 }
 
 export function buildWorkspaceInstructionsHiddenContext(
   revision: string,
   options: { revisionChanged?: boolean } = {},
 ): HiddenUserContext {
-  return wrapHiddenUserContext(WORKSPACE_INSTRUCTIONS_HIDDEN_CONTEXT_KIND, revision, [
-    '<workspace_instruction_context path="AGENTS.md" state="present">',
-    options.revisionChanged
-      ? WORKSPACE_INSTRUCTIONS_REVISION_CHANGED_PROMPT
-      : 'Read AGENTS.md in full and treat it as authoritative workspace instructions throughout this task. Follow every applicable requirement and exception; do not treat it as optional reference data.',
-    '</workspace_instruction_context>',
-  ].join('\n'))
+  return wrapHiddenUserContext(
+    WORKSPACE_INSTRUCTIONS_HIDDEN_CONTEXT_KIND,
+    revision,
+    renderInjectedPrompt(options.revisionChanged ? 'workspaceInstructionsChanged' : 'workspaceInstructions'),
+  )
 }
 
 export function buildWorkspaceMemoryHiddenContext(input: {
@@ -113,41 +93,20 @@ export function buildWorkspaceMemoryHiddenContext(input: {
   revision?: string | null
 }): HiddenUserContext {
   if (!input.enabled) {
-    return wrapHiddenUserContext(WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND, 'disabled', [
-      '<workspace_memory_context state="disabled_until_superseded">',
-      'Workspace memory is disabled.',
-      'Do not rely on, create, update, or request MEMORY.md or memory/details state while this setting remains disabled.',
-      '</workspace_memory_context>',
-    ].join('\n'))
+    return wrapHiddenUserContext(
+      WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND, 'disabled',
+      renderInjectedPrompt('workspaceMemoryDisabled'),
+    )
   }
-
   const content = input.content?.trim() ?? ''
   const state = input.revision ? `enabled:${input.revision}` : 'enabled:missing'
-  return wrapHiddenUserContext(WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND, state, [
-    '<workspace_memory_context state="enabled_until_superseded">',
-    'Workspace memory is enabled and active for this workspace.',
-    'Use and maintain workspace memory whenever confirmed information should carry across future chats in this workspace, even if no memory files exist yet.',
-    'Memory layout:',
-    '- .tidecode/memory/MEMORY.md is the compact index.',
-    '- .tidecode/memory/details/*.md contains focused detailed memory entries. Nested topic folders under details are allowed when useful.',
-    'MEMORY.md format rules:',
-    '- Keep it short and use Markdown links to detail files instead of copying full detail content into the index.',
-    '- Prefer one index line per topic in the form: `- [Topic](details/topic.md) - Short description.`',
-    '- When saving the first memory, create the relevant detail file and create MEMORY.md with its first index link.',
-    'Detail-file rules:',
-    '- Keep each file focused on one durable topic such as architecture, workflow, testing, preferences, or another clearly named project concern.',
-    '- Update an existing relevant detail file instead of creating duplicate memories for the same topic.',
-    '- Preserve useful confirmed facts, decisions, conventions, and preferences that should carry into future chats.',
-    '- Update or remove stale information when newer explicit instructions or verified workspace state supersede it.',
-    '- Do not save transient conversation wording, speculative claims, temporary debugging noise, secrets, credentials, or irrelevant personal information.',
-    'Use this context when relevant. Newer explicit user instructions and verified workspace state override stale memory.',
-    'Read only the linked detail file or files that are relevant to the current work instead of loading the whole details directory.',
-    'Use normal workspace file tools to create or update memory files and keep MEMORY.md links consistent; there is no dedicated memory tool.',
-    ...(content
-      ? ['', 'Current MEMORY.md index:', '', escapeHiddenUserContextMarkup(content)]
-      : ['', 'No MEMORY.md index currently exists. Workspace memory is still enabled; create the first indexed detail entry when persistent workspace memory becomes useful.']),
-    '</workspace_memory_context>',
-  ].join('\n'))
+  const memoryIndex = content
+    ? renderInjectedPrompt('workspaceMemoryIndex', { INDEX: escapeHiddenUserContextMarkup(content) })
+    : renderInjectedPrompt('workspaceMemoryMissing')
+  return wrapHiddenUserContext(
+    WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND, state,
+    renderInjectedPrompt('workspaceMemoryEnabled', { MEMORY_INDEX: memoryIndex }),
+  )
 }
 
 export function buildWorkspaceInstructionsTransition(input: {
@@ -165,73 +124,19 @@ export function buildWorkspaceInstructionsTransition(input: {
 }
 
 export function buildChatModeHiddenContext(chatMode: ChatMode): HiddenUserContext {
-  if (chatMode === 'plan') {
-    return wrapHiddenUserContext(CHAT_MODE_HIDDEN_CONTEXT_KIND, chatMode, [
-      '<chat_mode_context mode="plan" state="active_until_superseded">',
-      'Plan Mode is active from this message forward until a later chat_mode_context supersedes it.',
-      '- This context supersedes every earlier Agent or Plan chat_mode_context.',
-      '- Follow all applicable workspace instructions as additional constraints.',
-      '- Keep repository discovery read-only. Inspect the relevant source, tests, configuration, documentation, existing plans, and planning context before making recommendations.',
-      '- Make the plan goal-oriented. Use Goal as the primary top-level framing for what the plan is trying to achieve, rather than Outcome. Start from the user\'s goal and intended result, then connect each implementation change back to how it helps achieve that goal.',
-      '- Build an end-to-end implementation plan detailed enough to act as a strong handoff specification. Give the implementation agent enough repository context and design direction to execute confidently without unnecessary rediscovery, while leaving room for normal low-risk implementation judgment.',
-      '- Inspect enough of the repository to identify the files expected to be created, modified, deleted, or moved when repository evidence makes those paths knowable. Prefer exact repository-relative paths, but if a path or implementation detail cannot be determined safely during planning, state that uncertainty instead of inventing it.',
-      '- For each known planned file operation, include the repository-relative path and the expected operation: create, modify, delete, or move. Explain what should change there, the intended behavior, why that file is involved, and the important symbols, sections, interfaces, or integration points when useful.',
-      '- For moves, deletions, and new files, include the relevant source/destination, reference updates, responsibility changes, or rationale when those details materially help implementation.',
-      '- Give a sensible implementation order and note meaningful dependencies between changes. Cover behavior, interfaces, data flow, schemas, state transitions, failure cases, security, compatibility, migration or recovery behavior, and performance implications in proportion to the task.',
-      '- Define verification around the goal: identify the tests or checks that should be added, modified, or run, what important behavior they should prove, and the observable acceptance criteria that show the goal has been achieved.',
-      '- Favor concrete planning language. Broad phrases such as “update relevant files”, “refactor as needed”, “handle edge cases”, or “add tests” can be used as summaries, but expand them with the concrete files, behavior, rationale, or verification details that are already knowable and useful for handoff.',
-      '- Ask a focused question only when a material product or scope judgment cannot be resolved from the workspace.',
-      '- Do not implement source changes, run implementation commands, or proceed into implementation while Plan Mode is active. Implementation requires a later Agent Mode turn after user approval.',
-      '- Plan Mode tool contract: tools.plan.create({ content: string, title?: string }) creates the canonical plan. When an active plan needs revision, use tools.patch({ patch: string }) with an update hunk restricted to that exact active plan path.',
-      '- When plan Markdown contains backticks, quotes, code spans, or other arbitrary multiline text, pass the complete Markdown through the outer exec payloads object and call tools.plan.create with content: payloads.plan. Do not embed arbitrary Markdown directly in a JavaScript template literal.',
-       '- Plan Mode APIs are named in the compact exec catalog. Before first use of an authorized API, call tools.available.get({ name: "tools.plan.create" }) or get the exact other native name to retrieve its signature and instructions. tools.available.search returns names only.',
-      '- The active plan is the latest successful Plan presentation in conversation history. If no active plan exists, finish read-only discovery and call tools.plan.create when the plan is ready. Do not patch a plan before an active plan exists.',
-      '- Once an active plan exists, do not create another. Use tools.patch only to revise that active plan, with its exact path and current source as patch context.',
-      '- tools.patch is host-restricted in Plan Mode to updating the active plan. It cannot add, delete, move, or modify other files.',
-      '- Never mutate source files, tests, configuration, documentation, or other workspace files in Plan Mode. If a mutation API is unavailable, do not substitute another mutation mechanism.',
-      '- Discover currently authorized namespaces using tools.available.list({}). Namespaces are categories, not callable prefixes; list the namespace to obtain exact tools.* names. Retrieve contracts with tools.available.get. Terminal, source writes, and MCP tools are unavailable in Plan Mode.',
-      '- Plan Mode runtime policy permits read-only workspace APIs, skill APIs, tools.plan.create and restricted tools.patch; the host enforces the plan-artifact boundary.',
-      '- After a successful plan create or revision, return the normal Plan preview result instead of duplicating the full artifact in chat.',
-      '</chat_mode_context>',
-    ].join('\n'))
-  }
-
-  return wrapHiddenUserContext(CHAT_MODE_HIDDEN_CONTEXT_KIND, chatMode, [
-    '<chat_mode_context mode="agent" state="active_until_superseded">',
-    'Agent Mode is active from this message forward until a later chat_mode_context supersedes it.',
-    '- This context supersedes every earlier Agent or Plan chat_mode_context.',
-    '- Follow the latest compatible user request and all applicable workspace instructions.',
-    '- Questions, explanations, reviews, diagnoses, and advice requests do not authorize mutation. Clear build, fix, edit, update, migrate, remove, or explicit do-it requests do.',
-    '- Resolve low-risk technical choices from current evidence and existing patterns. Ask only when user-owned intent, material risk, irreversible behavior, or new authority is required.',
-    '- Read the smallest relevant source before changing it, preserve user work, stay in scope, and avoid unrelated cleanup or speculative refactors.',
-    '- When mutation is authorized, implement the complete requested change and run the narrowest decisive verification before reporting completion.',
-    '- When entering Agent Mode to implement a user-approved plan, continue from the latest approved plan in the conversation. Reuse its file scope and decisions instead of starting a new plan. A mode switch alone does not imply approval; check the user request and plan state.',
-     '- Discover the current Agent Mode namespaces with tools.available.list({}). List a namespace to find exact callable tools.* names, then retrieve their contracts with tools.available.get. A namespace is not part of the callable name.',
-     '- Use the active provider tool contract as authoritative. TideCode-owned APIs are invoked inside exec; provider-native tools may be exposed separately when supported.',
-    '</chat_mode_context>',
-  ].join('\n'))
+  return wrapHiddenUserContext(
+    CHAT_MODE_HIDDEN_CONTEXT_KIND, chatMode,
+    renderInjectedPrompt(chatMode === 'plan' ? 'planMode' : 'agentMode'),
+  )
 }
 
 export function buildExecutionModeHiddenContext(
   terminalExecutionMode: AppTerminalExecutionMode,
 ): HiddenUserContext {
-  const details = terminalExecutionMode === 'sandbox'
-    ? [
-        'Execution mode: sandbox.',
-        'Filesystem access is limited to the workspace. A loaded skill may provide a specific skill directory for its own referenced resources.',
-        'TideCode exec is restricted to registered tools in this mode. Direct host APIs and module loading are unavailable.',
-      ]
-    : [
-        'Execution mode: full access.',
-        'Filesystem tools and terminal commands may access paths outside the workspace only when required by the user request or a loaded skill.',
-        'TideCode exec remains restricted to registered tools in Full Access. This mode may broaden authorized paths, but it does not enable direct Node.js host APIs or module loading. Plan Mode remains planning-only.',
-      ]
-  return wrapHiddenUserContext(EXECUTION_MODE_HIDDEN_CONTEXT_KIND, terminalExecutionMode, [
-    `<execution_mode_context mode="${terminalExecutionMode}">`,
-    'This execution mode remains active until a later execution_mode_context supersedes it.',
-    ...details,
-    '</execution_mode_context>',
-  ].join('\n'))
+  return wrapHiddenUserContext(
+    EXECUTION_MODE_HIDDEN_CONTEXT_KIND, terminalExecutionMode,
+    renderInjectedPrompt(terminalExecutionMode === 'sandbox' ? 'executionSandbox' : 'executionFullAccess'),
+  )
 }
 
 export function getLatestHiddenUserContextState(

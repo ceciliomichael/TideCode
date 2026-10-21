@@ -266,7 +266,7 @@ app.whenReady().then(async () => {
       throw new Error('Interactive preview did not load')
     }
     let scriptFrame = await waitForPreview()
-    assert.equal(await run('document.querySelector("iframe").getAttribute("sandbox")'), 'allow-scripts', 'interactive preview retains opaque sandbox')
+    assert.equal(await run('document.querySelector("iframe").getAttribute("sandbox")'), 'allow-scripts allow-forms', 'interactive preview permits local form handling within its opaque sandbox')
     assert.equal(await scriptFrame.executeJavaScript('(() => { try { return typeof window.parent.fixture } catch (error) { return error.name } })()'), 'SecurityError', 'scripts cannot access the host application')
     await waitForHeight(2000)
     await scriptFrame.executeJavaScript('document.getElementById("increment").click(); void 0')
@@ -320,6 +320,44 @@ app.whenReady().then(async () => {
     assert.equal(await run('retainedAppFrame === document.querySelector("iframe")'), false, 'saved-message remount creates a new page')
     assert.equal(await scriptFrame.executeJavaScript('window.clicks'), 0, 'saved HTML starts its script without a Run step')
     await run('fixture.follow()')
+
+    const quizHtml = [
+      '```tidehtml\n',
+      '<form id="quiz"><label><input type="radio" name="answer" value="Jupiter" required>Jupiter</label><label><input type="radio" name="answer" value="Earth">Earth</label><button type="submit">Check my score</button><button type="reset">Try again</button></form>',
+      '<p id="score"></p>',
+      '<form id="external" action="https://example.com/blocked" method="post"><button type="submit">Submit externally</button></form>',
+      '<script>',
+      'const quiz = document.getElementById("quiz");',
+      'const score = document.getElementById("score");',
+      'quiz.addEventListener("submit", event => { event.preventDefault(); score.textContent = new FormData(quiz).get("answer") === "Jupiter" ? "1 out of 1" : "0 out of 1"; });',
+      'quiz.addEventListener("reset", () => { score.textContent = ""; });',
+      'window.quizReady = true;',
+      '</script>\n```',
+    ].join('')
+    await run(`fixture.replace(${JSON.stringify(quizHtml)}); fixture.finish()`)
+    let quizFrame
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const frame = getPreviewFrame()
+      if (frame && await frame.executeJavaScript('window.quizReady === true')) {
+        quizFrame = frame
+        break
+      }
+      await settle()
+    }
+    assert.ok(quizFrame, 'local quiz preview loads')
+    await quizFrame.executeJavaScript('document.querySelector("#quiz button[type=submit]").click(); void 0')
+    assert.equal(await quizFrame.executeJavaScript('document.getElementById("score").textContent'), '', 'required answers prevent premature scoring')
+    await quizFrame.executeJavaScript('document.querySelector("input[value=Jupiter]").click(); document.querySelector("#quiz button[type=submit]").click(); void 0')
+    assert.equal(await quizFrame.executeJavaScript('document.getElementById("score").textContent'), '1 out of 1', 'submit handler calculates quiz score')
+    await quizFrame.executeJavaScript('document.querySelector("#quiz button[type=reset]").click(); void 0')
+    assert.equal(await quizFrame.executeJavaScript('document.getElementById("score").textContent'), '', 'reset clears score')
+    assert.equal(await quizFrame.executeJavaScript('document.querySelector("#quiz input:checked") === null'), true, 'reset clears selected answer')
+    const blockedDirective = await quizFrame.executeJavaScript(`new Promise(resolve => {
+      document.addEventListener('securitypolicyviolation', event => resolve(event.effectiveDirective), { once: true });
+      document.querySelector('#external button').click();
+    })`)
+    assert.equal(blockedDirective, 'form-action', 'CSP blocks actual form destinations even with allow-forms')
+    assert.equal(quizFrame.url, 'about:srcdoc', 'blocked form submission retains the preview document')
 
     const actionHtml = [
       '```tidehtml\n',

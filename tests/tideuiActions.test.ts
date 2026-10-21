@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { executeTideAction, validateTideAction } from '../src/lib/tideui/actions'
+import { tideControlUnavailableReason } from '../src/lib/tideui/capabilities'
+import { parseTideUI } from '../src/lib/tideui/parser'
 
 test('TideUI send action invokes the real user-message callback once', async () => {
   const sent: string[] = []
@@ -45,4 +47,19 @@ test('Embedded native actions await host results and never bypass supplied copy/
     assert.equal(await executeTideAction({ kind, value: 'https://example.com' }, actions, copy), false)
   }
   assert.equal(fallbackCopies, 0)
+})
+
+test('modal actions require existing targets and an open dialog for close or confirm', () => {
+  const nodes = parseTideUI([
+    'button "Details" action=modal.open target=details',
+    'button "Missing" action=modal.open target=unknown',
+    'modal "Details" id=details',
+    '  button "Close" action=modal.close',
+    '  button "Confirm" action=modal.confirm',
+  ].join('\n')).nodes
+  const lookup = (id: string) => nodes.find(node => node.props.id === id)
+  assert.equal(tideControlUnavailableReason(nodes[0], lookup, {}), null)
+  assert.match(tideControlUnavailableReason(nodes[1], lookup, {}) ?? '', /existing modal/u)
+  assert.match(tideControlUnavailableReason(nodes[2].children[0], lookup, {}, undefined, null) ?? '', /No dialog/u)
+  assert.equal(tideControlUnavailableReason(nodes[2].children[1], lookup, {}, undefined, 'details'), null)
 })

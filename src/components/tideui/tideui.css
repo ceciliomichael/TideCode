@@ -6,6 +6,20 @@
 [data-tideui-hover="lift"]:hover,[data-tideui-hover="lift"]:focus-visible{transform:translateY(-2px);box-shadow:0 6px 18px -9px var(--color-foreground);background:var(--color-surface-raised)}
 [data-tideui-hover="glow"]:hover,[data-tideui-hover="glow"]:focus-visible{box-shadow:0 0 0 2px var(--color-brand-soft),0 0 12px -5px var(--color-brand);border-color:var(--color-brand)}
 [data-tideui-hover]:focus-visible{outline:2px solid var(--color-brand)}
+.tideui-styled{min-width:0;max-width:100%;border-radius:inherit}
+[data-tideui-custom-hover="true"]{transition:background-color 150ms ease,color 150ms ease,border-color 150ms ease}
+[data-tideui-custom-hover="true"]:hover,[data-tideui-custom-hover="true"]:focus-visible{
+  background-color:var(--tideui-hover-background,inherit)!important;
+  color:var(--tideui-hover-color,inherit)!important;
+  border-color:var(--tideui-hover-border-color,inherit)!important;
+}
+[data-tideui-custom-hover="true"]:focus-visible{outline:2px solid var(--color-brand);outline-offset:2px}
+.tideui-modal-backdrop{position:fixed;inset:0;z-index:1600;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--color-overlay-backdrop,rgba(0,0,0,.6))}
+.tideui-modal-dialog{width:100%;max-height:min(90vh,850px);display:flex;flex-direction:column;overflow:hidden;background:var(--color-surface);color:var(--color-foreground);border:1px solid var(--color-border);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.24)}
+.tideui-modal-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;border-bottom:1px solid var(--color-border)}
+.tideui-modal-close{border:0;border-radius:8px;background:transparent;color:inherit;cursor:pointer;padding:6px}
+.tideui-modal-close:hover{background:var(--color-surface-muted)}
+.tideui-modal-body{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
 .tideui-root[data-streaming="true"] [data-tideui-hover]{transition:none}
 .tideui-section,.tideui-column{min-width:0;display:flex;flex-direction:column;gap:8px}
 .tideui-row{min-width:0;display:flex;flex-wrap:wrap;gap:8px;align-items:start}

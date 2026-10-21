@@ -16,6 +16,8 @@ export const TideUIRenderer = memo(function TideUIRenderer({ nodes, actions, isS
 }) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [timers, setTimers] = useState<Record<string, TideTimerState>>({})
+  const [openModalId, setOpenModalId] = useState<string | null>(null)
+  const [modalFeedback, setModalFeedback] = useState('')
   // Streaming actions are disabled, so declaration growth does not need to
   // invalidate the control context or every memoized presentation branch.
   const actionableNodes = isStreaming ? EMPTY_NODES : nodes
@@ -78,12 +80,19 @@ export const TideUIRenderer = memo(function TideUIRenderer({ nodes, actions, isS
   const timerStatus = useCallback((id: string) => timers[id]?.status ?? 'idle', [timers])
   const context = useMemo<TideControlContext>(() => ({
     values, lookup, actions, isStreaming, updateTimer, timerStatus, setValue, reset,
-  }), [values, lookup, actions, isStreaming, updateTimer, timerStatus, setValue, reset])
+    openModalId,
+    openModal: (id: string) => { setModalFeedback(''); setOpenModalId(id) },
+    closeModal: () => setOpenModalId(null),
+    confirmModal: () => { setModalFeedback('Confirmed in this view. No external changes were saved.'); setOpenModalId(null) },
+  }), [values, lookup, actions, isStreaming, updateTimer, timerStatus, setValue, reset, openModalId])
   const render = useCallback(function render(items: TideNode[]): ReactNode {
     return items.map(node => (
       <TideUINode key={node.props.id || node.line} node={node} context={context}
         timers={timers} setTimerDuration={setTimerDuration} render={render} />
     ))
   }, [context, timers, setTimerDuration])
-  return <div className="tideui-root" data-streaming={isStreaming}>{render(nodes)}</div>
+  return <div className="tideui-root" data-streaming={isStreaming}>
+    {render(nodes)}
+    {modalFeedback ? <div className="tideui-caption" role="status">{modalFeedback}</div> : null}
+  </div>
 })

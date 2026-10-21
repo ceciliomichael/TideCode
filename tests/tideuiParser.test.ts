@@ -63,6 +63,43 @@ test('TideUI accepts bounded timers and safe theme-driven hover styles', () => {
   assert.ok(invalid.errors.some(error => error.includes('hover')))
 })
 
+test('native TideUI accepts explicit design tokens and validates hostile style values', () => {
+  const document = validateTideUI([
+    'card "Dashboard" background="#202a44" color="#ffffff" radius=lg padding=18px hover-background="#304060"',
+    '  heading "My custom design" font-size=20px',
+    '  button "Details" action=modal.open target=details color="#fefefe"',
+    'modal "Details" id=details size=lg',
+    '  text "Information" border-color="#8299cc"',
+    '  button "Close" action=modal.close',
+  ].join('\n'))
+  assert.deepEqual(document.errors, [])
+  assert.equal(document.nodes[0].props.background, '#202a44')
+  assert.equal(document.nodes[1].children[1].props.action, 'modal.close')
+
+  const unsafe = validateTideUI('card "Bad" background="url(javascript:alert(1))"')
+  assert.ok(unsafe.errors.some(error => error.includes('invalid background style')))
+  assert.equal(unsafe.nodes.length, 0)
+})
+
+test('custom HTML is available within native modals while non-dismissible modals require close actions', () => {
+  const valid = validateTideUI([
+    'button "Custom preview" action=modal.open target=preview',
+    'modal "Custom preview" id=preview size=lg dismiss=false background="#161e2b"',
+    '  html',
+    '    | <div style="background:#123456;color:white">Example</div>',
+    '  button "Close" action=modal.close',
+  ].join('\n'))
+  assert.deepEqual(valid.errors, [])
+  assert.equal(valid.nodes[1].children[0].kind, 'html')
+  assert.match(valid.nodes[1].children[0].text, /background:#123456/u)
+
+  const invalid = validateTideUI('modal "Blocked" id=blocked dismiss=false\n  text "No escape"')
+  assert.ok(invalid.errors.some(error => error.includes('requires a close button')))
+
+  const nestedClose = validateTideUI('modal "Settings" id=settings dismiss=false\n  row\n    button "Cancel" action=modal.close')
+  assert.deepEqual(nestedClose.errors, [])
+})
+
 test('TideUI preserves unknown presentation as text but rejects invalid properties, indentation and duplicate ids', () => {
   const document = validateTideUI('javascript "alert(1)"\n panel "bad"\nmetric "A" 1 id=dup\nmetric "B" 2 id=dup\ntext "Hi" onClick=evil')
   assert.equal(document.nodes.length, 0)

@@ -10,7 +10,7 @@ export const TIDEUI_KINDS = new Set([
   'table', 'list', 'comparison', 'item', 'chart', 'point', 'sparkline',
   'timeline', 'event', 'flow', 'node', 'edge',
   'button', 'copy', 'input', 'textarea', 'select', 'option', 'checkbox', 'slider', 'toggle',
-  'tabs', 'tab', 'expand', 'link', 'image', 'gallery', 'timer',
+  'tabs', 'tab', 'expand', 'link', 'image', 'gallery', 'timer', 'modal', 'html',
 ])
 
 const PERMITTED_PROPERTIES = new Set([
@@ -18,6 +18,8 @@ const PERMITTED_PROPERTIES = new Set([
   'step', 'value', 'columns', 'placeholder', 'src', 'alt', 'required', 'mode',
   'title', 'label', 'width', 'to', 'from', 'disabled', 'tone', 'checked',
   'hover', 'interactive', 'duration', 'hint',
+  'background', 'color', 'border-color', 'radius', 'padding', 'gap', 'font-size',
+  'hover-background', 'hover-color', 'hover-border-color', 'size', 'dismiss',
 ])
 
 const ENTRY_KINDS = new Set(['item', 'point', 'row', 'event', 'text', 'label', 'caption', 'option', 'tab'])

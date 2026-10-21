@@ -7,6 +7,7 @@ export type TideTimerAction = (typeof TIDE_TIMER_ACTIONS)[number]
 
 export const TIDE_ACTIONS = new Set([
   'copy', 'draft', 'send', 'open', 'toggle', 'select', 'sort', 'filter', 'reset',
+  'modal.open', 'modal.close', 'modal.confirm',
   ...TIDE_TIMER_ACTIONS,
 ])
 
@@ -19,6 +20,7 @@ export function tideControlUnavailableReason(
   lookup: (id: string) => TideNode | undefined,
   actions: TideUIActions,
   timerStatus?: TideTimerStatus,
+  openModalId?: string | null,
 ): string | null {
   const action = node.props.action || (node.kind === 'copy' ? 'copy' : '')
   if (!action) return 'No action was defined.'
@@ -30,6 +32,12 @@ export function tideControlUnavailableReason(
   }
   if (action === 'open' && !isSafeTideUrl(node.props.url ?? '')) {
     return 'A valid HTTP(S) URL is required.'
+  }
+  if (action === 'modal.open' && (!node.props.target || lookup(node.props.target)?.kind !== 'modal')) {
+    return 'This button needs an existing modal.'
+  }
+  if ((action === 'modal.close' || action === 'modal.confirm') && !openModalId) {
+    return 'No dialog is open.'
   }
   if (isTideTimerAction(action) && (node.props.target === undefined || lookup(node.props.target)?.kind !== 'timer')) {
     return 'This button needs a valid timer target.'

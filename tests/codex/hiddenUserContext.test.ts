@@ -37,14 +37,13 @@ test('chat mode markers are emitted only for persisted transitions', () => {
   ])
   assert.match(initial[0]?.content ?? '', /mode="plan" state="active_until_superseded"/u)
 
-  assert.ok((initial[0]?.content ?? '').includes('tools.plan_create({ content: string, title?: string })'))
-  assert.ok((initial[0]?.content ?? '').includes('tools.plan_edit({ path: string, content: string, title?: string })'))
+  assert.ok((initial[0]?.content ?? '').includes('tools.plan.create({ content: string, title?: string })'))
+  assert.ok((initial[0]?.content ?? '').includes('tools.patch({ patch: string })'))
   assert.ok((initial[0]?.content ?? '').includes('content: payloads.plan'))
-  assert.ok((initial[0]?.content ?? '').includes('Do not embed plan Markdown directly in a JavaScript template literal'))
-  assert.ok((initial[0]?.content ?? '').includes('tools.plan_create and tools.plan_edit are injected Plan Mode APIs'))
-  assert.ok((initial[0]?.content ?? '').includes('Do not use tools.$codemode.search or any other discovery API to look them up'))
-  assert.ok((initial[0]?.content ?? '').includes('Do not call tools.apply_patch in Plan Mode'))
-  assert.ok((initial[0]?.content ?? '').includes('stable superset of TideCode capabilities, not permission'))
+  assert.ok((initial[0]?.content ?? '').includes('Do not embed arbitrary Markdown directly in a JavaScript template literal'))
+  assert.ok((initial[0]?.content ?? '').includes('tools.available.list({})'))
+  assert.ok((initial[0]?.content ?? '').includes('tools.plan.create and restricted tools.patch'))
+  assert.ok((initial[0]?.content ?? '').includes('host enforces the plan-artifact boundary'))
 
   const planHistory: Message[] = [createUserMessage('user-1', 'Plan this.', initial)]
   assert.deepEqual(buildHiddenUserContextTransitions({

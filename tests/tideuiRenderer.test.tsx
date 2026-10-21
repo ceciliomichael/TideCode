@@ -215,6 +215,28 @@ test('TideUI input fields support placeholder and persistent hint text', () => {
   assert.match(markup, /aria-describedby="tideui-hint-name"/u)
 })
 
+test('explicit native TideUI styles override defaults without replacing base components', () => {
+  const markup = renderToStaticMarkup(createElement(TideUIBlock, {
+    source: [
+      'card "Custom" background="#202a44" color="#ffffff" radius=lg hover-background="#364969"',
+      '  heading "Title" color="#ffcc00"',
+      '  metric "Total" 12 background="#112233"',
+      '  button "Copy" action=copy value="12" background="#554499"',
+      'modal "Details" id=details',
+      '  text "Dialog content"',
+    ].join('\n'),
+    actions: {},
+  }))
+  assert.match(markup, /background-color:#202a44/u)
+  assert.match(markup, /color:#ffffff/u)
+  assert.match(markup, /color:#ffcc00/u)
+  assert.match(markup, /background-color:#112233/u)
+  assert.match(markup, /background-color:#554499/u)
+  assert.match(markup, /--tideui-hover-background:#364969/u)
+  assert.doesNotMatch(markup, /Dialog content/u)
+  assert.match(markup, /tideui-card/u)
+})
+
 test('Unsupported button actions are displayed as unavailable instead of live controls', () => {
   const markup = renderToStaticMarkup(createElement(TideUIBlock, {
     source: 'panel "Tools"\n  button "Mute notifications" action=notifications.mute',

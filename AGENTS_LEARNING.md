@@ -1,5 +1,9 @@
 # Durable project knowledge
 
+- On 2026-10-21 the user requested editable Markdown sources for injected user-role instructions, separate from system prompt files. Keep dynamically generated compaction, tool results, and actual runtime values in code rather than migrating them to Markdown.
+
+- On 2026-10-21 the user requested no em dashes in responses. The response prompt applies this rule to prose and generated UI text.
+
 - Reverted-message submission must invalidate discarded compaction dividers at the same time as later messages. Waiting for the response to finish leaves same-anchor dividers beside new output; older in-flight marker loads must not restore them. Verify with the real stale marker list, including multiple compactions anchored to the edited user message.
 
 - On 2026-10-21 the user clarified that Revert should keep later messages visible while the selected message is edited and its checkpoint restored. Keep the active context at the reverted point, preserve the placement of compaction dividers alongside visible history, and replace the later branch only when the edited message is submitted.
@@ -9,6 +13,7 @@
 - Compaction UI regression (2026-10-21): replacing a live boundary with a saved marker must keep previous tools finalized in the same work timeline. A streaming draft may predate compaction and is not a safe fallback position for the marker. Verify both closed and manually opened groups across marker loading and resumed output; newly active tools must still appear normally.
 
 - On 2026-10-21 the user approved proactive generative UI in AI responses while retaining Markdown. Prefer native TideUI for useful structured comparisons, options, timelines, metrics, progress and interactions without requiring an explicit visual request. Keep explanations, code, commands and short answers in Markdown, combine formats without duplication, and use custom HTML when its layout or local interaction capabilities add value beyond native components. Avoid decorative interfaces and fabricated data or functionality.
+- On 2026-10-21 the user clarified that AI-authored visual customization must take priority when explicitly specified, in native TideUI as well as custom HTML. When no styling is specified, use TideCode defaults. Reuse native dialog patterns for generated modals and retain sandboxing for embedded custom HTML.
 
 - On 2026-10-20 the user explicitly asked for every application error to follow the browser screenshot toast's visual language and use plain, actionable wording rather than technical exception text. Preserve technical output in tool/terminal diagnostics where it is useful, not in ordinary user notifications.
 

@@ -8,6 +8,9 @@ import { TideUICharts } from './TideUICharts'
 import { TideUIDiagrams } from './TideUIDiagrams'
 import { TideUIControls, TideUITabs, type TideControlContext } from './TideUIControls'
 import { TideUITimer } from './TideUITimer'
+import { TideUIModal } from './TideUIModal'
+import { getTideNodeStyle, hasTideCustomHover } from '../../lib/tideui/style'
+import { TideUIHtmlPreview } from './TideUIHtmlPreview'
 
 const LAYOUT = new Set(['panel', 'card', 'section', 'row', 'column', 'grid', 'divider'])
 const CONTENT = new Set(['heading', 'text', 'label', 'caption', 'item', 'metric', 'badge', 'alert', 'progress', 'code', 'image', 'gallery'])
@@ -23,9 +26,17 @@ interface TideUINodeProps {
 }
 
 export const TideUINode = memo(function TideUINode({ node, context, timers, setTimerDuration, render }: TideUINodeProps) {
+  if (node.kind === 'modal') {
+    if (context.isStreaming || !node.props.id || context.openModalId !== node.props.id) return null
+    return <TideUIModal node={node} onClose={context.closeModal}>{render(node.children)}</TideUIModal>
+  }
+  if (node.kind === 'html') {
+    return node.text ? <TideUIHtmlPreview source={node.text} actions={context.actions} isStreaming={context.isStreaming} /> : null
+  }
   if (node.props.mode === 'hidden' && context.values[node.props.id] !== 'true') {
     return null
   }
+  const content = (() => {
   if (node.kind === 'timer') {
     const timerId = node.props.id
     const state = timers[timerId] ?? createTideTimer(Number(node.props.duration ?? node.args[1] ?? 25))
@@ -59,4 +70,11 @@ export const TideUINode = memo(function TideUINode({ node, context, timers, setT
     return <TideUIContent node={node} actions={context.actions}>{render(node.children)}</TideUIContent>
   }
   return null
+  })()
+  if (!content) return null
+  if (LAYOUT.has(node.kind) || CONTENT.has(node.kind) || CONTROLS.has(node.kind)) return content
+  if (!Object.keys(getTideNodeStyle(node)).length) return content
+  return <div className="tideui-styled" style={getTideNodeStyle(node)}
+    data-tideui-custom-hover={hasTideCustomHover(node) ? 'true' : undefined}
+    tabIndex={hasTideCustomHover(node) ? 0 : undefined}>{content}</div>
 })

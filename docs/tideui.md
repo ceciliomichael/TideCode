@@ -23,6 +23,9 @@ Inside a fenced `tideui` Markdown block:
 - `tone` is a semantic status attribute. Use `badge "Ready" tone=positive`, `badge "Caution" tone=warning`, or `badge "Error" tone=danger`. Positional values such as `badge "Ready" success` remain supported. The renderer maps tones to TideCode's existing theme colors.
 - Maximum 250 nodes and 40 KB per native block.
 - `id` is a unique, simple identifier used for action targets.
+- Explicit native styling attributes override TideCode defaults property by property. Supported properties: `background`, `color`, `border-color`, `radius`, `padding`, `gap`, `font-size`, `hover-background`, `hover-color`, and `hover-border-color`. Omit them to inherit TideCode styles. Colors must be valid literals; arbitrary CSS/URLs are not allowed.
+- Native modals use `modal "Title" id=details size=md` with normal nested TideUI nodes. Open via `button "Details" action=modal.open target=details`, close via `button "Close" action=modal.close`. Available sizes: sm/md/lg/xl/full. The modal is a host-managed accessible overlay. Custom HTML can implement sandboxed HTML/CSS/JavaScript modals within its iframe. `action=modal.confirm` records only a local confirmation and closes the modal; it does not save files, submit externally, or claim a host-side action occurred.
+- A native modal may embed custom HTML/CSS/JavaScript through an `html` child with indented raw `| <div>...</div>` lines. Custom markup runs in an isolated iframe, not the TideCode host DOM.
 - All literal strings are rendered as text, not executed as expressions.
 
 ### Example: dashboard with follow-up actions

@@ -17,9 +17,15 @@ export async function buildTideHtmlRuntime(root: string) {
     format: 'iife',
     jsx: 'automatic',
     minify: true,
+    // The optional HTML-widget runtime bundles its own preview component.
+    // That component imports a local font as an inline asset; esbuild does not
+    // inherit Vite's asset loader for this independent nested bundle.
+    loader: { '.woff2': 'dataurl', '.css': 'text' },
     define: { 'process.env.NODE_ENV': '"production"' },
   })
-  const dependencies = Object.keys(result.metafile.inputs).filter(file => file.startsWith('src/'))
+  const dependencies = [...new Set(Object.keys(result.metafile.inputs)
+    .filter(file => file.startsWith('src/'))
+    .map(file => file.split('?')[0]))]
   const inputs = await Promise.all(dependencies.map(async file => ({ content: await readFile(path.join(root, file), 'utf8'), extension: path.extname(file).slice(1) })))
   const scanner = new Scanner({ sources: [] })
   const appCss = await readFile(path.join(root, 'src/index.css'), 'utf8')

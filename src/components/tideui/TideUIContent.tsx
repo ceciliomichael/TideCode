@@ -4,6 +4,7 @@ import { isSafeTideUrl } from '../../lib/tideui/assetPolicy'
 import { resolveTideTone } from '../../lib/tideui/tone'
 import type { TideNode, TideUIActions } from '../../lib/tideui/types'
 import { Tooltip } from '../Tooltip'
+import { getTideNodeStyle, hasTideCustomHover } from '../../lib/tideui/style'
 
 function TideUICode({ node, actions }: { node: TideNode; actions?: TideUIActions }) {
   const [copied, setCopied] = useState(false)
@@ -27,21 +28,23 @@ export function TideUIContent({ node, children, actions }: { node: TideNode; chi
     case 'item':
       return <div className="tideui-list-item">{node.text || node.args.join(' · ')}{children}</div>
     case 'heading':
-      return <h3 className="tideui-title">{content}</h3>
+      return <h3 className="tideui-title" style={getTideNodeStyle(node)}>{content}</h3>
     case 'text':
     case 'label':
     case 'caption':
-      return <div className={node.kind === 'caption' ? 'tideui-caption' : 'tideui-text'}>{content}{children}</div>
+      return <div className={node.kind === 'caption' ? 'tideui-caption' : 'tideui-text'} style={getTideNodeStyle(node)}>{content}{children}</div>
     case 'metric':
       return <div className="tideui-metric" data-tideui-hover={node.props.hover || undefined}
-        tabIndex={node.props.hover && node.props.hover !== 'none' ? 0 : undefined}>
+        data-tideui-custom-hover={hasTideCustomHover(node) ? 'true' : undefined}
+        style={getTideNodeStyle(node)}
+        tabIndex={node.props.hover && node.props.hover !== 'none' || hasTideCustomHover(node) ? 0 : undefined}>
         <div className="tideui-caption">{node.args[0]}</div>
         <strong>{node.args[1] || node.props.value || '0'}</strong>
       </div>
     case 'badge':
-      return <span className={`tideui-badge tideui-status-${tone}`}>{content}</span>
+      return <span className={`tideui-badge tideui-status-${tone}`} style={getTideNodeStyle(node)}>{content}</span>
     case 'alert':
-      return <div className={`tideui-alert tideui-status-${tone}`} role="status">{content}{children}</div>
+      return <div className={`tideui-alert tideui-status-${tone}`} style={getTideNodeStyle(node)} role="status">{content}{children}</div>
     case 'progress': {
       const value = Math.min(100, Math.max(0, Number((node.args[1] ?? node.props.value ?? '0').replace('%', '')) || 0))
       return <div className="tideui-progress"><div className="tideui-progress-label"><span>{content}</span><span>{value}%</span></div><div className="tideui-progress-track"><div style={{ width: `${value}%` }} /></div></div>

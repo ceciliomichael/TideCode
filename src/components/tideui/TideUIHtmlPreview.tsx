@@ -132,7 +132,7 @@ export const TideUIHtmlPreview = memo(function TideUIHtmlPreview({ source, actio
   return <div className="tideui-root tideui-html-preview">
     <div className="tideui-html-viewport">
       <iframe ref={frameRef} title="Custom HTML"
-        sandbox="allow-scripts"
+        sandbox="allow-scripts allow-forms"
         referrerPolicy="no-referrer" className="tideui-html-frame" srcDoc={preview.document} />
     </div>
   </div>

@@ -7,6 +7,7 @@ import type { TideTimerCommand, TideTimerStatus } from '../../lib/tideui/timer'
 import type { TideNode, TideUIActions } from '../../lib/tideui/types'
 import { DropdownField } from '../ui/DropdownField'
 import { Tooltip } from '../Tooltip'
+import { getTideNodeStyle, hasTideCustomHover } from '../../lib/tideui/style'
 
 export interface TideControlContext {
   values: Record<string, string>
@@ -17,6 +18,10 @@ export interface TideControlContext {
   isStreaming: boolean
   updateTimer: (id: string, command: TideTimerCommand) => void
   timerStatus: (id: string) => TideTimerStatus
+  openModalId: string | null
+  openModal: (id: string) => void
+  closeModal: () => void
+  confirmModal: () => void
 }
 
 export function TideUIControls({ node, context }: { node: TideNode; context: TideControlContext }) {
@@ -34,11 +39,23 @@ export function TideUIControls({ node, context }: { node: TideNode; context: Tid
   const timerStatus = node.props.target && isTideTimerAction(action) ? context.timerStatus(node.props.target) : undefined
   const unavailable = context.isStreaming
     ? 'This interface is still generating.'
-    : tideControlUnavailableReason(node, context.lookup, context.actions, timerStatus)
+    : tideControlUnavailableReason(node, context.lookup, context.actions, timerStatus, context.openModalId)
 
   const perform = useCallback(async () => {
     if (pendingRef.current || unavailable) return
     const target = node.props.target ? context.lookup(node.props.target) : undefined
+    if (action === 'modal.open' && target?.kind === 'modal' && target.props.id) {
+      context.openModal(target.props.id)
+      return
+    }
+    if (action === 'modal.confirm') {
+      context.confirmModal()
+      return
+    }
+    if (action === 'modal.close') {
+      context.closeModal()
+      return
+    }
 
     if (isTideTimerAction(action) && node.props.target) {
       context.updateTimer(node.props.target, action.slice('timer.'.length) as TideTimerCommand)
@@ -88,6 +105,8 @@ export function TideUIControls({ node, context }: { node: TideNode; context: Tid
       return <div className="tideui-action">
         <Tooltip content={unavailable ?? (feedback || label || 'Copy')} side="top" noWrap>
           <button type="button" className="tideui-button" disabled={pending || sent || Boolean(unavailable)}
+            data-tideui-custom-hover={hasTideCustomHover(node) ? 'true' : undefined}
+            style={getTideNodeStyle(node)}
             aria-busy={pending || undefined}
             onClick={() => void perform()}>
             {label || 'Copy'}
@@ -100,7 +119,7 @@ export function TideUIControls({ node, context }: { node: TideNode; context: Tid
     case 'input':
       return <label className="tideui-field">
         <span>{label}</span>
-        <input className="tideui-control" value={value} placeholder={node.props.placeholder}
+        <input className="tideui-control" style={getTideNodeStyle(node)} value={value} placeholder={node.props.placeholder}
           aria-describedby={node.props.hint ? `tideui-hint-${identifier}` : undefined}
           onChange={event => setValue(identifier, event.target.value)} />
         {node.props.hint ? <span id={`tideui-hint-${identifier}`} className="tideui-caption">{node.props.hint}</span> : null}
@@ -108,7 +127,7 @@ export function TideUIControls({ node, context }: { node: TideNode; context: Tid
     case 'textarea':
       return <label className="tideui-field">
         <span>{label}</span>
-        <textarea className="tideui-control" rows={3} value={value} placeholder={node.props.placeholder}
+        <textarea className="tideui-control" style={getTideNodeStyle(node)} rows={3} value={value} placeholder={node.props.placeholder}
           aria-describedby={node.props.hint ? `tideui-hint-${identifier}` : undefined}
           onChange={event => setValue(identifier, event.target.value)} />
         {node.props.hint ? <span id={`tideui-hint-${identifier}`} className="tideui-caption">{node.props.hint}</span> : null}

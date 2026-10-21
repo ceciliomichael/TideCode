@@ -4,6 +4,7 @@ import { isSafeTideUrl } from './assetPolicy'
 import { TIDE_ACTIONS, isTideTimerAction } from './capabilities'
 import { validTideTimerMinutes } from './timer'
 import { getTidePointValue } from './pointValue'
+import { TIDE_STYLE_PROPERTIES, isValidTideStyleProperty } from './style'
 
 const CHILD_RULES: Record<string, ReadonlySet<string>> = {
   chart: new Set(['point']),
@@ -16,6 +17,12 @@ const CHILD_RULES: Record<string, ReadonlySet<string>> = {
 }
 const NUMERIC_PROPERTIES = ['min', 'max', 'step'] as const
 const CHART_TYPES = new Set(['line', 'bars', 'bar', 'pie'])
+
+function hasModalCloseControl(node: TideNode): boolean {
+  return (node.kind === 'button' &&
+    ['modal.close', 'modal.confirm'].includes(node.props.action)) ||
+    node.children.some(hasModalCloseControl)
+}
 
 /** Validates the entire document before any part is rendered. */
 export function validateTideUI(source: string): TideDocument {
@@ -32,6 +39,26 @@ export function validateTideUI(source: string): TideDocument {
         errors.push(`Line ${node.line}: invalid or duplicate id`)
       }
       ids.add(node.props.id)
+    }
+    for (const [name, value] of Object.entries(node.props)) {
+      if (TIDE_STYLE_PROPERTIES.has(name) && !isValidTideStyleProperty(name, value)) {
+        errors.push(`Line ${node.line}: invalid ${name} style`)
+      }
+    }
+    if (node.kind === 'modal' && !node.props.id) {
+      errors.push(`Line ${node.line}: modal requires id`)
+    }
+    if (node.kind === 'modal' && node.props.size &&
+      !['sm', 'md', 'lg', 'xl', 'full'].includes(node.props.size)) {
+      errors.push(`Line ${node.line}: unsupported modal size`)
+    }
+    if (node.kind === 'modal' && node.props.dismiss &&
+      !['true', 'false'].includes(node.props.dismiss)) {
+      errors.push(`Line ${node.line}: modal dismiss must be true or false`)
+    }
+    if (node.kind === 'modal' && node.props.dismiss === 'false' &&
+      !node.children.some(hasModalCloseControl)) {
+      errors.push(`Line ${node.line}: non-dismissible modal requires a close button`)
     }
     for (const key of NUMERIC_PROPERTIES) {
       if (node.props[key] !== undefined && !Number.isFinite(Number(node.props[key]))) {
