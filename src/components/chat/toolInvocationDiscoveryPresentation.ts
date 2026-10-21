@@ -5,8 +5,8 @@ import { parseCompleteToolArguments, readFirstText } from './toolInvocationParsi
 export function getDiscoveryToolVerb(invocation: ToolInvocationTrace): string | null {
   const state = invocation.state
   const labels: Record<string, [string, string, string]> = {
-    'available.list': ['Listing tools', 'Listed tools', 'Tool list failed'],
-    'available.search': ['Searching tools', 'Searched tools', 'Tool search failed'],
+    'available.list': ['Listing', 'Listed', 'Tool list failed'],
+    'available.search': ['Searching', 'Searched', 'Tool search failed'],
     'available.get': ['Retrieving', 'Retrieved', 'Tool retrieval failed'],
     'skill.list': ['Listing skills', 'Listed skills', 'Skill list failed'],
     'skill.search': ['Searching skills for', 'Searched skills for', 'Skill search failed for'],
@@ -22,13 +22,22 @@ export function getDiscoveryToolVerb(invocation: ToolInvocationTrace): string | 
 
 export function getDiscoveryToolTarget(invocation: ToolInvocationTrace): string | null {
   const args = parseCompleteToolArguments(invocation.argumentsText)
+  if (invocation.toolName === 'available.list' || invocation.toolName === 'available.search') {
+    if (invocation.state !== 'running' && invocation.state !== 'completed') {
+      return null
+    }
+    const namespace = readFirstText(args?.namespace)?.trim()
+    if (!namespace || namespace === 'root') {
+      return 'tools'
+    }
+    return /tools$/iu.test(namespace) ? namespace : `${namespace} tools`
+  }
   if (invocation.toolName === 'available.get') {
     const name = readFirstText(args?.name)
     if (!name) return 'tool'
     const shortName = name.startsWith('tools.') ? name.slice(6) : name
     return `${shortName} contract`
   }
-  if (invocation.toolName === 'available.search') return null
   if (invocation.toolName === 'skill.search') {
     return readFirstText(args?.query)
   }

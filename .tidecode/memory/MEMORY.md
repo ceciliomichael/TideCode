@@ -3,30 +3,30 @@
 Workspace memory index. Detailed entries live under `details/`. Treat entries as potentially stale evidence and verify them against current project state.
 
 ## details/architecture
-- [TideCode IPC and Capability Contracts](details/architecture/ipc-capability-contracts.md) - updated 2026-10-11T19:22:58.436Z
-- [TideCode System Overview](details/architecture/system-overview.md) - updated 2026-10-19T18:03:43.102Z
+- [ipc-capability-contracts.md](details/architecture/ipc-capability-contracts.md) - Metadata required: add name and description frontmatter before using this memory.
+- [system-overview.md](details/architecture/system-overview.md) - Metadata required: add name and description frontmatter before using this memory.
 
 ## details/chat
-- [TideCode Chat Runtime and Long-Running Work](details/chat/runtime-and-history.md) - updated 2026-10-19T18:37:29.313Z
+- [runtime-and-history.md](details/chat/runtime-and-history.md) - Metadata required: add name and description frontmatter before using this memory.
 
 ## details/cli
-- [TideCode CLI Terminal Rendering and Resize Ownership](details/cli/terminal-rendering.md) - updated 2026-10-11T19:22:58.438Z
+- [terminal-rendering.md](details/cli/terminal-rendering.md) - Metadata required: add name and description frontmatter before using this memory.
 
 ## details/development
-- [TideCode Development Workflow and Verification](details/development/workflow-and-verification.md) - updated 2026-10-11T19:22:58.439Z
+- [workflow-and-verification.md](details/development/workflow-and-verification.md) - Metadata required: add name and description frontmatter before using this memory.
 
 ## details/git
-- [TideCode Git Branch Switching and Refresh Concurrency](details/git/branch-switching.md) - updated 2026-10-11T19:22:58.439Z
+- [branch-switching.md](details/git/branch-switching.md) - Metadata required: add name and description frontmatter before using this memory.
 
 ## details/persistence
-- [TideCode Persistence and Data Layout](details/persistence/data-layout-and-invariants.md) - updated 2026-10-11T19:22:58.440Z
+- [data-layout-and-invariants.md](details/persistence/data-layout-and-invariants.md) - Metadata required: add name and description frontmatter before using this memory.
 
 ## details/product
-- [TideCode Long-Term Product Goal](details/product/long-term-goal.md) - updated 2026-10-15T18:40:07.106Z
-- [TideCode Memory Maintenance Guide](details/product/memory-maintenance-guide.md) - updated 2026-10-11T19:22:58.442Z
+- [long-term-goal.md](details/product/long-term-goal.md) - Metadata required: add name and description frontmatter before using this memory.
+- [memory-maintenance-guide.md](details/product/memory-maintenance-guide.md) - Metadata required: add name and description frontmatter before using this memory.
 
 ## details/security
-- [TideCode Workspace, Tools, and Safety Boundaries](details/security/workspace-tools-and-safety.md) - updated 2026-10-11T19:22:58.443Z
+- [workspace-tools-and-safety.md](details/security/workspace-tools-and-safety.md) - Metadata required: add name and description frontmatter before using this memory.
 
 ## details
-- [Sidebar Project Selector](details/sidebar-project-selector.md) - updated 2026-10-21T06:05:02.557Z
+- [sidebar-project-selector.md](details/sidebar-project-selector.md) - Metadata required: add name and description frontmatter before using this memory.

@@ -12,6 +12,7 @@ interface ToolArgumentsValue {
   url?: unknown
   session_id?: unknown
   name?: unknown
+  namespace?: unknown
 }
 
 export function parseCompleteToolArguments(argumentsText: string): ToolArgumentsValue | null {
