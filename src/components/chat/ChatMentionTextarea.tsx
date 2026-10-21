@@ -1,14 +1,16 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react'
 import { ChatMentionText } from './ChatMentionText'
-import { findChatMentionImageAttachment } from '../../lib/chatMentionImages'
-import { getChatMentionTarget } from '../../lib/chatMentions'
+import { findChatMentionImageAttachment, getChatMentionImagePreview } from '../../lib/chatMentionImages'
+import { getChatMentionTooltipTarget } from '../../lib/chatMentions'
 import { chatMentionTooltipPanelClassName } from '../../lib/chatStyles'
 import type { ChatImageAttachment } from '../../types/chat'
 import { AnchoredTooltip, type AnchoredTooltipRect } from '../Tooltip'
+import { ToolImageResult } from './ToolImageResult'
 import { ChatMentionImageHoverContent } from './ChatMentionImageHoverContent'
 
 interface ChatMentionTextareaProps {
   className?: string
+  conversationId?: string | null
   disabled?: boolean
   imageAttachments?: readonly ChatImageAttachment[]
   mentionPathMap?: ReadonlyMap<string, string>
@@ -26,12 +28,14 @@ interface ChatMentionTextareaProps {
   style?: CSSProperties
   textareaRef: RefObject<HTMLTextAreaElement | null>
   value: string
+  workspaceRootPath?: string | null
 }
 
 const MAX_TEXTAREA_HEIGHT_PX = 200
 
 export function ChatMentionTextarea({
   className,
+  conversationId,
   disabled = false,
   imageAttachments = [],
   mentionPathMap,
@@ -49,6 +53,7 @@ export function ChatMentionTextarea({
   style,
   textareaRef,
   value,
+  workspaceRootPath,
 }: ChatMentionTextareaProps) {
   const backdropRef = useRef<HTMLDivElement>(null)
   const backdropContentRef = useRef<HTMLDivElement>(null)
@@ -199,6 +204,9 @@ export function ChatMentionTextarea({
   const hoveredImageAttachment = hoveredMention
     ? findChatMentionImageAttachment(hoveredMention.path, imageAttachments)
     : null
+  const hoveredImagePreview = hoveredMention
+    ? getChatMentionImagePreview(hoveredMention.path, workspaceRootPath)
+    : null
 
   return (
     <div
@@ -251,10 +259,18 @@ export function ChatMentionTextarea({
           content={
             hoveredImageAttachment && hoveredMention
               ? <ChatMentionImageHoverContent attachment={hoveredImageAttachment} />
-              : getChatMentionTarget(hoveredMention?.path ?? '')
+              : hoveredImagePreview && hoveredMention
+                ? (
+                  <ToolImageResult
+                    conversationId={conversationId}
+                    presentation={hoveredImagePreview.presentation}
+                    workspaceRootPath={hoveredImagePreview.workspaceRootPath}
+                  />
+                )
+                : getChatMentionTooltipTarget(hoveredMention?.path ?? '')
           }
           panelClassName={
-            hoveredImageAttachment
+            hoveredImageAttachment || hoveredImagePreview
               ? '!max-w-[min(26rem,calc(100vw-24px))] !items-stretch !p-2'
               : chatMentionTooltipPanelClassName
           }

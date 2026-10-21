@@ -42,6 +42,7 @@ import { nameStagedChatImages } from '../../lib/chatAttachmentNames'
 
 interface ChatQueueItemProps {
   conversationId?: string | null
+  workspaceRootPath?: string | null
   index: number
   message: QueuedMessage
   editCancelBoundaryRef?: RefObject<HTMLElement | null>
@@ -59,6 +60,7 @@ interface ChatQueueItemProps {
 
 export function ChatQueueItem({
   conversationId = null,
+  workspaceRootPath = null,
   index,
   message,
   editCancelBoundaryRef,
@@ -382,8 +384,10 @@ export function ChatQueueItem({
           />
 
           <ChatMentionTextarea
+            conversationId={conversationId}
             imageAttachments={draftImageAttachments}
             mentionPathMap={draftMentionPathMap}
+            workspaceRootPath={workspaceRootPath}
             textareaRef={textareaRef}
             value={draftContent}
             onBeforeInput={mentionNavigation.handleBeforeInput}
@@ -468,8 +472,10 @@ export function ChatQueueItem({
         <Tooltip content={visibleMessageContent} side="top" triggerClassName="min-w-0 flex-1">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <ChatMentionText
+              conversationId={conversationId}
               imageAttachments={messageImageAttachments}
               mentionPathMap={messageMentionPathMap}
+              workspaceRootPath={workspaceRootPath}
               text={renderedMessageContent}
               variant="rendered"
               wrap="nowrap"

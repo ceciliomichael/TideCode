@@ -8,14 +8,10 @@ export interface CompactionMarkerPlacement {
 export function placeCompactionMarkersAfterTranscript(
   visibleMessages: readonly Message[],
   markers: readonly ChatCompactionMarker[],
-  options: { preferredMessageId?: string | null } = {},
 ): CompactionMarkerPlacement {
   const messageIndexById = new Map(visibleMessages.map((message, index) => [message.id, index]))
   const markersBeforeMessageId = new Map<string, ChatCompactionMarker[]>()
   const trailingMarkers: ChatCompactionMarker[] = []
-  const preferredMessageIndex = options.preferredMessageId
-    ? messageIndexById.get(options.preferredMessageId)
-    : undefined
 
   for (const marker of markers) {
     const anchorIndex = marker.anchorUserMessageId
@@ -37,10 +33,7 @@ export function placeCompactionMarkersAfterTranscript(
       .slice(anchorIndex + 1)
       .find((message) => message.role === 'user')
 
-    const preferredMessage = preferredMessageIndex !== undefined && preferredMessageIndex > anchorIndex
-      ? visibleMessages[preferredMessageIndex]
-      : undefined
-    const targetMessage = firstPostCompactionMessage ?? nextTranscriptMessage ?? preferredMessage
+    const targetMessage = firstPostCompactionMessage ?? nextTranscriptMessage
 
     if (!targetMessage) {
       trailingMarkers.push(marker)

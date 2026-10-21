@@ -6,6 +6,7 @@ import { ChatQueueItem } from './ChatQueueItem'
 
 interface ChatQueueBlockProps {
   conversationId?: string | null
+  workspaceRootPath?: string | null
   queuedMessages: readonly QueuedMessage[]
   editCancelBoundaryRef?: RefObject<HTMLElement | null>
   onClearQueue?: () => void
@@ -21,6 +22,7 @@ interface ChatQueueBlockProps {
 
 export function ChatQueueBlock({
   conversationId = null,
+  workspaceRootPath = null,
   queuedMessages,
   editCancelBoundaryRef,
   onClearQueue,
@@ -84,6 +86,7 @@ export function ChatQueueBlock({
             {queuedMessages.map((message, index) => (
               <ChatQueueItem
                 conversationId={conversationId}
+                workspaceRootPath={workspaceRootPath}
                 key={message.id}
                 index={index}
                 message={message}

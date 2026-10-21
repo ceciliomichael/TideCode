@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { deleteChatComposerDraft, loadChatComposerDraft, saveChatComposerDraft, type SavedChatComposerDraft } from '../lib/chatComposerDraftStorage'
 import { isHumanUserMessage } from '../lib/chatMessageMetadata'
 import {
   buildChatMentionPathMap,
@@ -57,13 +58,21 @@ function cloneAttachments(attachments: readonly ChatAttachment[]) {
   return attachments.map((attachment) => ({ ...attachment }))
 }
 
-export function useChatComposerState(messages: Message[]) {
+export function useChatComposerState(messages: Message[], activeConversationId: string | null) {
   const [mainComposerValue, setMainComposerValueState] = useState('')
   const [mainComposerAttachments, setMainComposerAttachmentsState] = useState<ChatAttachment[]>([])
   const [mainComposerMentionPathMap, setMainComposerMentionPathMapState] = useState<Map<string, string>>(
     () => new Map(),
   )
   const mainComposerRevisionRef = useRef(0)
+  const composerScopeRef = useRef<string | null>(activeConversationId)
+  const composerDraftRef = useRef<SavedChatComposerDraft>({ value: '', attachments: [], mentionPaths: [] })
+  const discardComposerDraft = useCallback((conversationId: string) => {
+    if (composerScopeRef.current === conversationId) {
+      composerDraftRef.current = { value: '', attachments: [], mentionPaths: [] }
+    }
+    deleteChatComposerDraft(conversationId)
+  }, [])
   const getMainComposerRevision = useCallback(() => mainComposerRevisionRef.current, [])
   const setMainComposerValue: Dispatch<SetStateAction<string>> = useCallback((value) => {
     mainComposerRevisionRef.current += 1
@@ -85,6 +94,33 @@ export function useChatComposerState(messages: Message[]) {
   const [editInitialAttachments, setEditInitialAttachments] = useState<ChatAttachment[]>([])
   const [editComposerMentionPathMap, setEditComposerMentionPathMap] = useState<Map<string, string>>(() => new Map())
   const messagesRef = useRef(messages)
+
+  useLayoutEffect(() => {
+    if (composerScopeRef.current !== activeConversationId) {
+      if (composerScopeRef.current) {
+        saveChatComposerDraft(composerScopeRef.current, composerDraftRef.current)
+      }
+      composerScopeRef.current = activeConversationId
+      const saved = activeConversationId ? loadChatComposerDraft(activeConversationId) : null
+      const nextDraft = saved ?? { value: '', attachments: [], mentionPaths: [] }
+      composerDraftRef.current = nextDraft
+      mainComposerRevisionRef.current += 1
+      setMainComposerValueState(nextDraft.value)
+      setMainComposerAttachmentsState(nextDraft.attachments)
+      setMainComposerMentionPathMapState(new Map(nextDraft.mentionPaths))
+      return
+    }
+
+    const nextDraft = {
+      value: mainComposerValue,
+      attachments: mainComposerAttachments,
+      mentionPaths: [...mainComposerMentionPathMap.entries()] as [string, string][],
+    }
+    composerDraftRef.current = nextDraft
+    if (activeConversationId) {
+      saveChatComposerDraft(activeConversationId, nextDraft)
+    }
+  }, [activeConversationId, mainComposerAttachments, mainComposerMentionPathMap, mainComposerValue])
 
   useEffect(() => {
     messagesRef.current = messages
@@ -168,6 +204,7 @@ export function useChatComposerState(messages: Message[]) {
     editComposerValue !== editInitialValue || !haveSameAttachments(editComposerAttachments, editInitialAttachments)
 
   return {
+    discardComposerDraft,
     getMainComposerRevision,
     mainComposerValue,
     setMainComposerValue,

@@ -6,6 +6,8 @@ src/components/ui/AppNoticeSurface.tsx owns the reusable inline/toast error visu
 
 ## Compaction across history branches (2026-10-20)
 
+Compaction marker continuity (2026-10-21): markers without a later transcript message stay after the compacted work. `MessageList` keeps trailing markers inside the current work timeline so replacing the live boundary with a saved marker preserves the work group and finalized tool groups. The active assistant draft is not used as a fallback marker position: it can still be pre-compaction work. The saved marker moves before the first post-compaction message when that message arrives.
+
 `chat/history/branchContext.ts` selects canonical events through the current branch ancestry, applying each fork's retained revision and message anchors. Replay, durable-memory reads and compaction markers use this selection. Message rewrites record a validated `retainedThroughRevision` before removed or changed display content; the saved display transcript detects rewrites even when assistant output was not synchronized yet. Existing edit branches exclude the edited terminal user anchor when no revision boundary was recorded.
 
 Creating a separate chat branch initializes an independent canonical document before publishing its display record. It copies the eligible ancestry through the selected cutoff, rebases completed replay state, retains matching memory snapshots and clones attachments. Completed replay state newer than the cutoff is excluded. Compaction projections append retained display output created after the snapshot, including subsequent assistant/tool output from the same turn, rather than rebuilding all raw history.

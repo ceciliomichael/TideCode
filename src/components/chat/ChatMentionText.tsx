@@ -1,19 +1,25 @@
-import { memo } from 'react'
+import { memo, type ReactNode } from 'react'
 import { splitChatImageReferenceSegments } from '../../lib/chatImageReferences'
-import { findChatMentionImageAttachment } from '../../lib/chatMentionImages'
-import { getChatMentionTarget, splitChatMentionSegments } from '../../lib/chatMentions'
+import {
+  findChatMentionImageAttachment,
+  getChatMentionImagePreview,
+} from '../../lib/chatMentionImages'
+import { getChatMentionTooltipTarget, splitChatMentionSegments } from '../../lib/chatMentions'
 import { chatMentionTooltipPanelClassName } from '../../lib/chatStyles'
 import type { ChatImageAttachment } from '../../types/chat'
 import { Tooltip } from '../Tooltip'
+import { ToolImageResult } from './ToolImageResult'
 import { ChatMentionImageHoverContent } from './ChatMentionImageHoverContent'
 import { ChatImageReferenceLabel } from './ChatImageReferenceLabel'
 
 interface ChatMentionTextProps {
   className?: string
+  conversationId?: string | null
   imageAttachments?: readonly ChatImageAttachment[]
   mentionPathMap?: ReadonlyMap<string, string>
   onImageReferenceHoverChange?: (isHovered: boolean) => void
   text: string
+  workspaceRootPath?: string | null
   variant?: 'backdrop' | 'inline' | 'rendered'
   wrap?: 'wrap' | 'nowrap'
 }
@@ -25,10 +31,12 @@ const mcpHighlightSurfaceClassName = 'rounded-[4px] bg-mcp-surface'
 
 export const ChatMentionText = memo(function ChatMentionText({
   className,
+  conversationId,
   imageAttachments = [],
   mentionPathMap,
   onImageReferenceHoverChange,
   text,
+  workspaceRootPath,
   variant = 'inline',
   wrap = 'wrap',
 }: ChatMentionTextProps) {
@@ -59,10 +67,12 @@ export const ChatMentionText = memo(function ChatMentionText({
             return (
               <ChatMentionText
                 key={`image-text-${index}`}
+                conversationId={conversationId}
                 imageAttachments={imageAttachments}
                 mentionPathMap={mentionPathMap}
                 onImageReferenceHoverChange={onImageReferenceHoverChange}
                 text={segment.text}
+                workspaceRootPath={workspaceRootPath}
                 variant={variant}
               />
             )
@@ -112,10 +122,23 @@ export const ChatMentionText = memo(function ChatMentionText({
         const imageAttachment = segment.path
           ? findChatMentionImageAttachment(segment.path, imageAttachments)
           : null
-        const tooltipContent = imageAttachment && segment.path
-          ? <ChatMentionImageHoverContent attachment={imageAttachment} />
-          : getChatMentionTarget(segment.path ?? segment.label ?? '')
-        const tooltipPanelClassName = imageAttachment
+        const imagePreview = segment.path
+          ? getChatMentionImagePreview(segment.path, workspaceRootPath)
+          : null
+        let tooltipContent: ReactNode = getChatMentionTooltipTarget(segment.path ?? segment.label ?? '')
+        if (imageAttachment) {
+          tooltipContent = <ChatMentionImageHoverContent attachment={imageAttachment} />
+        } else if (imagePreview) {
+          tooltipContent = (
+            <ToolImageResult
+              conversationId={conversationId}
+              presentation={imagePreview.presentation}
+              workspaceRootPath={imagePreview.workspaceRootPath}
+            />
+          )
+        }
+        const isImageMention = imageAttachment !== null || imagePreview !== null
+        const tooltipPanelClassName = isImageMention
           ? '!max-w-[min(26rem,calc(100vw-24px))] !items-stretch !p-2'
           : chatMentionTooltipPanelClassName
         let highlightClass = mentionHighlightSurfaceClassName

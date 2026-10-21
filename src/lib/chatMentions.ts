@@ -124,6 +124,22 @@ export function getChatMentionTarget(reference: string) {
   return reference
 }
 
+export function getChatMentionTooltipTarget(reference: string) {
+  if (reference.startsWith('tools.skill.load:')) {
+    return `@skills/${reference.slice('tools.skill.load:'.length)}`
+  }
+
+  if (reference.startsWith('load_skill:')) {
+    return `@skills/${reference.slice('load_skill:'.length)}`
+  }
+
+  if (reference.startsWith('tools.available.search:')) {
+    return `@mcp/${reference.slice('tools.available.search:'.length)}`
+  }
+
+  return getChatMentionTarget(reference)
+}
+
 function toChatMentionToolReference(path: string) {
   if (path.startsWith('@skills/')) {
     const skillName = path.slice('@skills/'.length).replace(/\/$/u, '')

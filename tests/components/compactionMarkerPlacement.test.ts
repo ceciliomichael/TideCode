@@ -64,18 +64,23 @@ test('the latest compaction marker trails the complete visible transcript', () =
   assert.deepEqual(placement.trailingMarkers.map((item) => item.compactionId), ['compact-1'])
 })
 
-test('latest markers use the active assistant draft when timestamps cannot identify it', () => {
+test('a marker stays after pre-compaction work until a later message exists', () => {
   const messages = [
     message('user-1', 'user'),
     message('assistant-1', 'assistant'),
   ]
 
-  const placement = placeCompactionMarkersAfterTranscript(messages, [marker('compact-1', 'user-1', 2)], {
-    preferredMessageId: 'assistant-1',
-  })
+  const placement = placeCompactionMarkersAfterTranscript(messages, [marker('compact-1', 'user-1', 2)])
 
-  assert.deepEqual(placement.markersBeforeMessageId.get('assistant-1')?.map((item) => item.compactionId), ['compact-1'])
-  assert.equal(placement.trailingMarkers.length, 0)
+  assert.equal(placement.markersBeforeMessageId.size, 0)
+  assert.deepEqual(placement.trailingMarkers.map((item) => item.compactionId), ['compact-1'])
+
+  const resumedPlacement = placeCompactionMarkersAfterTranscript(
+    [...messages, message('assistant-after', 'assistant', 3)],
+    [marker('compact-1', 'user-1', 2)],
+  )
+  assert.deepEqual(resumedPlacement.markersBeforeMessageId.get('assistant-after')?.map((item) => item.compactionId), ['compact-1'])
+  assert.equal(resumedPlacement.trailingMarkers.length, 0)
 })
 
 test('markers whose anchors were removed by a revert disappear from the transcript', () => {

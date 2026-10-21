@@ -25,13 +25,23 @@ import { hasStagedChatImageMention } from "../lib/chatStagedImageMentions";
 
 interface UserMessageProps {
   attachments?: readonly ChatAttachment[];
+  conversationId?: string | null;
   content: string;
   mentionPathMap?: Readonly<Record<string, string>>;
   onEdit?: () => void;
   onRevert?: () => void;
+  workspaceRootPath?: string | null;
 }
 
-export function UserMessage({ attachments = [], content, mentionPathMap, onEdit, onRevert }: UserMessageProps) {
+export function UserMessage({
+  attachments = [],
+  conversationId,
+  content,
+  mentionPathMap,
+  onEdit,
+  onRevert,
+  workspaceRootPath,
+}: UserMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [isMultiline, setIsMultiline] = useState(false);
   const [isImageReferenceHovered, setIsImageReferenceHovered] = useState(false);
@@ -143,8 +153,10 @@ export function UserMessage({ attachments = [], content, mentionPathMap, onEdit,
       >
         {trimmedRenderedContent.length > 0 ? (
           <ChatMentionText
+            conversationId={conversationId}
             imageAttachments={imageAttachments}
             mentionPathMap={renderedMentionPathMap}
+            workspaceRootPath={workspaceRootPath}
             onImageReferenceHoverChange={setIsImageReferenceHovered}
             text={renderedContent}
             variant="rendered"

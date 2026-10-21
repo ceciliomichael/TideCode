@@ -259,6 +259,7 @@ export function ChatConversationSurface({
             <div className="chat-queue-shell">
               <ChatQueueBlock
                 conversationId={chatMessages.activeConversationId ?? chatMessages.draftAttachmentScopeId}
+                workspaceRootPath={activeWorkspacePath}
                 queuedMessages={queuedMessages}
                 editCancelBoundaryRef={messageListBoundaryRef}
                 onRemove={removeQueuedMessage}

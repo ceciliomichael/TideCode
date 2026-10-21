@@ -6,6 +6,8 @@ Application errors use the browser screenshot notification's neutral raised surf
 
 ## Branch and revert continuity (2026-10-20)
 
+During Compacting → Compacted → resumed output, previously finalized tools retain their expansion state. Saved-marker arrival must not reopen closed tools or collapse tools the user opened manually. The marker remains at the end of the existing work timeline until new output appears, while newly running tools remain visible normally.
+
 Branching keeps visible messages through the selected assistant response plus the canonical context and durable memory valid at that point. Reverting between compactions 2 and 3 resumes from compaction 2 with the retained suffix. Every new fork records its canonical revision boundary so later reverts cannot restore discarded snapshots. Display history remains available; model context uses the retained compacted window. A new chat owns its memory independently of its source. Branch failures include the underlying error in the chat error message.
 
 Splitting reasoning/tools from final response text must preserve the saved response identity on the actionable final text. Branching copies the complete original message, including its reasoning/tool history, rather than its shortened presentation fragment.
@@ -130,7 +132,7 @@ PDF previews preserve page positions, page count, scrolling, panning, and zoom w
 
 ## Chat mentions
 
-Chat mentions keep compact labels in the composer and rendered messages while resolving to their canonical paths on hover. Path-backed image attachments show only an image preview on hover. Non-image mentions remain path-only. Image previews use the attachment data already held by the chat model rather than reading from the workspace or hard-coding filename extensions.
+Chat mentions keep compact labels in the composer and rendered messages while resolving to their canonical paths on hover. Resolvable image-file mentions show an image preview, including stored `@attachments/` images and workspace or absolute image paths. If an image preview cannot be loaded, the hover content says “Image preview unavailable.” Non-image mentions retain their path tooltip. Previewability follows the shared supported image types and uses the existing conversation or workspace preview readers.
 
 ## Chat attachments
 

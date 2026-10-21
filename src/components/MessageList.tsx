@@ -237,8 +237,10 @@ const MessageRow = memo(
             <div className="-mx-4 flex-1 min-w-0 w-[calc(100%+2rem)]">
               <UserMessage
                 attachments={message.attachments}
+                conversationId={conversationId}
                 content={message.content}
                 mentionPathMap={message.mentionPathMap}
+                workspaceRootPath={workspaceRootPath}
                 onEdit={
                   onEditUserMessage
                     ? () => onEditUserMessage(message.id)
@@ -402,9 +404,7 @@ export function MessageList({
         };
 
     const items: RenderItem[] = [];
-    const markerPlacement = placeCompactionMarkersAfterTranscript(visibleMessages, compactionMarkers, {
-      preferredMessageId: streamingAssistantMessageId,
-    });
+    const markerPlacement = placeCompactionMarkersAfterTranscript(visibleMessages, compactionMarkers);
     const liveCompactionMarkerIsPersisted = liveCompaction?.phase === 'compacted' &&
       compactionMarkers.some((marker) => marker.compactionId === liveCompaction.compactionId);
     const shouldRenderLiveCompaction = liveCompaction?.phase === 'compacting' ||
@@ -620,6 +620,19 @@ export function MessageList({
       insertLiveCompaction(true);
     }
 
+    // Keep the boundary in the same work group while the saved marker waits
+    // for the first post-compaction message. Removing it here reactivates old tools.
+    const inlineTrailingMarkers = currentAssistantRun.length > 0 && hasAssistantWork(currentAssistantRun);
+    if (inlineTrailingMarkers) {
+      for (const marker of markerPlacement.trailingMarkers) {
+        currentAssistantRunBoundaries.push({
+          afterMessageCount: currentAssistantRun.length,
+          marker,
+          type: 'compaction_marker',
+        });
+      }
+    }
+
     if (currentAssistantRun.length > 0) {
       const isFinished = !isConversationStreaming;
       if (isFinished) {
@@ -637,12 +650,14 @@ export function MessageList({
       }
     }
 
-    for (const marker of markerPlacement.trailingMarkers) {
-      items.push({ marker, type: 'compaction_marker' });
+    if (!inlineTrailingMarkers) {
+      for (const marker of markerPlacement.trailingMarkers) {
+        items.push({ marker, type: 'compaction_marker' });
+      }
     }
     
     return items;
-  }, [compactionMarkers, isConversationStreaming, liveCompaction, streamingAssistantMessageId, visibleMessages]);
+  }, [compactionMarkers, isConversationStreaming, liveCompaction, visibleMessages]);
 
   useChatAutoScroll({
     conversationId,

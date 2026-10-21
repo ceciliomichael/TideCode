@@ -110,7 +110,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     sessionState.activeConversationState?.conversation.agentContextRootPath ??
     sessionState.selectedFolderPath ??
     draftAgentContextPath
-  const composerState = useChatComposerState(messages)
+  const composerState = useChatComposerState(messages, activeConversationId)
   const setSessionError = sessionState.setError
   const captureComposerEditingSession = composerState.captureEditingSession
   const editingMessageId = composerState.editingMessageId
@@ -302,6 +302,8 @@ export function useChatMessages(input: UseChatMessagesInput) {
     renameFolder: sessionState.renameFolder,
     replaceConversationSummaries: sessionState.replaceConversationSummaries,
     resetComposerState: composerState.resetComposerState,
+    cancelEditingMessage: composerState.cancelEditingMessage,
+    discardComposerDraft: composerState.discardComposerDraft,
     selectedFolderId: sessionState.selectedFolderId,
     resolveFolderIdForWorkspacePath: sessionState.resolveFolderIdForWorkspacePath,
     setError: sessionState.setError,

@@ -6,6 +6,7 @@ import {
   expandChatMentions,
   findChatMentionMatches,
   getChatMentionTarget,
+  getChatMentionTooltipTarget,
   getChatMentionTriggerState,
   resolveChatMentionNativeDeletionChange,
 } from '../src/lib/chatMentions'
@@ -48,6 +49,24 @@ test('mention targets show only the selected path or name without tool prefixes'
   for (const [reference, target] of references) {
     assert.equal(getChatMentionTarget(reference), target)
   }
+})
+
+test('mention tooltips show virtual skill and MCP prefixes without changing attachment targets', () => {
+  const references: ReadonlyArray<readonly [string, string]> = [
+    ['tools.skill.load:writing', '@skills/writing'],
+    ['load_skill:writing', '@skills/writing'],
+    ['tools.available.search:GitHub Enterprise', '@mcp/GitHub Enterprise'],
+    ['@skills/writing/SKILL.md', '@skills/writing/SKILL.md'],
+    ['tools.read:@workspace/tidecode/src/main.ts', '@workspace/tidecode/src/main.ts'],
+    ['tools.read:@attachments/preview.png', '@attachments/preview.png'],
+  ]
+
+  for (const [reference, target] of references) {
+    assert.equal(getChatMentionTooltipTarget(reference), target)
+  }
+
+  assert.equal(getChatMentionTarget('tools.skill.load:writing'), 'writing')
+  assert.equal(getChatMentionTarget('tools.available.search:GitHub Enterprise'), 'GitHub Enterprise')
 })
 
 test('MCP markers restore their names without swallowing adjacent normal text', () => {

@@ -14,6 +14,8 @@ interface UseChatConversationActionsInput {
   addFolder: (folder: ConversationFolderSummary) => void
   applyConversation: (conversation: ConversationRecord) => void
   beginEditingMessage: (messageId: string) => void
+  cancelEditingMessage: () => void
+  discardComposerDraft: (conversationId: string) => void
   clearConversationSelection: (nextFolderId: string | null) => void
   clearError: () => void
   conversationRuntimeStatesRef: { current: Record<string, ConversationRuntimeSnapshot> }
@@ -40,6 +42,8 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
     addFolder,
     applyConversation,
     beginEditingMessage,
+    cancelEditingMessage,
+    discardComposerDraft,
     clearConversationSelection,
     clearError,
     conversationRuntimeStatesRef,
@@ -141,7 +145,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       conversationSelectionRequestRef.current = requestId
       requestedConversationIdRef.current = conversationId
       clearError()
-      resetComposerState()
+      cancelEditingMessage()
 
       const markerPreload = Promise.resolve()
         .then(() => loadChatCompactionMarkers(conversationId))
@@ -179,7 +183,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         }
       }
     },
-    [activeConversationId, applyConversation, clearError, conversationRuntimeStatesRef, resetComposerState, setError],
+    [activeConversationId, applyConversation, cancelEditingMessage, clearError, conversationRuntimeStatesRef, setError],
   )
 
   const startEditingMessage = useCallback(
@@ -217,12 +221,9 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
 
       const { deletedConversationFolderId, remainingSummaries } = getDeletionContext(conversationId)
 
-      if (conversationId === activeConversationId) {
-        resetComposerState()
-      }
-
       try {
         await window.tidecodeHistory.deleteConversation(conversationId)
+        discardComposerDraft(conversationId)
         removeConversationRuntime(conversationId)
         replaceConversationSummaries(remainingSummaries)
 
@@ -240,6 +241,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       activeConversationId,
       clearError,
       conversationRuntimeStatesRef,
+      discardComposerDraft,
       getDeletionContext,
       removeConversationRuntime,
       replaceConversationSummaries,
@@ -333,6 +335,9 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
 
       try {
         const deletedConversationIds = await window.tidecodeHistory.deleteFolder(folderId)
+        for (const conversationId of deletedConversationIds) {
+          discardComposerDraft(conversationId)
+        }
         removeFolder(folderId, deletedConversationIds)
       } catch (caughtError) {
         console.error(caughtError)

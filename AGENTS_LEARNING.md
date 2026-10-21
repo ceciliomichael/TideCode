@@ -1,5 +1,7 @@
 # Durable project knowledge
 
+- Compaction UI regression (2026-10-21): replacing a live boundary with a saved marker must keep previous tools finalized in the same work timeline. A streaming draft may predate compaction and is not a safe fallback position for the marker. Verify both closed and manually opened groups across marker loading and resumed output; newly active tools must still appear normally.
+
 - On 2026-10-21 the user approved proactive generative UI in AI responses while retaining Markdown. Prefer native TideUI for useful structured comparisons, options, timelines, metrics, progress and interactions without requiring an explicit visual request. Keep explanations, code, commands and short answers in Markdown, combine formats without duplication, and use custom HTML when its layout or local interaction capabilities add value beyond native components. Avoid decorative interfaces and fabricated data or functionality.
 
 - On 2026-10-20 the user explicitly asked for every application error to follow the browser screenshot toast's visual language and use plain, actionable wording rather than technical exception text. Preserve technical output in tool/terminal diagnostics where it is useful, not in ordinary user notifications.

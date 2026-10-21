@@ -300,3 +300,90 @@ test('persisted compaction stays inside one collapsed worked block', () => {
   assert.equal(html.match(/Compacted/g)?.length ?? 0, 0)
   assert.equal(html.match(/Released successfully\./g)?.length ?? 0, 1)
 })
+
+test('saved marker arrival keeps old tools finalized before and after resumed output', () => {
+  const messages: Message[] = [
+    {
+      id: 'user-1',
+      role: 'user',
+      content: 'Inspect the project.',
+      timestamp: 1_000,
+    },
+    {
+      id: 'assistant-pre',
+      role: 'assistant',
+      content: '',
+      timestamp: 2_000,
+      toolInvocations: [
+        {
+          id: 'read-1',
+          toolName: 'read',
+          argumentsText: '{"path":"AGENTS.md"}',
+          state: 'completed',
+          startedAt: 2_000,
+          completedAt: 2_500,
+        },
+        {
+          id: 'read-2',
+          toolName: 'read',
+          argumentsText: '{"path":"DESIGN.md"}',
+          state: 'completed',
+          startedAt: 2_000,
+          completedAt: 2_500,
+        },
+      ],
+    },
+  ]
+  const compacted: ChatCompactionLifecycleState = {
+    afterMessageId: 'assistant-pre',
+    attemptId: 'attempt-1',
+    compactionId: 'compaction-1',
+    phase: 'compacted',
+    streamId: 'stream-1',
+  }
+  const marker: ChatCompactionMarker = {
+    anchorUserMessageId: 'user-1',
+    compactionId: 'compaction-1',
+    createdAt: 3_000,
+    detailSections: [],
+  }
+  const stages: RenderTranscriptOptions[] = [
+    {
+      liveCompaction: {
+        afterMessageId: 'assistant-pre',
+        attemptId: 'attempt-1',
+        phase: 'compacting',
+        streamId: 'stream-1',
+      },
+    },
+    { liveCompaction: compacted },
+    { liveCompaction: compacted, compactionMarkers: [marker] },
+    { compactionMarkers: [marker] },
+  ]
+  for (const stage of stages) {
+    const html = renderTranscript(messages, { ...stage, streamingAssistantMessageId: 'assistant-pre' })
+    assert.doesNotMatch(html, /Exploring/u)
+    assert.match(html, /Explored/u)
+    assert.doesNotMatch(html, /Reading AGENTS\.md|Reading DESIGN\.md/u)
+  }
+
+  const resumed = renderTranscript([
+    ...messages,
+    {
+      id: 'assistant-post',
+      role: 'assistant',
+      content: '',
+      timestamp: 4_000,
+      toolInvocations: [{
+        id: 'read-3',
+        toolName: 'read',
+        argumentsText: '{"path":"src"}',
+        state: 'running',
+        startedAt: 4_000,
+      }],
+    },
+  ], { liveCompaction: compacted, compactionMarkers: [marker], streamingAssistantMessageId: 'assistant-post' })
+  assert.match(resumed, /Explored/u)
+  assert.match(resumed, /Reading src/u)
+  assert.doesNotMatch(resumed, /Reading AGENTS\.md|Reading DESIGN\.md/u)
+})

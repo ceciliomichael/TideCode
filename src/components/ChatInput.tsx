@@ -867,6 +867,7 @@ export function ChatInput({
 
         <div ref={mentionMenu.anchorRef} className="relative">
           <ChatMentionTextarea
+            conversationId={conversationId}
             imageAttachments={imageAttachments}
             textareaRef={textareaRef}
             value={value}
@@ -885,6 +886,7 @@ export function ChatInput({
             disabled={disabled}
             rows={1}
             mentionPathMap={mentionMenu.mentionPathMap}
+            workspaceRootPath={workspaceRootPath}
             style={{ fieldSizing: 'content' } as CSSProperties}
           />
 
