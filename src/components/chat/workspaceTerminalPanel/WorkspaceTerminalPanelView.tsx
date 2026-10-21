@@ -62,7 +62,12 @@ export function WorkspaceTerminalPanelView({
           ].join(" ")}
         />
       ) : null}
-<div className="flex h-10 shrink-0 items-stretch border-y border-border bg-background">
+      <div
+        className={[
+          "flex h-10 shrink-0 items-stretch border-border bg-background",
+          panelState.isFullScreen ? "border-b" : "border-y",
+        ].join(" ")}
+      >
         <div className="flex min-w-0 flex-1 items-stretch overflow-hidden">
           <div className="workspace-tabs-scroll-viewport flex min-w-0 flex-1 items-stretch gap-0 overflow-x-auto overflow-y-hidden">
             {panelState.terminalTabs.map((tab) => {
