@@ -15,8 +15,8 @@ The generated `src/lib/generatedInjectedPrompts.ts` is browser-safe, and must no
 Placeholders contain **runtime values**, not editable instructions:
 - `{{SHELL_LABEL}}` and `{{SHELL_COMMAND}}` are the escaped active terminal shell.
 - `{{VENV_LABEL}}` is the escaped active Python environment.
-- `{{MEMORY_INDEX}}` contains the selected memory-index or missing-memory text.
-- `{{INDEX}}` is the escaped current MEMORY.md index.
+
+Workspace memory injects fixed instructions to read MEMORY.md through the normal file tool. Index and detail contents are never embedded in the injection. Disabled workspace memory adds no context.
 
 Do not alter placeholders without updating the corresponding runtime binding. The `<hidden_user_context>` envelope, kind/state tracking, escaping, and replacement of prior injected context remain owned by TypeScript.
 

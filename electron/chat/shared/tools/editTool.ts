@@ -1,3 +1,4 @@
+import { syncMemoryAfterMutation } from '../../../memory/mutationSync'
 import { jsonSchema, tool } from 'ai'
 import path from 'node:path'
 import { applyStructuredEdits, type StructuredReplacement } from '../structuredEditWorkspace'
@@ -63,6 +64,10 @@ export function createEditTool(context: WorkspaceToolContext, runtimeState?: Pla
           (absolutePath) => captureCheckpointFileStateIfNeeded(context.checkpointId, absolutePath),
         )
         const affected = changed.filter((entry) => entry.content !== entry.original)
+        const affectedPaths = affected.map((entry) => (
+          resolveMutableTargetPath(context.workspaceRootPath, entry.path, context.terminalExecutionMode).absolutePath
+        ))
+        await syncMemoryAfterMutation(context, affectedPaths)
         if (affected.length) notifyWorkspaceExplorerChange(context.workspaceRootPath)
         if (targetPlan && planPath) {
           const planId = getPlanIdFromRelativePath(planPath)

@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, MoreHorizontal, Search } from 'lucide-react'
+import { Check, ChevronDown, Folder, MoreHorizontal, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
@@ -251,6 +251,16 @@ export function ProjectThreadSelector({
                             ) : null}
                           </span>
                         </button>
+                        {isSelected ? (
+                          <span className="mr-1 flex h-9 w-9 shrink-0 items-start justify-center pt-0.5 md:group-hover/project:hidden">
+                            <Check
+                              size={16}
+                              strokeWidth={2.2}
+                              aria-hidden="true"
+                              className="shrink-0 text-foreground"
+                            />
+                          </span>
+                        ) : null}
                         <Tooltip
                           content="Project actions"
                           hideWhenTriggerExpanded

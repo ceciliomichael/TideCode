@@ -87,18 +87,10 @@ export function buildWorkspaceInstructionsHiddenContext(
   )
 }
 
-export function buildWorkspaceMemoryHiddenContext(input: {
-  content?: string | null
-  revision?: string | null
-}): HiddenUserContext {
-  const content = input.content?.trim() ?? ''
-  const state = input.revision ? `enabled:${input.revision}` : 'enabled:missing'
-  const memoryIndex = content
-    ? renderInjectedPrompt('workspaceMemoryIndex', { INDEX: escapeHiddenUserContextMarkup(content) })
-    : renderInjectedPrompt('workspaceMemoryMissing')
+export function buildWorkspaceMemoryHiddenContext(): HiddenUserContext {
   return wrapHiddenUserContext(
-    WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND, state,
-    renderInjectedPrompt('workspaceMemoryEnabled', { MEMORY_INDEX: memoryIndex }),
+    WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND, 'enabled',
+    renderInjectedPrompt('workspaceMemoryEnabled'),
   )
 }
 

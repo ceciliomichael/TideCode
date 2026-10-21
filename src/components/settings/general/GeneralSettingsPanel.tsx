@@ -114,6 +114,7 @@ export function GeneralSettingsPanel({
               options={APP_LANGUAGE_OPTIONS}
               disabled={isLoading}
               className="w-full"
+              selectedOptionIconClassName="text-black dark:text-white"
               onChange={handleLanguageChange}
             />
           </div>

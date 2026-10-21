@@ -65,16 +65,8 @@ export async function applyWorkspaceMemoryContext(
     return projected
   }
 
-  const memory = await refreshWorkspaceMemoryIndex(workspaceRootPath)
-
-  const contexts = [
-    buildWorkspaceMemoryHiddenContext({
-      content: memory?.content ?? null,
-      revision: memory?.revision ?? null,
-    }),
-  ]
-
-  const hiddenContent = contexts.map((context) => context.content).join('\n\n')
+  await refreshWorkspaceMemoryIndex(workspaceRootPath)
+  const hiddenContent = buildWorkspaceMemoryHiddenContext().content
   const targetIndex = projected.findLastIndex((message) => message.role === 'user')
   if (targetIndex < 0) {
     return [...projected, { role: 'user', content: hiddenContent }]

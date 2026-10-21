@@ -44,14 +44,11 @@ test('runtime interpolates escaped facts, keeping revision/state envelopes dynam
   assert.match(shell[0].content, /pwsh &amp; sh/u)
   assert.match(shell[1].content, /Python virtual environment activated: venv/u)
 
-  const memory = buildWorkspaceMemoryHiddenContext({
-    revision: 'revision-5', content: '<script>data</script>',
-  })
-  assert.equal(memory.state, 'enabled:revision-5')
-  assert.ok(memory.content.includes('Current MEMORY.md index:'))
-  assert.ok(memory.content.includes('&lt;script&gt;data&lt;/script&gt;'))
-  const missing = buildWorkspaceMemoryHiddenContext({})
-  assert.ok(missing.content.includes(renderInjectedPrompt('workspaceMemoryMissing')))
+  const memory = buildWorkspaceMemoryHiddenContext()
+  assert.equal(memory.state, 'enabled')
+  assert.ok(memory.content.includes(renderInjectedPrompt('workspaceMemoryEnabled')))
+  assert.ok(!memory.content.includes('Current MEMORY.md index:'))
+
 })
 
 test('template variables must match provided runtime values', () => {

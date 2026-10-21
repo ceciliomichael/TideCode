@@ -1,7 +1,9 @@
 import { jsonSchema, tool } from 'ai'
+import { captureCheckpointFileStateIfNeeded } from './workspaceToolResults'
+import { resolveReadableTargetPath } from './workspaceToolPaths'
 import { readLatestConversationMemory } from '../../history/eventStore'
 import { CHAT_DURABLE_MEMORY_PATH } from '../compaction/durableMemory'
-import { classifyWorkspaceMemoryPath, MEMORY_INDEX_PATH, migrateLegacyWorkspaceMemory } from '../../../memory/service'
+import { classifyWorkspaceMemoryPath, MEMORY_INDEX_PATH, migrateLegacyWorkspaceMemory, refreshWorkspaceMemoryIndex } from '../../../memory/service'
 import {
   createReadToolResult,
   resolveReadOnlyTargetPath,
@@ -93,6 +95,16 @@ export function createReadTool(context: WorkspaceToolContext) {
         if (normalizedTargetPath.includes('.tidecode/memory/folders/')) {
           await migrateLegacyWorkspaceMemory(context.workspaceRootPath)
           targetPath = normalizedTargetPath.replace('.tidecode/memory/folders/', '.tidecode/memory/details/')
+        }
+        const candidate = resolveReadableTargetPath(context.workspaceRootPath, targetPath, context.terminalExecutionMode, {
+          allowGlobalAgentsDirectory: true,
+          conversationId: context.conversationId,
+          enabledSkills: context.enabledSkills,
+        })
+        if (classifyWorkspaceMemoryPath(candidate.absolutePath, context.workspaceRootPath)?.kind === 'index') {
+          await refreshWorkspaceMemoryIndex(context.workspaceRootPath, (absolutePath) => (
+            captureCheckpointFileStateIfNeeded(context.checkpointId, absolutePath)
+          ))
         }
         const target = await resolveReadOnlyTargetPath(
           context.workspaceRootPath,

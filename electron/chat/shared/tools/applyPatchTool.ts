@@ -1,3 +1,4 @@
+import { syncMemoryAfterMutation } from '../../../memory/mutationSync'
 import { jsonSchema, tool } from 'ai'
 import path from 'node:path'
 import type { AgentToolExecutionResult } from '../toolTypes'
@@ -236,6 +237,9 @@ export function createApplyPatchTool(context: WorkspaceToolContext, runtimeState
           },
         })
 
+        await syncMemoryAfterMutation(context, result.changes.flatMap((change) => (
+          change.nextAbsolutePath ? [change.absolutePath, change.nextAbsolutePath] : [change.absolutePath]
+        )))
         notifyWorkspaceExplorerChange(context.workspaceRootPath)
         if (planTarget) {
           const finalPlanChange = [...result.changes]

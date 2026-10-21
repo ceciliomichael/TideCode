@@ -1,1 +1,0 @@
-No MEMORY.md index currently exists. When useful knowledge should carry into future chats, create the first topic file under .tidecode/memory/details/. TideCode will generate the index on the next refresh.

@@ -1,3 +1,4 @@
+import { syncMemoryAfterMutation } from '../../../memory/mutationSync'
 import { promises as fs } from 'node:fs'
 import { notifyWorkspaceExplorerChange } from '../../../workspace/explorerNotifications'
 import type { WorkspaceToolContext } from './workspaceToolPaths'
@@ -94,6 +95,7 @@ async function createWholeFileWriteToolResultInternal(
       `Write failed while persisting "${target.displayPath}": ${detail}`,
     )
   }
+  await syncMemoryAfterMutation(context, [target.absolutePath])
   notifyWorkspaceExplorerChange(context.workspaceRootPath)
 
   const fileChanges = aggregateFileChangeItems([{

@@ -1,6 +1,6 @@
 # Durable project knowledge
 
-- On 2026-10-21 the user confirmed that shared workspace MEMORY.md should remain instruction-driven without a separate memory model call or dedicated tool. Disabled memory should inject no notice or instructions. Enabled instructions should be easy to follow, with TideCode managing the generated index and the AI maintaining topic files.
+- On 2026-10-21 the user confirmed that shared workspace MEMORY.md remains instruction-driven through ordinary file tools. Inject only instructions to read the index and relevant details, never index contents; disabled memory injects nothing. Details use name/description frontmatter followed by expanded knowledge. Descriptions must be short, specific, and useful for selecting what to read. TideCode generates the index and updates it immediately after normal AI file-tool changes. The user also requires efficient realtime indexing: avoid full detail-body reads and unrelated scans, keep caches bounded, and measure performance without weakening immediate consistency.
 
 - On 2026-10-21 the user confirmed that edit and patch must continue to run through exec and approved deterministic recovery of misplaced string payloads, exact bare bindings, and unique case/underscore/hyphen naming mismatches. Preserve source validation and reject conflicting or ambiguous interpretations rather than guessing unrelated names.
 

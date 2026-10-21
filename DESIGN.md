@@ -1,6 +1,6 @@
 # Design
 
-Workspace memory (2026-10-21): keep saving instruction-driven through normal file tools. When disabled, inject no workspace-memory instructions, index, or disabled notice. When enabled, tell the AI when to read and save, update existing topics, and correct stale facts. Detail files hold reusable knowledge; TideCode owns the generated MEMORY.md index.
+Workspace memory (2026-10-21): keep saving instruction-driven through normal file tools. Enabled context tells the AI to read MEMORY.md itself, select relevant details by their useful descriptions, and maintain confirmed knowledge. Never embed index contents; disabled memory injects nothing. Topic files use name and description frontmatter followed by expanded Markdown. Descriptions explain what the memory contains and when to read it. TideCode owns the generated index and synchronizes it immediately after AI file-tool changes. Existing files missing metadata remain discoverable with a repair notice. Immediate index updates inspect affected topic metadata only; ordinary reads/runs reconcile external changes. Expanded bodies are never loaded for indexing, metadata reads are bounded, and workspace caches are evicted. Oversized or invalid frontmatter is listed as needing metadata repair.
 
 ## User-facing errors (2026-10-20)
 

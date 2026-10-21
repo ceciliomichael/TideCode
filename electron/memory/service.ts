@@ -1,5 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { collectMemoryIndexEntries, type MemoryIndexEntry } from './indexCatalog'
+import { writeTextFileAtomically } from '../chat/shared/tools/workspaceMutationSafety'
 import { notifyWorkspaceExplorerChange } from '../workspace/explorerNotifications'
 import {
   assertWorkspaceDirectory,
@@ -15,7 +17,6 @@ export const MEMORY_FOLDERS_DIRECTORY = MEMORY_DETAILS_DIRECTORY
 const LEGACY_MEMORY_FOLDERS_DIRECTORY = `${MEMORY_DIRECTORY}/folders`
 
 const MAX_MEMORY_CONTENT_BYTES = 512 * 1024
-const MAX_MEMORY_ENTRIES = 1_000
 const MEMORY_PATH_SEGMENT_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/u
 const memoryLocks = new Map<string, Promise<void>>()
 
@@ -30,12 +31,6 @@ export interface MemoryMutationResult extends MemoryDocument {
 
 export interface WorkspaceMemorySnapshot extends MemoryDocument {
   revision: string
-}
-
-interface MemoryIndexEntry {
-  path: string
-  title: string
-  updatedAt: number
 }
 
 interface MemoryMutationInput {
@@ -230,55 +225,8 @@ async function assertManagedPathContainsNoSymlink(workspaceRootPath: string, abs
   }
 }
 
-function extractMemoryTitle(content: string, relativePath: string) {
-  const heading = content.match(/^#\s+(.+)$/mu)?.[1]?.trim()
-  if (heading) {
-    return heading.replaceAll('[', '').replaceAll(']', '')
-  }
-
-  const fileName = path.posix.basename(relativePath, '.md')
-  return fileName.replace(/[-_]+/gu, ' ').replace(/\b\w/gu, (character) => character.toUpperCase())
-}
-
-async function collectMemoryEntries(directoryPath: string, relativeDirectory = 'details'): Promise<MemoryIndexEntry[]> {
-  let entries: Array<import('node:fs').Dirent<string>>
-  try {
-    entries = await fs.readdir(directoryPath, { withFileTypes: true })
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return []
-    }
-    throw error
-  }
-
-  const collected: MemoryIndexEntry[] = []
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    if (entry.isSymbolicLink()) {
-      continue
-    }
-
-    const absoluteEntryPath = path.join(directoryPath, entry.name)
-    const relativeEntryPath = `${relativeDirectory}/${entry.name}`
-    if (entry.isDirectory()) {
-      collected.push(...await collectMemoryEntries(absoluteEntryPath, relativeEntryPath))
-    } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
-      const [content, stats] = await Promise.all([
-        fs.readFile(absoluteEntryPath, 'utf8'),
-        fs.stat(absoluteEntryPath),
-      ])
-      collected.push({
-        path: relativeEntryPath.replace(/\\/gu, '/'),
-        title: extractMemoryTitle(content, relativeEntryPath),
-        updatedAt: stats.mtimeMs,
-      })
-    }
-
-    if (collected.length > MAX_MEMORY_ENTRIES) {
-      throw new Error(`Workspace memory cannot contain more than ${MAX_MEMORY_ENTRIES} entries.`)
-    }
-  }
-
-  return collected
+function escapeIndexText(value: string) {
+  return value.replace(/[\\`*_[\]<>]/gu, (character) => `\\${character}`)
 }
 
 function renderMemoryIndex(entries: MemoryIndexEntry[]) {
@@ -302,7 +250,12 @@ function renderMemoryIndex(entries: MemoryIndexEntry[]) {
     for (const [folder, folderEntries] of groupedEntries) {
       lines.push('', `## ${folder}`)
       for (const entry of folderEntries) {
-        lines.push(`- [${entry.title}](${entry.path}) - updated ${new Date(entry.updatedAt).toISOString()}`)
+        const linkPath = entry.path.split('/').map((segment) => (
+          encodeURIComponent(segment).replace(/[()]/gu, (character) => (
+            `%${character.charCodeAt(0).toString(16)}`
+          ))
+        )).join('/')
+        lines.push(`- [${escapeIndexText(entry.title)}](${linkPath}) - ${escapeIndexText(entry.description)}`)
       }
     }
   }
@@ -313,7 +266,7 @@ function renderMemoryIndex(entries: MemoryIndexEntry[]) {
 async function buildCurrentIndex(workspaceRootPath: string) {
   const detailsTarget = getSafeWorkspaceTargetPath(workspaceRootPath, MEMORY_DETAILS_DIRECTORY)
   await assertManagedPathContainsNoSymlink(workspaceRootPath, detailsTarget.absolutePath)
-  return renderMemoryIndex(await collectMemoryEntries(detailsTarget.absolutePath))
+  return renderMemoryIndex(await collectMemoryIndexEntries(detailsTarget.absolutePath))
 }
 
 async function migrateLegacyDirectoryContents(sourceDirectory: string, destinationDirectory: string): Promise<boolean> {
@@ -440,7 +393,7 @@ async function writeIndexIfChanged(workspaceRootPath: string, beforeMutation?: (
   if (previousContent !== content) {
     await beforeMutation?.(indexTarget.absolutePath)
     await fs.mkdir(path.dirname(indexTarget.absolutePath), { recursive: true })
-    await fs.writeFile(indexTarget.absolutePath, content, 'utf8')
+    await writeTextFileAtomically(indexTarget.absolutePath, content)
   }
 
   return { changed: previousContent !== content, content }
@@ -448,22 +401,25 @@ async function writeIndexIfChanged(workspaceRootPath: string, beforeMutation?: (
 
 export async function refreshWorkspaceMemoryIndex(
   workspaceRootPathInput: string,
+  beforeMutation?: (absolutePath: string) => Promise<void>,
+  changedPaths?: readonly string[],
 ): Promise<WorkspaceMemorySnapshot | null> {
   const workspaceRootPath = normalizeWorkspacePath(workspaceRootPathInput)
   await assertWorkspaceDirectory(workspaceRootPath)
-  await migrateLegacyWorkspaceMemory(workspaceRootPath)
+  const migrated = await migrateLegacyWorkspaceMemory(workspaceRootPath)
   return withMemoryLock(workspaceRootPath, async () => {
     const detailsTarget = getSafeWorkspaceTargetPath(workspaceRootPath, MEMORY_DETAILS_DIRECTORY)
     await assertManagedPathContainsNoSymlink(workspaceRootPath, detailsTarget.absolutePath)
-    const entries = await collectMemoryEntries(detailsTarget.absolutePath)
+    const entries = await collectMemoryIndexEntries(detailsTarget.absolutePath, migrated ? undefined : changedPaths)
     const existing = await readWorkspaceMemoryFile(workspaceRootPath, MEMORY_INDEX_PATH)
     if (entries.length === 0 && !existing) return null
 
     const content = renderMemoryIndex(entries)
     if (existing?.content !== content) {
       const indexTarget = resolveIndexTarget(workspaceRootPath)
+      await beforeMutation?.(indexTarget.absolutePath)
       await fs.mkdir(path.dirname(indexTarget.absolutePath), { recursive: true })
-      await fs.writeFile(indexTarget.absolutePath, content, 'utf8')
+      await writeTextFileAtomically(indexTarget.absolutePath, content)
       notifyWorkspaceExplorerChange(workspaceRootPath)
     }
     return readWorkspaceMemoryFile(workspaceRootPath, MEMORY_INDEX_PATH)
