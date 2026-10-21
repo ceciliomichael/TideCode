@@ -19,6 +19,7 @@ import { isPlanStatusMessage } from '../lib/planStatusMessages'
 import { getPlanPathsCreatedByRevertedUserMessage } from '../lib/planPresentation'
 import { createClientId } from '../lib/clientId'
 import { readChatSelectionFromRefs } from '../lib/chatSelection'
+import { discardCachedCompactionMarkersFromMessage } from '../lib/chatCompactionMarkerCache'
 import {
   acquireChatSendScopeGate,
   canBeginChatEditedSend,
@@ -158,6 +159,11 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       presentation: OptimisticEditedMessagePresentation,
     ) => {
       flushSync(() => {
+        discardCachedCompactionMarkersFromMessage(
+          conversationId,
+          input.conversationRuntimeStatesRef.current[conversationId]?.conversation.messages ?? [],
+          presentation.messageId,
+        )
         input.beginHistoryCutoff(conversationId, presentation.messageId)
         input.beginOptimisticEditedPresentation(conversationId, presentation)
       })

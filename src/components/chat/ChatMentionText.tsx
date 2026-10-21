@@ -1,14 +1,10 @@
 import { memo, type ReactNode } from 'react'
 import { splitChatImageReferenceSegments } from '../../lib/chatImageReferences'
-import {
-  findChatMentionImageAttachment,
-  getChatMentionImagePreview,
-} from '../../lib/chatMentionImages'
+import { findChatMentionImageAttachment, getChatMentionImagePreview } from '../../lib/chatMentionImages'
 import { getChatMentionTooltipTarget, splitChatMentionSegments } from '../../lib/chatMentions'
 import { chatMentionTooltipPanelClassName } from '../../lib/chatStyles'
 import type { ChatImageAttachment } from '../../types/chat'
 import { Tooltip } from '../Tooltip'
-import { ToolImageResult } from './ToolImageResult'
 import { ChatMentionImageHoverContent } from './ChatMentionImageHoverContent'
 import { ChatImageReferenceLabel } from './ChatImageReferenceLabel'
 
@@ -122,15 +118,16 @@ export const ChatMentionText = memo(function ChatMentionText({
         const imageAttachment = segment.path
           ? findChatMentionImageAttachment(segment.path, imageAttachments)
           : null
-        const imagePreview = segment.path
+        const imagePreview = segment.path && !imageAttachment
           ? getChatMentionImagePreview(segment.path, workspaceRootPath)
           : null
         let tooltipContent: ReactNode = getChatMentionTooltipTarget(segment.path ?? segment.label ?? '')
-        if (imageAttachment) {
+        if (imageAttachment && segment.path) {
           tooltipContent = <ChatMentionImageHoverContent attachment={imageAttachment} />
         } else if (imagePreview) {
           tooltipContent = (
-            <ToolImageResult
+            <ChatMentionImageHoverContent
+              key={segment.path}
               conversationId={conversationId}
               presentation={imagePreview.presentation}
               workspaceRootPath={imagePreview.workspaceRootPath}

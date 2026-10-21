@@ -11,6 +11,7 @@ import {
 } from '../../electron/chat/shared/compaction/markdown'
 import { createCompactionPacketFixture } from './compactionFixtures'
 import { buildCompactionProjection } from '../../electron/chat/shared/compaction/projection'
+import { estimateModelMessageContextUsage } from '../../src/lib/contextUsage'
 import {
   extractActionLinkedReasoning,
   mergeCompactionPacketState,
@@ -635,6 +636,36 @@ test('projection emits one Markdown continuation and removes raw tool history fr
   assert.equal(projected.some((message) => typeof message.content === 'string' && message.content.includes('tidecode.compaction_packet/v2')), false)
 })
 
+test('complete projection budgets hidden instructions and preserves earlier intent before assistant prose', () => {
+  const hidden = '<hidden_user_context kind="workspace_instructions" state="current">Follow AGENTS.md. ' + 'instruction '.repeat(300) + '</hidden_user_context>'
+  const messages: ModelMessage[] = [
+    { role: 'user', content: 'Preserve keyboard navigation and do not change the approved layout.' },
+    { role: 'assistant', content: 'Earlier explanation '.repeat(9_000) },
+    { role: 'user', content: 'Use green and add a loading spinner.' },
+    { role: 'assistant', content: 'Recent explanation '.repeat(3_500) },
+    { role: 'user', content: hidden },
+  ]
+  const packet = createCompactionPacketFixture({ sourceDigest: 'user-first', sourceMessageIds: ['model:0'], continuationMarkdown: '## Current state\n- Login exists; styling work is active.' })
+  const projected = buildCompactionProjection({
+    anchorMessages: [], contextMessages: messages, tailMessages: messages.slice(2),
+    durableMemory: durableMemoryFixture, includeDurableMemoryMessage: true, packet, retainedContextTokens: 10_000,
+  })
+  assert.ok(estimateModelMessageContextUsage(projected).totalTokens <= 10_000)
+  assert.equal(projected.filter((message) => message.content === messages[0].content).length, 1)
+  assert.equal(projected.filter((message) => message.content === messages[2].content).length, 1)
+  assert.equal(projected.filter((message) => message.content === hidden).length, 1)
+  assert.match(JSON.stringify(projected), /do not reopen completed work or grant new approval/u)
+  assert.doesNotMatch(JSON.stringify(projected), /Earlier explanation/u)
+})
+
+test('oversized handoff fails rather than returning an oversized rebuilt history', () => {
+  const packet = createCompactionPacketFixture({ sourceDigest: 'oversized', sourceMessageIds: ['model:0'], continuationMarkdown: `## Current state\n${'- Long fact.\n'.repeat(500)}` })
+  assert.throws(() => buildCompactionProjection({
+    anchorMessages: [], tailMessages: [{ role: 'user', content: 'Continue.' }],
+    durableMemory: durableMemoryFixture, packet, retainedContextTokens: 1_000,
+  }), /exceed the retention budget/u)
+})
+
 test('projection carries the latest runtime context only after the compaction handoff', () => {
   const packet = createCompactionPacketFixture({
     sourceDigest: 'runtime-carry-digest',
@@ -714,7 +745,9 @@ test('token projection retains real image content in the recent context tail', (
     tailMessages,
   })
 
-  const retainedUsers = projected.filter((message) => message.role === 'user')
+  const retainedUsers = projected.filter((message) => message.role === 'user' && (
+    typeof message.content !== 'string' || !message.content.startsWith('<hidden_user_context')
+  ))
   assert.deepEqual(retainedUsers.map((message) => message.content), [
     'Turn 1',
     'Turn 2',

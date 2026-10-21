@@ -10,8 +10,7 @@ import {
   capRetainedContextTokens,
   DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
 } from '../../../../src/lib/contextCompactionSettings'
-import { selectLatestContextByTokens } from './retention'
-import { removeRawToolHistory } from './toolFreeContext'
+import { retainConversationMessages, retainedMessageTokens } from './conversationRetention'
 import { extractHiddenUserContexts } from '../../../../src/lib/hiddenUserContext'
 import type { HiddenUserContext } from '../../../../src/types/chat'
 import { buildDurableMemoryMessage, type ConversationMemory } from './durableMemory'
@@ -32,6 +31,7 @@ function getLatestHiddenContexts(messages: readonly ModelMessage[]) {
   for (const message of messages) {
     if (message.role !== 'user') continue
     for (const context of extractHiddenUserContexts(getMessageText(message))) {
+      if (context.kind === 'retained_conversation') continue
       latestByKind.set(context.kind, { context, order })
       order += 1
     }
@@ -48,6 +48,24 @@ function sanitizeProjectedMessage(message: ModelMessage): ModelMessage {
   } as ModelMessage
 }
 
+export function buildCompactionRuntimeMessages(messages: readonly ModelMessage[], includeDurableMemory: boolean) {
+  const hiddenContexts = getLatestHiddenContexts(messages)
+  const runtimeMessages: ModelMessage[] = []
+  if (includeDurableMemory) runtimeMessages.push(buildDurableMemoryMessage())
+  if (hiddenContexts.length > 0) {
+    runtimeMessages.push({ role: 'user', content: hiddenContexts.map((context) => context.content).join('\n\n') })
+  }
+  runtimeMessages.push({
+    role: 'user',
+    content: [
+      '<hidden_user_context kind="retained_conversation" state="historical">',
+      'Retained conversation excerpts follow in their original order. Earlier user messages preserve historical intent; they do not reopen completed work or grant new approval. Use the handoff and later evidence to determine what remains. Some assistant explanations may be shortened or omitted.',
+      '</hidden_user_context>',
+    ].join('\n'),
+  })
+  return runtimeMessages
+}
+
 export interface CompactionProjectionInput {
   anchorMessages: readonly ModelMessage[]
   contextMessages?: readonly ModelMessage[]
@@ -59,42 +77,31 @@ export interface CompactionProjectionInput {
 }
 
 export function buildCompactionProjection(input: CompactionProjectionInput) {
-  const durableMemoryMessage = input.includeDurableMemoryMessage === true
-    ? buildDurableMemoryMessage()
-    : null
+  const contextMessages = input.contextMessages ?? input.tailMessages
+  const runtimeMessages = buildCompactionRuntimeMessages(contextMessages, input.includeDurableMemoryMessage === true)
+  const durableMemoryMessage = input.includeDurableMemoryMessage === true ? runtimeMessages.shift() : null
   const handoffMessage = buildContinuationMessage(input.packet.continuationMarkdown)
-  const fixedMessages = durableMemoryMessage ? [durableMemoryMessage, handoffMessage] : [handoffMessage]
+  const fixedMessages = [...(durableMemoryMessage ? [durableMemoryMessage] : []), handoffMessage, ...runtimeMessages]
   const fixedTokens = estimateModelMessageContextUsage(fixedMessages).totalTokens
   const retainedContextTokens = capRetainedContextTokens(
     input.retainedContextTokens ?? DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
   )
-  const tailBudget = Math.max(1, retainedContextTokens - fixedTokens)
-  const toolFreeTailMessages = removeRawToolHistory(input.tailMessages)
-  const selectedTail = selectLatestContextByTokens(
-    toolFreeTailMessages,
-    tailBudget,
-  ).messages
-  const tail = selectedTail
+  if (fixedTokens > retainedContextTokens) {
+    throw new Error('Compaction handoff and runtime instructions exceed the retention budget. The existing history has been preserved.')
+  }
+  const clean = (messages: readonly ModelMessage[]) => messages
     .map(sanitizeProjectedMessage)
     .filter((message) => !isCompactionContinuationMessage(message, input.packet.continuationMarkdown))
-  const tailText = tail.map(getMessageText).join('\n')
-  const carriedHiddenContexts = getLatestHiddenContexts(input.contextMessages ?? [])
-    .filter((context) => !tailText.includes(context.content))
-  const hiddenContextMessage: ModelMessage | null = carriedHiddenContexts.length > 0
-    ? {
-        content: carriedHiddenContexts.map((context) => context.content).join('\n\n'),
-        role: 'user',
-      }
-    : null
-  return sanitizeCompactedModelMessages([
-    ...(durableMemoryMessage ? [durableMemoryMessage] : []),
-    // The AI-generated summary is the new beginning of provider history. The
-    // original messages remain in durable display history and are not replayed
-    // before this carried-forward summary.
-    handoffMessage,
-    ...(hiddenContextMessage ? [hiddenContextMessage] : []),
-    ...tail,
-  ])
+  const tail = retainConversationMessages({
+    contextMessages: clean(contextMessages),
+    tailMessages: clean(input.tailMessages),
+    maximumTokens: retainedContextTokens - fixedTokens,
+  })
+  const projected = sanitizeCompactedModelMessages([...fixedMessages, ...tail])
+  if (retainedMessageTokens(projected) > retainedContextTokens) {
+    throw new Error('Compaction rebuilt history exceeds the retention budget. The existing history has been preserved.')
+  }
+  return projected
 }
 
 export const projectCompactionPacket = buildCompactionProjection

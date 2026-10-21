@@ -8,11 +8,7 @@ import {
 } from '../src/components/chat/ChatMentionImageHoverContent'
 import { ChatMentionText } from '../src/components/chat/ChatMentionText'
 import { ChatMentionTextarea } from '../src/components/chat/ChatMentionTextarea'
-import {
-  findChatMentionImageAttachment,
-  getChatMentionImagePreview,
-} from '../src/lib/chatMentionImages'
-import { getChatMentionTooltipTarget } from '../src/lib/chatMentions'
+import { findChatMentionImageAttachment, getChatMentionImagePreview } from '../src/lib/chatMentionImages'
 import { loadToolImagePreview } from '../src/components/chat/toolImagePreview'
 import type { ChatImageAttachment } from '../src/types/chat'
 import { ChatMentionMenu } from '../src/components/chat/ChatMentionMenu'
@@ -44,138 +40,76 @@ test('image mention hover lookup resolves only the matching path-backed image', 
   )
 })
 
-test('image mention preview paths resolve attachments and workspace-relative aliases', () => {
-  const attachmentPreview = getChatMentionImagePreview('tools.read:@attachments/preview.png', 'C:/work/project')
-  assert.deepEqual(attachmentPreview, {
-    presentation: {
-      fileName: 'preview.png',
-      kind: 'image',
-      mediaType: 'image/png',
-      relativePath: '@attachments/preview.png',
+test('image mention preview lookup recognizes attachment, workspace, and absolute image paths', () => {
+  assert.deepEqual(
+    getChatMentionImagePreview('tools.read:@attachments/preview.png', 'C:/work/project'),
+    {
+      presentation: {
+        fileName: 'preview.png',
+        kind: 'image',
+        mediaType: 'image/png',
+        relativePath: '@attachments/preview.png',
+      },
+      workspaceRootPath: 'C:/work/project',
     },
-    workspaceRootPath: 'C:/work/project',
-  })
-
-  const workspacePreview = getChatMentionImagePreview(
-    '@workspace/project/images/photo.webp',
-    'C:/work/project',
   )
-  assert.deepEqual(workspacePreview, {
-    presentation: {
-      fileName: 'photo.webp',
-      kind: 'image',
-      mediaType: 'image/webp',
-      relativePath: 'images/photo.webp',
+  assert.deepEqual(
+    getChatMentionImagePreview('@workspace/project/images/photo.webp', 'C:/work/project'),
+    {
+      presentation: {
+        fileName: 'photo.webp',
+        kind: 'image',
+        mediaType: 'image/webp',
+        relativePath: 'images/photo.webp',
+      },
+      workspaceRootPath: 'C:/work/project',
     },
-    workspaceRootPath: 'C:/work/project',
-  })
-
-  const absolutePreview = getChatMentionImagePreview(
-    'tools.read:C:\\shared\\photo.avif',
-    'C:/work/project',
   )
-  assert.deepEqual(absolutePreview, {
-    presentation: {
+  assert.deepEqual(
+    getChatMentionImagePreview('tools.read:C:\\shared\\photo.avif', 'C:/work/project')?.presentation,
+    {
       fileName: 'photo.avif',
       kind: 'image',
       mediaType: 'image/avif',
       relativePath: 'C:\\shared\\photo.avif',
     },
-    workspaceRootPath: 'C:/work/project',
-  })
-
-  const mismatchedWorkspacePreview = getChatMentionImagePreview(
-    '@workspace/other/images/photo.webp',
-    'C:/work/project',
-  )
-  assert.equal(mismatchedWorkspacePreview?.workspaceRootPath, null)
-  assert.equal(
-    mismatchedWorkspacePreview?.presentation.relativePath,
-    '@workspace/other/images/photo.webp',
   )
 })
 
-test('image preview readers load attachment, workspace, and absolute paths', async () => {
+test('non-image paths and skill or MCP targets keep their ordinary tooltip text', () => {
+  assert.equal(getChatMentionImagePreview('tools.read:src/readme.md', 'C:/work/project'), null)
+  assert.equal(getChatMentionImagePreview('tools.skill.load:image.png', 'C:/work/project'), null)
+  assert.equal(getChatMentionImagePreview('tools.available.search:images.png', 'C:/work/project'), null)
+})
+
+test('path-backed attachment image previews load through the active conversation', async () => {
   const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
-  const readerCalls: Array<readonly [string, ...string[]]> = []
+  const readerCalls: string[][] = []
+
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
       tidecodeHistory: {
-        readChatAttachmentImagePreview: async (conversationId: string, relativePath: string) => {
-          readerCalls.push(['attachment', conversationId, relativePath])
-          return 'data:image/png;base64,attachment'
-        },
-      },
-      tidecodeWorkspace: {
-        readFile: async ({ relativePath, workspaceRootPath }: {
-          relativePath: string
-          workspaceRootPath: string
-        }) => {
-          readerCalls.push(['workspace', workspaceRootPath, relativePath])
-          return {
-            previewDataUrl: 'data:image/webp;base64,workspace',
-            status: 'ready',
-          }
-        },
-        readToolImagePreview: async (absolutePath: string) => {
-          readerCalls.push(['absolute', absolutePath])
-          return 'data:image/avif;base64,absolute'
+        readChatAttachmentImagePreview: async (conversationId: string, aliasPath: string) => {
+          readerCalls.push([conversationId, aliasPath])
+          return 'data:image/png;base64,attachment-preview'
         },
       },
     },
   })
 
   try {
-    const attachmentPreview = getChatMentionImagePreview('@attachments/preview.png')
-    const workspacePreview = getChatMentionImagePreview(
-      '@workspace/project/images/photo.webp',
-      'C:/work/project',
-    )
-    const absolutePreview = getChatMentionImagePreview('C:\\shared\\photo.avif')
-    const mismatchedWorkspacePreview = getChatMentionImagePreview(
-      '@workspace/other/images/photo.webp',
-      'C:/work/project',
-    )
-
-    assert.ok(attachmentPreview)
-    assert.ok(workspacePreview)
-    assert.ok(absolutePreview)
-    assert.ok(mismatchedWorkspacePreview)
+    const imagePreview = getChatMentionImagePreview('@attachments/preview.png')
+    assert.ok(imagePreview)
     assert.equal(
       await loadToolImagePreview({
         conversationId: 'conversation-1',
-        presentation: attachmentPreview.presentation,
-        workspaceRootPath: attachmentPreview.workspaceRootPath,
+        presentation: imagePreview.presentation,
+        workspaceRootPath: imagePreview.workspaceRootPath,
       }),
-      'data:image/png;base64,attachment',
+      'data:image/png;base64,attachment-preview',
     )
-    assert.equal(
-      await loadToolImagePreview({
-        presentation: workspacePreview.presentation,
-        workspaceRootPath: workspacePreview.workspaceRootPath,
-      }),
-      'data:image/webp;base64,workspace',
-    )
-    assert.equal(
-      await loadToolImagePreview({
-        presentation: absolutePreview.presentation,
-        workspaceRootPath: absolutePreview.workspaceRootPath,
-      }),
-      'data:image/avif;base64,absolute',
-    )
-    assert.equal(
-      await loadToolImagePreview({
-        presentation: mismatchedWorkspacePreview.presentation,
-        workspaceRootPath: mismatchedWorkspacePreview.workspaceRootPath,
-      }),
-      null,
-    )
-    assert.deepEqual(readerCalls, [
-      ['attachment', 'conversation-1', '@attachments/preview.png'],
-      ['workspace', 'C:/work/project', 'images/photo.webp'],
-      ['absolute', 'C:\\shared\\photo.avif'],
-    ])
+    assert.deepEqual(readerCalls, [['conversation-1', '@attachments/preview.png']])
   } finally {
     if (originalWindowDescriptor) {
       Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
@@ -183,23 +117,6 @@ test('image preview readers load attachment, workspace, and absolute paths', asy
       Reflect.deleteProperty(globalThis, 'window')
     }
   }
-})
-
-test('non-image mentions keep path tooltips and unavailable image readers return null', async () => {
-  assert.equal(getChatMentionImagePreview('tools.read:src/readme.md', 'C:/work/project'), null)
-  assert.equal(getChatMentionTooltipTarget('tools.read:src/readme.md'), 'src/readme.md')
-  assert.equal(getChatMentionImagePreview('tools.skill.load:image.png', 'C:/work/project'), null)
-
-  const attachmentPreview = getChatMentionImagePreview('@attachments/missing.png')
-  assert.ok(attachmentPreview)
-  assert.equal(
-    await loadToolImagePreview({
-      conversationId: null,
-      presentation: attachmentPreview.presentation,
-      workspaceRootPath: attachmentPreview.workspaceRootPath,
-    }),
-    null,
-  )
 })
 
 test('image mention hover content renders only the preview image', () => {

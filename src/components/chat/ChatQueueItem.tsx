@@ -387,7 +387,6 @@ export function ChatQueueItem({
             conversationId={conversationId}
             imageAttachments={draftImageAttachments}
             mentionPathMap={draftMentionPathMap}
-            workspaceRootPath={workspaceRootPath}
             textareaRef={textareaRef}
             value={draftContent}
             onBeforeInput={mentionNavigation.handleBeforeInput}
@@ -397,6 +396,7 @@ export function ChatQueueItem({
             placeholder="Edit queued message"
             rows={1}
             style={{ fieldSizing: 'content' } as CSSProperties}
+            workspaceRootPath={workspaceRootPath}
           />
 
           {attachmentError ? <AppNoticeSurface className="mt-2" title="Attachment unavailable" message={attachmentError} fallbackMessage="The attachment could not be added. Try again." onDismiss={() => setAttachmentError(null)} /> : null}
@@ -475,11 +475,11 @@ export function ChatQueueItem({
               conversationId={conversationId}
               imageAttachments={messageImageAttachments}
               mentionPathMap={messageMentionPathMap}
-              workspaceRootPath={workspaceRootPath}
               text={renderedMessageContent}
               variant="rendered"
               wrap="nowrap"
               className="min-w-0 truncate text-sm leading-5 text-foreground"
+              workspaceRootPath={workspaceRootPath}
             />
           </div>
         </Tooltip>

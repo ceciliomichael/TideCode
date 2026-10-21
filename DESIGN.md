@@ -4,7 +4,13 @@
 
 Application errors use the browser screenshot notification's neutral raised surface, subtle border, compact typography, shadow, dismiss button, and action styling. Transient action failures use the global, timed, hover/focus-pausing notification host; persistent file, settings, and connection problems remain visible in their own panels using the same shared surface. Do not use competing red error banners or expose raw exception messages, stack traces, local paths, or numeric engine codes as primary error copy. Preserve validation next to its field and preserve destructive confirmation styling. Developer-facing tool/terminal diagnostics and generated-content errors remain available separately or behind a disclosure.
 
+## Image mention hovers
+
+When a mention resolves to a supported image path, hover shows the image preview rather than the path. Existing in-memory chat images use the direct image preview; path-backed attachment, workspace, and absolute image mentions load through their existing scoped preview readers. If the image cannot be loaded, show an unavailable-preview message. Non-image mentions continue to show their path.
+
 ## Branch and revert continuity (2026-10-20)
+
+Submitting an edited or reverted message removes compaction dividers from the discarded branch immediately, alongside its messages. Keep valid earlier dividers and prevent stale cache loads from restoring discarded ones while the new AI response is running.
 
 During Compacting → Compacted → resumed output, previously finalized tools retain their expansion state. Saved-marker arrival must not reopen closed tools or collapse tools the user opened manually. The marker remains at the end of the existing work timeline until new output appears, while newly running tools remain visible normally.
 
@@ -43,6 +49,8 @@ Discovery refinement (2026-10-19): both native and MCP tools use consistent one-
 Current discovery behavior (2026-10-19): `tools.available.list()` starts at a namespace index, not the native-tool page. Selecting `native` or an MCP server namespace lists that namespace's tools in pages of ten with short descriptions. MCP tools do not require an extra `mcp` namespace selection. Search remains names-only, and get returns full contracts.
 
 Prefer `tools.edit` for exact replacements and `replace_all: true` when every occurrence should change. A missing match or ambiguous non-global match rejects the whole operation before writes. Multiple replacements are applied in order, across files, with the same visible diff presentation as `tools.patch`. Keep patch for complex contextual edits and write for whole-file creation.
+
+Patch parsing tolerates one bare trailing `@@` immediately before the next file header or `*** End Patch` only when the current file already contains an actual edit. The redundant marker contributes no matching or edit information. Empty first/interior hunks and empty headers carrying context or line numbers still reject the whole patch before writes, with a diagnostic identifying the file and patch line. The patch contract explains that `@@` starts a hunk rather than closing one; matching and atomic application rules remain unchanged.
 
 ## Per-chat durable memory
 
@@ -132,7 +140,7 @@ PDF previews preserve page positions, page count, scrolling, panning, and zoom w
 
 ## Chat mentions
 
-Chat mentions keep compact labels in the composer and rendered messages while resolving to their canonical paths on hover. Resolvable image-file mentions show an image preview, including stored `@attachments/` images and workspace or absolute image paths. If an image preview cannot be loaded, the hover content says “Image preview unavailable.” Non-image mentions retain their path tooltip. Previewability follows the shared supported image types and uses the existing conversation or workspace preview readers.
+Chat mentions keep compact labels in the composer and rendered messages while resolving to their canonical paths on hover. Path-backed image attachments show only an image preview on hover. Non-image mentions remain path-only. Image previews use the attachment data already held by the chat model rather than reading from the workspace or hard-coding filename extensions.
 
 ## Chat attachments
 

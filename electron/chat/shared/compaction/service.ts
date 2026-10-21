@@ -12,7 +12,8 @@ import {
   buildCompactionSourceDigest,
   selectCompactionWindow,
 } from './window'
-import { buildCompactionProjection } from './projection'
+import { buildCompactionProjection, buildCompactionRuntimeMessages } from './projection'
+import { resolveLatestConversationUser, retainedMessageTokens } from './conversationRetention'
 import { appendCodeModeReceiptsToSummary } from './codeModeReceipts'
 import { resolveProviderReasoningCapability, resolveReasoningRetention } from './reasoning'
 import { validateContinuationMarkdown } from './markdown'
@@ -35,11 +36,6 @@ import type {
 const COMPACTION_TIMEOUT_MS = 90_000
 const inFlightCompactions = new Map<string, Promise<CompactionResult | null>>()
 
-function resolveLatestUserSourceMessageId(messages: readonly { role: string }[]) {
-  const latestUserIndex = messages.findLastIndex((message) => message.role === 'user')
-  return latestUserIndex >= 0 ? `model:${latestUserIndex}` : null
-}
-
 function appendActiveTurnGuard(summary: string, turnState: CompactionTurnState) {
   if (turnState !== 'active') return summary
   return [
@@ -51,7 +47,7 @@ function appendActiveTurnGuard(summary: string, turnState: CompactionTurnState) 
   ].join('\n').trim()
 }
 
-async function collectCompactionText(input: CompactModelMessagesInput, prompt: string) {
+async function collectCompactionText(input: CompactModelMessagesInput, prompt: string, maxOutputTokens: number) {
   if (!input.createStream) {
     throw new Error('AI compaction is unavailable because no compaction model stream was provided.')
   }
@@ -69,7 +65,7 @@ async function collectCompactionText(input: CompactModelMessagesInput, prompt: s
   try {
     const stream = await input.createStream({
       messages: [{ role: 'user', content: prompt }],
-      maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
+      maxOutputTokens,
       model: input.model,
       providerId: input.providerId,
       reasoningEffort: input.reasoningEffort,
@@ -128,8 +124,9 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
 
   const previousPacket = input.previousPacket ?? null
   const turnState = input.turnState ?? 'settled'
-  const latestUserSourceMessageId = resolveLatestUserSourceMessageId(input.messages)
-  const latestUserMessage = input.messages.findLast((message) => message.role === 'user')
+  const latestUser = resolveLatestConversationUser(input.messages)
+  const latestUserSourceMessageId = latestUser ? `model:${latestUser.index}` : null
+  const latestUserMessage = latestUser?.message
   const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
     force: input.force,
     previousPacket,
@@ -137,6 +134,26 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   })
   if (!window) return null
   if (input.signal?.aborted) return null
+
+  // The rebuild may shorten the recent tail as well as replace older turns.
+  // Both workers must see that evidence before any of it leaves raw context.
+  const workerMessages = input.messages.slice(window.sourceStartIndex)
+
+  const runtimeTokens = retainedMessageTokens(buildCompactionRuntimeMessages(input.messages, true))
+  const latestUserTokens = latestUserMessage ? retainedMessageTokens([latestUserMessage]) : 0
+  const receiptAndGuard = appendActiveTurnGuard(appendCodeModeReceiptsToSummary(
+    '', workerMessages, previousPacket?.continuationMarkdown,
+  ), turnState)
+  const receiptAndGuardTokens = retainedMessageTokens([{ role: 'assistant', content: receiptAndGuard }])
+  // Reserve the full newest request and runtime instructions before asking the
+  // worker to write. Leave most remaining space for verbatim recent intent and
+  // useful assistant output; final projection enforces the complete budget.
+  const summaryOutputTokens = Math.min(COMPACTION_MAX_OUTPUT_TOKENS, Math.floor(
+    (retainedContextTokens - runtimeTokens - latestUserTokens) * 0.4,
+  ) - receiptAndGuardTokens - 64)
+  if (summaryOutputTokens < 128) {
+    throw new Error('Compaction cannot fit the latest user request, runtime instructions, and a useful handoff in the retention budget. The existing history has been preserved.')
+  }
 
   input.onStarted?.()
   const sourceDigest = buildCompactionSourceDigest(
@@ -146,7 +163,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   )
   const durableMemory = await reconcileDurableMemory({
     createStream: input.createStream,
-    messages: window.evictedMessages,
+    messages: workerMessages,
     latestUserMessage,
     latestUserSourceMessageId,
     model: input.model,
@@ -175,14 +192,15 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     durableMemory,
     latestUserSourceMessageId,
     latestUserMessage,
-    messages: window.evictedMessages,
+    messages: workerMessages,
     previousPacket,
     sourceDigest,
     sourceMessageIds: window.sourceMessageIds,
     sourceStartIndex: window.sourceStartIndex,
     turnState,
   })
-  const rawSummary = await collectCompactionText(input, prompt)
+  const budgetedPrompt = `${prompt}\n\nThe transcript includes recent evidence that may be shortened or omitted from the rebuilt history. Source message IDs identify the older eviction boundary; assess the full supplied transcript, including newer results.\nHandoff size limit: at most ${summaryOutputTokens * 3} characters. Consolidate relevant requirements, supported progress and remaining obligations within this limit; do not enumerate historical prompts.`
+  const rawSummary = await collectCompactionText(input, budgetedPrompt, summaryOutputTokens)
   if (input.signal?.aborted || rawSummary === null) return null
   const summary = validateContinuationMarkdown(rawSummary)
   if (!summary.valid) {
@@ -191,7 +209,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   const summaryMarkdown = removeUserPromptLedgerFromSummary(summary.normalized)
   const summaryWithReceipts = appendCodeModeReceiptsToSummary(
     summaryMarkdown,
-    window.evictedMessages,
+    workerMessages,
     previousPacket?.continuationMarkdown,
   )
   const guardedSummary = appendActiveTurnGuard(summaryWithReceipts, turnState)

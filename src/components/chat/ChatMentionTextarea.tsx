@@ -5,7 +5,6 @@ import { getChatMentionTooltipTarget } from '../../lib/chatMentions'
 import { chatMentionTooltipPanelClassName } from '../../lib/chatStyles'
 import type { ChatImageAttachment } from '../../types/chat'
 import { AnchoredTooltip, type AnchoredTooltipRect } from '../Tooltip'
-import { ToolImageResult } from './ToolImageResult'
 import { ChatMentionImageHoverContent } from './ChatMentionImageHoverContent'
 
 interface ChatMentionTextareaProps {
@@ -204,7 +203,7 @@ export function ChatMentionTextarea({
   const hoveredImageAttachment = hoveredMention
     ? findChatMentionImageAttachment(hoveredMention.path, imageAttachments)
     : null
-  const hoveredImagePreview = hoveredMention
+  const hoveredImagePreview = hoveredMention && !hoveredImageAttachment
     ? getChatMentionImagePreview(hoveredMention.path, workspaceRootPath)
     : null
 
@@ -247,10 +246,12 @@ export function ChatMentionTextarea({
           }}
         >
           <ChatMentionText
+            conversationId={conversationId}
             imageAttachments={imageAttachments}
             text={value}
             mentionPathMap={mentionPathMap}
             variant="backdrop"
+            workspaceRootPath={workspaceRootPath}
           />
         </div>
         <AnchoredTooltip
@@ -261,7 +262,8 @@ export function ChatMentionTextarea({
               ? <ChatMentionImageHoverContent attachment={hoveredImageAttachment} />
               : hoveredImagePreview && hoveredMention
                 ? (
-                  <ToolImageResult
+                  <ChatMentionImageHoverContent
+                    key={hoveredMention.path}
                     conversationId={conversationId}
                     presentation={hoveredImagePreview.presentation}
                     workspaceRootPath={hoveredImagePreview.workspaceRootPath}

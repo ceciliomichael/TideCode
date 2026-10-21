@@ -1,4 +1,4 @@
-import type { ChatCompactionMarker } from '../types/chat'
+import type { ChatCompactionMarker, Message } from '../types/chat'
 
 const MAX_CACHED_CONVERSATION_MARKERS = 128
 const markerCache = new Map<string, ChatCompactionMarker[]>()
@@ -79,4 +79,28 @@ export function clearCachedChatCompactionMarkers(conversationId: string) {
   if (normalizedConversationId.length > 0) {
     markerCache.delete(normalizedConversationId)
   }
+}
+
+/** Apply an edited branch boundary before its replacement bubble is painted. */
+export function discardCachedCompactionMarkersFromMessage(
+  conversationId: string,
+  messages: readonly Message[],
+  messageId: string,
+) {
+  const normalizedConversationId = normalizeConversationId(conversationId)
+  const targetIndex = messages.findIndex((message) => message.id === messageId && message.role === 'user')
+  if (!normalizedConversationId || targetIndex < 0) return
+
+  const target = messages[targetIndex]
+  const earlierUserIds = new Set(messages.slice(0, targetIndex)
+    .filter((message) => message.role === 'user')
+    .map((message) => message.id))
+  const retained = (markerCache.get(normalizedConversationId) ?? []).filter((marker) => (
+    marker.anchorUserMessageId !== null &&
+    earlierUserIds.has(marker.anchorUserMessageId) &&
+    marker.createdAt <= target.timestamp
+  ))
+  // A load started on the discarded branch must not repopulate the cache.
+  markerLoadPromises.delete(normalizedConversationId)
+  cacheMarkers(normalizedConversationId, retained)
 }

@@ -156,10 +156,10 @@ export function UserMessage({
             conversationId={conversationId}
             imageAttachments={imageAttachments}
             mentionPathMap={renderedMentionPathMap}
-            workspaceRootPath={workspaceRootPath}
             onImageReferenceHoverChange={setIsImageReferenceHovered}
             text={renderedContent}
             variant="rendered"
+            workspaceRootPath={workspaceRootPath}
           />
         ) : null}
       </div>

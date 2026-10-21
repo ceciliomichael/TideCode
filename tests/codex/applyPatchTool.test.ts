@@ -1,3 +1,4 @@
+import '../configureAppRoot'
 import assert from 'node:assert/strict'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -6,10 +7,117 @@ import test from 'node:test'
 import { applyPatchInWorkspace } from '../../electron/chat/shared/applyPatchWorkspace'
 import { createApplyPatchTool } from '../../electron/chat/shared/tools/applyPatchTool'
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
+import type { AgentToolExecutionResult } from '../../electron/chat/shared/toolTypes'
 
 function standardPatch(body: string) {
   return `*** Begin Patch\n${body}\n*** End Patch`
 }
+
+async function executeCodeMode(
+  bundle: Awaited<ReturnType<typeof createAgentToolBundle>>,
+  code: string,
+  payloads: Record<string, string>,
+): Promise<AgentToolExecutionResult> {
+  const api = bundle.tools.exec as {
+    execute: (input: unknown, options: unknown) => Promise<AgentToolExecutionResult>
+  }
+  return api.execute({ code, payloads }, {
+    context: {}, messages: [], toolCallId: 'patch-code-mode-test',
+  })
+}
+
+test('apply_patch accepts bare trailing hunk markers across files and at the end of a patch', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-trailing-hunk-'))
+  const fileNames = ['ChatMentionText.tsx', 'ChatMentionTextarea.tsx']
+  const before = [
+    "import { ToolImageResult } from './ToolImageResult'",
+    'const view = (',
+    '  <ToolImageResult',
+    '    conversationId={conversationId}',
+    '  />',
+    ')',
+    '',
+  ].join('\n')
+  const after = [
+    'const view = (',
+    '  <ChatMentionImageHoverContent',
+    '    conversationId={conversationId}',
+    '  />',
+    ')',
+    '',
+  ].join('\n')
+
+  try {
+    for (const fileName of fileNames) {
+      await fs.writeFile(path.join(workspaceRootPath, fileName), before)
+    }
+    const patchBody = fileNames.map((fileName) => [
+      `*** Update File: ${fileName}`,
+      '@@',
+      "-import { ToolImageResult } from './ToolImageResult'",
+      '@@',
+      '-  <ToolImageResult',
+      '+  <ChatMentionImageHoverContent',
+      '     conversationId={conversationId}',
+      '@@',
+    ].join('\n')).join('\n')
+    const result = await applyPatchInWorkspace(workspaceRootPath, standardPatch(patchBody))
+
+    assert.equal(result.changes.length, 2)
+    for (const fileName of fileNames) {
+      assert.equal(await fs.readFile(path.join(workspaceRootPath, fileName), 'utf8'), after)
+    }
+    for (const change of result.changes) {
+      assert.equal(change.updateChunkStartLines?.length, 2)
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { recursive: true, force: true })
+  }
+})
+
+test('apply_patch diagnoses incomplete hunks and rejects the entire patch before writing', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-empty-hunk-'))
+  const firstPath = path.join(workspaceRootPath, 'first.txt')
+  const secondPath = path.join(workspaceRootPath, 'second.txt')
+  const prefix = [
+    '*** Begin Patch',
+    '*** Update File: first.txt',
+    '@@',
+    '-first before',
+    '+first after',
+    '*** Update File: second.txt',
+  ]
+  const cases = [
+    { name: 'missing hunk', body: [], patchLine: 7 },
+    { name: 'empty first hunk', body: ['@@'], patchLine: 7 },
+    { name: 'empty interior hunk', body: ['@@', '-second before', '+second after', '@@', '@@', '-missing', '+changed'], patchLine: 10 },
+    { name: 'empty first hunk before another hunk', body: ['@@', '@@', '-second before', '+second after'], patchLine: 7 },
+    { name: 'empty context header', body: ['@@', '-second before', '+second after', '@@ function missing()'], patchLine: 10 },
+    { name: 'empty offset header', body: ['@@', '-second before', '+second after', '@@ -1,1 +1,1 @@'], patchLine: 10 },
+    { name: 'empty end-of-file hunk', body: ['@@', '*** End of File'], patchLine: 7 },
+    { name: 'context without an actual edit', body: ['@@', ' second before', '@@'], patchLine: 9 },
+    { name: 'identical replacement without an actual edit', body: ['@@', '-second before', '+second before', '@@'], patchLine: 10 },
+  ]
+
+  try {
+    await fs.writeFile(firstPath, 'first before\n')
+    await fs.writeFile(secondPath, 'second before\n')
+    for (const scenario of cases) {
+      const patch = [...prefix, ...scenario.body, '*** End Patch'].join('\n')
+      await assert.rejects(applyPatchInWorkspace(workspaceRootPath, patch), (error: unknown) => {
+        assert.ok(error instanceof Error, scenario.name)
+        assert.ok(error.message.includes(`"second.txt" at patch line ${scenario.patchLine}.`), `${scenario.name}: ${error.message}`)
+        assert.match(error.message, /Each "@@" starts a hunk/u)
+        assert.match(error.message, /remove the empty header/u)
+        return true
+      })
+      assert.equal(await fs.readFile(firstPath, 'utf8'), 'first before\n', scenario.name)
+      assert.equal(await fs.readFile(secondPath, 'utf8'), 'second before\n', scenario.name)
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { recursive: true, force: true })
+  }
+})
 
 test('apply_patch preserves CRLF and BOM when matching normalized source lines', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-line-endings-'))
@@ -120,7 +228,7 @@ test('apply_patch rolls back only files committed before a later install failure
   }
 })
 
-test('apply_patch updates standard Codex patches with whitespace-tolerant context', async () => {
+test('apply_patch matches whitespace-tolerant context while preserving CRLF', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-'))
   const targetPath = path.join(workspaceRootPath, 'src', 'value.ts')
 
@@ -136,7 +244,7 @@ test('apply_patch updates standard Codex patches with whitespace-tolerant contex
     assert.equal(result.changes.length, 1)
     assert.equal(
       await fs.readFile(targetPath, 'utf8'),
-      'function value() {\n    return 1\n}\nexport const ready = true;\n',
+      'function value() {\r\n    return 1\r\n}\r\nexport const ready = true;\r\n',
     )
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -324,11 +432,11 @@ test('apply_patch auto-repairs one extra backslash escaping layer for a unique a
     const execute = (applyPatchTool as {
       execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
     }).execute
-    const patchLines = standardPatch(
+    const patchText = standardPatch(
       `*** Update File: escaped.ts\n@@\n-${overescape(beforeLine)}\n+${overescape(afterLine)}`,
-    ).split('\n')
+    )
     const result = await execute?.(
-      { patch: patchLines },
+      { patch: patchText },
       { context: {}, messages: [], toolCallId: 'apply-patch-escaping-autofix-test' },
     ) as { body?: string; semantics?: Record<string, unknown>; status?: string }
 
@@ -354,11 +462,11 @@ test('apply_patch auto-repairs redundant JSX quote escaping for a unique anchor'
     const execute = (applyPatchTool as {
       execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
     }).execute
-    const patchLines = standardPatch(
+    const patchText = standardPatch(
       `*** Update File: Card.tsx\n@@\n-${overescape(beforeLine)}\n+${overescape(afterLine)}`,
-    ).split('\n')
+    )
     const result = await execute?.(
-      { patch: patchLines },
+      { patch: patchText },
       { context: {}, messages: [], toolCallId: 'apply-patch-jsx-escaping-autofix-test' },
     ) as { body?: string; semantics?: Record<string, unknown>; status?: string }
 
@@ -458,7 +566,7 @@ test('apply_patch escaping autofix preserves end-of-file constraints', async () 
   }
 })
 
-test('apply_patch accepts array-of-lines input when source contains template literals', async () => {
+test('apply_patch preserves template literals in raw patch strings', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-lines-'))
   const targetPath = path.join(workspaceRootPath, 'src', 'panel.tsx')
 
@@ -616,7 +724,7 @@ test('apply_patch returns the same file diff result contract as edit', async () 
     assert.equal(typeof execute, 'function')
 
     const result = await execute?.(
-      { patch: standardPatch(`*** Update File: value.ts\n@@\n-const value = 1\n+const value = 2`).split('\n') },
+      { patch: standardPatch(`*** Update File: value.ts\n@@\n-const value = 1\n+const value = 2`) },
       { context: {}, messages: [], toolCallId: 'apply-patch-test' },
     ) as {
       body?: string
@@ -668,7 +776,7 @@ test('apply_patch presents each update hunk as a separate change while keeping f
           '-const last = 3',
           '+const last = 30',
           '*** Delete File: remove.ts',
-        ].join('\n')).split('\n'),
+        ].join('\n')),
       },
       { context: {}, messages: [], toolCallId: 'apply-patch-hunk-presentation-test' },
     ) as {
@@ -746,7 +854,7 @@ test('apply_patch accepts the canonical raw string input at the AI-facing bounda
   }
 })
 
-test('apply_patch normalizes outer envelope echoes but rejects interior duplicates', async () => {
+test('apply_patch rejects duplicate envelopes and trailing wrapper text without writes', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-envelope-'))
   const targetPath = path.join(workspaceRootPath, 'value.ts')
 
@@ -754,46 +862,22 @@ test('apply_patch normalizes outer envelope echoes but rejects interior duplicat
     await fs.writeFile(targetPath, 'const value = 1\n', 'utf8')
     const applyPatchTool = createApplyPatchTool({ workspaceRootPath })
     const execute = (applyPatchTool as {
-      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
+      execute: (input: unknown, options: unknown) => Promise<AgentToolExecutionResult>
     }).execute
-
-    const echoedEnvelopeResult = await execute?.(
-      {
-        patch: [
-          '*** Begin Patch',
-          '*** Begin Patch',
-          '*** Update File: value.ts',
-          '@@',
-          '-const value = 1',
-          '+const value = 2',
-          '*** End Patch',
-          'EndPatch',
-        ],
-      },
-      { context: {}, messages: [], toolCallId: 'apply-patch-envelope-echo-test' },
-    ) as { status?: string; summary?: string }
-
-    assert.equal(echoedEnvelopeResult.status, 'success')
-    assert.equal(await fs.readFile(targetPath, 'utf8'), 'const value = 2\n')
-
-    const interiorDuplicateResult = await execute?.(
-      {
-        patch: [
-          '*** Begin Patch',
-          '*** Update File: value.ts',
-          '*** Begin Patch',
-          '@@',
-          '-const value = 2',
-          '+const value = 3',
-          '*** End Patch',
-        ],
-      },
-      { context: {}, messages: [], toolCallId: 'apply-patch-interior-begin-test' },
-    ) as { status?: string; summary?: string }
-
-    assert.equal(interiorDuplicateResult.status, 'error')
-    assert.match(interiorDuplicateResult.summary ?? '', /Begin Patch/u)
-    assert.equal(await fs.readFile(targetPath, 'utf8'), 'const value = 2\n')
+    const valid = standardPatch('*** Update File: value.ts\n@@\n-const value = 1\n+const value = 2')
+    const malformed = [
+      '*** Begin Patch\n' + valid,
+      valid + '\nEndPatch',
+      valid.replace('@@', '*** Begin Patch\n@@'),
+    ]
+    for (const patch of malformed) {
+      const result = await execute({ patch }, {
+        context: {}, messages: [], toolCallId: 'apply-patch-envelope-test',
+      })
+      assert.equal(result.status, 'error', result.summary)
+      assert.match(result.summary, /Begin Patch|Invalid patch format/u)
+      assert.equal(await fs.readFile(targetPath, 'utf8'), 'const value = 1\n')
+    }
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -813,7 +897,7 @@ test('apply_patch rejects legacy XML and heredoc wrappers', async () => {
       ['apply_patch <<EOF', '*** Begin Patch', '*** End Patch', 'EOF'],
     ]) {
       const result = await execute?.(
-        { patch },
+        { patch: patch.join('\n') },
         { context: {}, messages: [], toolCallId: 'apply-patch-format-test' },
       ) as { status?: string; summary?: string }
 
@@ -862,74 +946,49 @@ test('apply_patch honors end-of-file context when the source has no trailing new
   }
 })
 
-test('Code Mode exposes apply_patch directly while edit is excluded from Code Mode', async () => {
+test('Code Mode exposes patch and edit through exec with their current contracts', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-code-mode-'))
-  let codeModeExecutor: { dispose: () => Promise<void> } | null = null
+  let bundle: Awaited<ReturnType<typeof createAgentToolBundle>> | undefined
 
   try {
-    await fs.writeFile(path.join(workspaceRootPath, 'value.ts'), 'const value = 1\nconst enabled = false\n', 'utf8')
-    const bundle = await createAgentToolBundle(
-      { workspaceRootPath },
-      { chatMode: 'agent', orchestrationMode: 'code_mode' },
-    )
-    codeModeExecutor = bundle.codeModeExecutor
+    const targetPath = path.join(workspaceRootPath, 'value.ts')
+    await fs.writeFile(targetPath, 'const value = 1\nconst enabled = false\n', 'utf8')
+    bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
+    assert.deepEqual(Object.keys(bundle.tools), ['exec'])
+    assert.ok(bundle.registry.get('patch'))
+    assert.ok(bundle.registry.get('edit'))
     assert.equal(bundle.registry.get('apply_patch'), undefined)
-    assert.equal(bundle.registry.get('edit'), undefined)
-    assert.ok(bundle.nativeTools.edit)
-    assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
-    assert.equal(bundle.registry.get('tool_search'), undefined)
-    const description = (bundle.tools.code_mode as { description?: string }).description ?? ''
-    assert.doesNotMatch(description, /tools\.apply_patch/u)
-    assert.match(description, /Direct model-facing `apply_patch`/u)
-    assert.doesNotMatch(description, /tools\.edit/u)
 
-    const executePatch = (bundle.tools.apply_patch as {
-      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
-    }).execute
-    const patch = [
-      '*** Begin Patch',
-      ...standardPatch('*** Update File: value.ts\n@@\n-const value = 1\n+const value = 2').split('\n'),
-    ]
-    const patchResult = await executePatch?.(
-      { patch },
-      { context: {}, messages: [], toolCallId: 'apply-patch-code-mode-test' },
-    ) as { semantics?: { operation?: string }; status?: string }
+    const result = await executeCodeMode(bundle, `
+      await tools.available.get({ name: 'tools.patch' });
+      await tools.available.get({ name: 'tools.edit' });
+      await tools.patch({ patch: payloads.patch });
+      return await tools.edit({
+        changes: [{ path: 'value.ts', oldText: 'const enabled = false', newText: 'const enabled = true' }],
+      });
+    `, { patch: standardPatch('*** Update File: value.ts\n@@\n-const value = 1\n+const value = 2') })
 
-    assert.equal(patchResult.status, 'success')
-    assert.equal(patchResult.semantics?.operation, 'edit')
-    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'value.ts'), 'utf8'), 'const value = 2\nconst enabled = false\n')
-
-    const nativeEdit = bundle.nativeTools.edit as unknown as {
-      execute: (input: unknown) => Promise<{ status?: string }>
-    }
-    const editResult = await nativeEdit.execute({
-      path: 'value.ts',
-      edits: [{ targetContent: 'const enabled = false', replacementContent: 'const enabled = true' }],
-    })
-
-    assert.equal(editResult.status, 'success')
-    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'value.ts'), 'utf8'), 'const value = 2\nconst enabled = true\n')
-
+    assert.equal(result.status, 'success', result.body)
+    assert.equal(result.semantics?.operation, 'exec')
+    const calls = result.semantics?.tool_calls as Array<{ name: string; status: string }>
+    assert.deepEqual(calls.map(call => call.name), ['available.get', 'available.get', 'patch', 'edit'])
+    assert.ok(calls.every(call => call.status === 'success'))
+    assert.equal(await fs.readFile(targetPath, 'utf8'), 'const value = 2\nconst enabled = true\n')
   } finally {
-    await codeModeExecutor?.dispose()
+    await bundle?.codeModeExecutor.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('direct apply_patch preserves literal source escapes without Code Mode string transport', async () => {
+test('exec patch payloads preserve literal source escapes', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-template-literal-'))
-  let codeModeExecutor: { dispose: () => Promise<void>; run: (source: string) => Promise<{ status: string; toolCalls: Array<{ name: string }> }> } | null = null
+  let bundle: Awaited<ReturnType<typeof createAgentToolBundle>> | undefined
 
   try {
-    const bundle = await createAgentToolBundle(
+    bundle = await createAgentToolBundle(
       { workspaceRootPath },
-      { chatMode: 'agent', orchestrationMode: 'code_mode' },
+      { chatMode: 'agent' },
     )
-    codeModeExecutor = bundle.codeModeExecutor
-    const executePatch = (bundle.tools.apply_patch as {
-      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
-    }).execute
-    assert.equal(typeof executePatch, 'function')
 
     const expected = [
       "const newline = '\\n';",
@@ -948,37 +1007,34 @@ test('direct apply_patch preserves literal source escapes without Code Mode stri
       ...expected.trimEnd().split('\n').map((line) => '+' + line),
       '*** End Patch',
     ]
-    const result = await executePatch?.(
-      { patch },
-      { context: {}, messages: [], toolCallId: 'direct-patch-literal' },
-    ) as { status?: string }
+    const result = await executeCodeMode(bundle, `
+      await tools.available.get({ name: 'tools.patch' });
+      return await tools.patch({ patch: payloads.patch });
+    `,
+      { patch: patch.join('\n') },
+    )
 
     assert.equal(result.status, 'success')
     assert.equal(await fs.readFile(path.join(workspaceRootPath, 'literal.ts'), 'utf8'), expected)
   } finally {
-    await codeModeExecutor?.dispose()
+    await bundle?.codeModeExecutor.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('direct apply_patch repairs redundant JSX quote escaping', async () => {
+test('exec patch repairs redundant JSX quote escaping', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-code-mode-jsx-escaping-'))
-  let codeModeExecutor: { dispose: () => Promise<void>; run: (source: string) => Promise<{ status: string; toolCalls: Array<{ name: string }> }> } | null = null
+  let bundle: Awaited<ReturnType<typeof createAgentToolBundle>> | undefined
   const beforeLine = 'return <div className="card" data-state="open">Hello</div>'
   const afterLine = 'return <div className="card card--ready" data-state="open">Hello</div>'
   const overescape = (value: string) => value.replaceAll('"', '\\"')
 
   try {
     await fs.writeFile(path.join(workspaceRootPath, 'Card.tsx'), `${beforeLine}\n`, 'utf8')
-    const bundle = await createAgentToolBundle(
+    bundle = await createAgentToolBundle(
       { workspaceRootPath },
-      { chatMode: 'agent', orchestrationMode: 'code_mode' },
+      { chatMode: 'agent' },
     )
-    codeModeExecutor = bundle.codeModeExecutor
-    const executePatch = (bundle.tools.apply_patch as {
-      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
-    }).execute
-    assert.equal(typeof executePatch, 'function')
 
     const patch = [
       '*** Begin Patch',
@@ -988,15 +1044,17 @@ test('direct apply_patch repairs redundant JSX quote escaping', async () => {
       `+${overescape(afterLine)}`,
       '*** End Patch',
     ]
-    const result = await executePatch?.(
-      { patch },
-      { context: {}, messages: [], toolCallId: 'direct-patch-jsx-escape' },
-    ) as { status?: string }
+    const result = await executeCodeMode(bundle, `
+      await tools.available.get({ name: 'tools.patch' });
+      return await tools.patch({ patch: payloads.patch });
+    `,
+      { patch: patch.join('\n') },
+    )
 
     assert.equal(result.status, 'success')
     assert.equal(await fs.readFile(path.join(workspaceRootPath, 'Card.tsx'), 'utf8'), `${afterLine}\n`)
   } finally {
-    await codeModeExecutor?.dispose()
+    await bundle?.codeModeExecutor.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
@@ -1008,7 +1066,7 @@ test('Code Mode leaves unrelated patch-looking templates as normal JavaScript', 
   try {
     const bundle = await createAgentToolBundle(
       { workspaceRootPath },
-      { chatMode: 'agent', orchestrationMode: 'code_mode' },
+      { chatMode: 'agent' },
     )
     codeModeExecutor = bundle.codeModeExecutor
     assert.ok(codeModeExecutor)

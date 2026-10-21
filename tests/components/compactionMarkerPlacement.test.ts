@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { placeCompactionMarkersAfterTranscript } from '../../src/components/chat/compactionMarkerPlacement'
+import { projectHistoryCutoff } from '../../src/hooks/chatHistoryCutoff'
 import type { ChatCompactionMarker, Message } from '../../src/types/chat'
 
 function marker(
@@ -91,4 +92,34 @@ test('markers whose anchors were removed by a revert disappear from the transcri
 
   assert.deepEqual(placement.trailingMarkers, [])
   assert.deepEqual([...placement.markersBeforeMessageId.entries()], [])
+})
+
+test('revert keeps multiple dividers beside their messages rather than stranded under the editor', () => {
+  const messages = [
+    message('user-1', 'user', 1),
+    message('assistant-1', 'assistant', 2),
+    message('assistant-after-compact-1', 'assistant', 4),
+    message('user-2', 'user', 5),
+    message('assistant-2', 'assistant', 6),
+    message('assistant-after-compact-2', 'assistant', 8),
+  ]
+  const markers = [marker('compact-1', 'user-1', 3), marker('compact-2', 'user-2', 7)]
+  const reverted = projectHistoryCutoff(messages, 'user-1')
+  const placement = placeCompactionMarkersAfterTranscript(reverted.displayMessages, markers)
+  assert.deepEqual(reverted.contextMessages.map((entry) => entry.id), ['user-1'])
+  assert.deepEqual(placement.markersBeforeMessageId.get('assistant-after-compact-1'), [markers[0]])
+  assert.deepEqual(placement.markersBeforeMessageId.get('assistant-after-compact-2'), [markers[1]])
+  assert.deepEqual(placement.trailingMarkers, [])
+  const canceled = projectHistoryCutoff(messages, null)
+  assert.deepEqual(placeCompactionMarkersAfterTranscript(canceled.displayMessages, markers), placement)
+
+  const submitted = projectHistoryCutoff(messages, 'user-1', {
+    attachments: [], content: 'Replacement request.', messageId: 'user-1',
+  })
+  // After the replacement is accepted, canonical branch selection drops both
+  // later snapshots; the submitted transcript must not resurrect either one.
+  const submittedPlacement = placeCompactionMarkersAfterTranscript(submitted.displayMessages, [])
+  assert.deepEqual(submitted.displayMessages.map((entry) => entry.id), ['user-1'])
+  assert.equal(submittedPlacement.markersBeforeMessageId.size, 0)
+  assert.deepEqual(submittedPlacement.trailingMarkers, [])
 })

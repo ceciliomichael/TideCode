@@ -20,6 +20,7 @@ import { projectCanonicalReplay } from '../../electron/chat/history/replayProjec
 import { parseCanonicalHistoryDocument } from '../../electron/chat/history/validation'
 import { buildModelMessages } from '../../electron/chat/shared/messages'
 import { createCompactionPacketFixture } from './compactionFixtures'
+import { buildCompactionProjection } from '../../electron/chat/shared/compaction/projection'
 import {
   createCanonicalToolModelOutput,
   createCanonicalToolResultContent,
@@ -427,6 +428,39 @@ test('same-run steer messages remain inside the replay prefix instead of being d
   })
 
   assert.deepEqual(result.messages, [...exactMessages, { content: 'next turn', role: 'user' }])
+})
+
+test('saved user-first compaction replays the bounded snapshot exactly before a new request', () => {
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  const packet = createCompactionPacketFixture({ sourceDigest: 'user-first', sourceMessageIds: ['model:0'], continuationMarkdown: '## Current state\n- Layout completed.\n## Remaining work\n- Verify keyboard navigation.' })
+  const context: ModelMessage[] = [
+    { role: 'user', content: 'Preserve the approved layout.' },
+    { role: 'assistant', content: 'Earlier explanation '.repeat(5_000) },
+    { role: 'user', content: 'Verify keyboard navigation next.' },
+    { role: 'assistant', content: 'The layout is complete; keyboard validation remains.' },
+  ]
+  const projected = buildCompactionProjection({
+    anchorMessages: [], contextMessages: context, tailMessages: context.slice(2), packet,
+    durableMemory: { schema: 'tidecode.conversation_memory/v1', markdown: 'Preserve the approved layout.', sourceDigest: 'digest' },
+    includeDurableMemoryMessage: true, retainedContextTokens: 2_000,
+  })
+  document.events.push({
+    anchorUserMessageId: 'user-2', branchId: 'main', compactionId: 'compaction', createdAt: 2,
+    eventId: 'event-1', modelId: 'model', packet: encodeReplayValue(packet),
+    projectedMessages: encodeModelMessages(projected), providerId: 'openai', revision: 1,
+    runId: null, sourceDigest: packet.sourceDigest, sourceMessageIds: packet.sourceMessageIds,
+    type: 'compaction_committed', usedFallback: false,
+  })
+  const displayMessages: Message[] = [
+    { id: 'user-1', role: 'user', content: String(context[0].content), timestamp: 1 },
+    { id: 'assistant-1', role: 'assistant', content: String(context[1].content), timestamp: 2 },
+    { id: 'user-2', role: 'user', content: String(context[2].content), timestamp: 3 },
+    { id: 'user-3', role: 'user', content: 'Continue verification.', timestamp: 4 },
+  ]
+  const replay = projectCanonicalReplay({ document, fallbackMessages: [], messages: displayMessages, modelId: 'model', providerId: 'openai' })
+  assert.equal(replay.isCompacted, true)
+  assert.deepEqual(replay.messages, [...projected, { role: 'user', content: 'Continue verification.' }])
+  assert.ok(estimateModelMessageContextUsage(projected).totalTokens <= 2_000)
 })
 
 test('compacted replay retains assistant and tool responses from later turns', () => {

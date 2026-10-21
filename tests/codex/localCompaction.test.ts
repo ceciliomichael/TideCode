@@ -100,6 +100,50 @@ test('the v2 compactor uses the shared Markdown compression prompt', () => {
   assert.equal(buildCompactionSystemPrompt(), buildChatCompressionSystemPrompt())
 })
 
+test('both workers receive the actual latest request and the handoff gets a reserved output budget', async () => {
+  const hidden = '<hidden_user_context kind="chat_mode" state="agent">Agent mode is active.</hidden_user_context>'
+  const messages: ModelMessage[] = [
+    ...createTurnHistory(3, true),
+    { role: 'user', content: 'Keep the completed layout; verify keyboard navigation next.' },
+    { role: 'assistant', content: 'The layout is implemented. Keyboard validation remains.' },
+    { role: 'user', content: hidden },
+  ]
+  const requests: { prompt: string; maxOutputTokens?: number; system: string }[] = []
+  const createStream: CompactionStreamFactory = async ({ messages: requestMessages, system, maxOutputTokens }) => {
+    requests.push({ prompt: String(requestMessages[0].content), system, maxOutputTokens })
+    return { fullStream: (async function* () {
+      yield { type: 'text-delta', text: system.includes('durable-memory reconciliation worker')
+        ? '## Constraints\n- Preserve the approved layout.'
+        : '## Current state\n- Layout implemented.\n## Remaining work\n- Verify keyboard navigation.' }
+    })() }
+  }
+  const result = await compactModelMessages({ ...createCompactionInput(messages, createStream, 10_000), turnState: 'active' })
+  assert.ok(result)
+  assert.equal(requests.length, 2)
+  for (const request of requests) {
+    assert.match(request.prompt, /Latest user source message: model:7/u)
+    assert.match(request.prompt, /Keep the completed layout; verify keyboard navigation next/u)
+    assert.match(request.prompt, /The layout is implemented\. Keyboard validation remains\./u)
+  }
+  assert.ok((requests[1].maxOutputTokens ?? Infinity) < 8_192)
+  assert.match(requests[1].prompt, /Handoff size limit/u)
+  assert.ok(estimateModelMessageContextUsage(result.projectedMessages).totalTokens <= 10_000)
+  assert.equal(result.projectedMessages.filter((message) => message.content === messages[7].content).length, 1)
+})
+
+test('an unfit newest request fails before worker calls without mutating the original messages', async () => {
+  const messages: ModelMessage[] = [...createTurnHistory(3, true), { role: 'user', content: 'Exact request '.repeat(4_000) }]
+  const original = JSON.stringify(messages)
+  let calls = 0
+  const createStream: CompactionStreamFactory = async () => {
+    calls += 1
+    return { fullStream: (async function* () { yield { type: 'text-delta', text: '## Current state\n- Never used.' } })() }
+  }
+  await assert.rejects(compactModelMessages(createCompactionInput(messages, createStream, 2_000)), /cannot fit the latest user request/u)
+  assert.equal(calls, 0)
+  assert.equal(JSON.stringify(messages), original)
+})
+
 test('repeated compaction supplies the previous Markdown continuation before newer transcript data', () => {
   const previousPacket = { continuationMarkdown: '## Current state\n- Preserve the verified release state.' }
   const prompt = buildCompactionRequestPrompt({

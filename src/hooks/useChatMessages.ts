@@ -10,11 +10,8 @@ import { useInitializeChatHistory } from './useInitializeChatHistory'
 import type { AppLanguage } from '../lib/appSettings'
 import { getPlanPathsCreatedByRevertedUserMessage } from '../lib/planPresentation'
 import type { ChatMode, ConversationEditSession, ConversationModelPreference, Message, RevertEditSession } from '../types/chat'
-import { applyHistoryCutoff } from './chatHistoryCutoff'
-import {
-  applyOptimisticEditedMessagePresentation,
-  type OptimisticEditedMessagePresentation,
-} from './chatOptimisticEditPresentation'
+import { projectHistoryCutoff } from './chatHistoryCutoff'
+import type { OptimisticEditedMessagePresentation } from './chatOptimisticEditPresentation'
 
 const EMPTY_MESSAGES: Message[] = []
 
@@ -84,8 +81,9 @@ export function useChatMessages(input: UseChatMessagesInput) {
   const activeOptimisticEditedPresentation = activeConversationId
     ? optimisticEditedPresentationByConversation[activeConversationId] ?? null
     : null
-  const messages = applyOptimisticEditedMessagePresentation(
-    applyHistoryCutoff(rawMessages, historyCutoffMessageId),
+  const { contextMessages: messages, displayMessages } = projectHistoryCutoff(
+    rawMessages,
+    historyCutoffMessageId,
     activeOptimisticEditedPresentation,
   )
   // Read the draft agent context path synchronously so the Explorer panel
@@ -110,7 +108,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     sessionState.activeConversationState?.conversation.agentContextRootPath ??
     sessionState.selectedFolderPath ??
     draftAgentContextPath
-  const composerState = useChatComposerState(messages, activeConversationId)
+  const composerState = useChatComposerState(displayMessages, activeConversationId)
   const setSessionError = sessionState.setError
   const captureComposerEditingSession = composerState.captureEditingSession
   const editingMessageId = composerState.editingMessageId
@@ -646,6 +644,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
       }
 
       if (activeConversationId) {
+        clearHistoryCutoff(activeConversationId)
         clearDraftEditSession(activeConversationId)
         upsertEditSession(activeConversationId, messageId)
       }
@@ -655,6 +654,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     [
       activeConversationId,
       clearDraftEditSession,
+      clearHistoryCutoff,
       clearRevertEditSession,
       conversationActions,
       hasAppliedRevertSession,
@@ -987,6 +987,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     mainComposerMentionPathMap: composerState.mainComposerMentionPathMap,
     mainComposerValue: composerState.mainComposerValue,
     messages,
+    displayMessages,
     revertAnchorMessageId,
     revertedPlanPaths: activeRevertedPlanPaths,
     selectedChatMode: draftChatMode,

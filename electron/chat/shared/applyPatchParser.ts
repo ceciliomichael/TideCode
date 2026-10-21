@@ -104,10 +104,18 @@ function parseChunkHeader(line: string) {
   return { ...(headerText ? { changeContext: headerText } : {}) }
 }
 
+function emptyUpdateHunkError(filePath: string, patchLine: number) {
+  return new Error(
+    `Update hunk does not contain any lines in ${JSON.stringify(filePath)} at patch line ${patchLine}. Each "@@" starts a hunk; include its context, added, or removed lines, or remove the empty header.`,
+  )
+}
+
 function createUpdateChunk(
   lines: readonly string[],
   startIndex: number,
   metadata: Pick<ApplyPatchUpdateChunk, 'changeContext' | 'offset'>,
+  filePath: string,
+  patchLine: number,
 ) {
   const contextLineMappings: ApplyPatchUpdateChunk['contextLineMappings'] = []
   const newLines: string[] = []
@@ -124,7 +132,7 @@ function createUpdateChunk(
     const line = lines[index]
     if (line === endOfFileMarker) {
       if (oldLines.length === 0 && newLines.length === 0) {
-        throw new Error('Update hunk does not contain any lines')
+        throw emptyUpdateHunkError(filePath, patchLine)
       }
       isEndOfFile = true
       index += 1
@@ -153,7 +161,7 @@ function createUpdateChunk(
   }
 
   if (oldLines.length === 0 && newLines.length === 0) {
-    throw new Error('Update hunk does not contain any lines')
+    throw emptyUpdateHunkError(filePath, patchLine)
   }
 
   const chunk = {
@@ -170,7 +178,7 @@ function createUpdateChunk(
   return { chunk, nextIndex: index }
 }
 
-function parseUpdatedFile(lines: readonly string[], startIndex: number) {
+function parseUpdatedFile(lines: readonly string[], startIndex: number, filePath: string) {
   const chunks: ApplyPatchUpdateChunk[] = []
   let index = startIndex
   const isFileTerminator = (line: string) => isStandardFileBoundary(line)
@@ -182,18 +190,40 @@ function parseUpdatedFile(lines: readonly string[], startIndex: number) {
     }
 
     const hasExplicitHeader = lines[index].startsWith('@@')
+    if (
+      hasExplicitHeader &&
+      lines[index].trim() === '@@' &&
+      isFileTerminator(lines[index + 1] ?? '')
+    ) {
+      const hasChanges = chunks.some((chunk) => {
+        if (chunk.oldLines.length !== chunk.newLines.length) {
+          return true
+        }
+        return chunk.oldLines.some((line, lineIndex) => line !== chunk.newLines[lineIndex])
+      })
+      if (hasChanges) {
+        // A bare trailing delimiter has no edit or matching information to lose.
+        index += 1
+        break
+      }
+    }
     if (!hasExplicitHeader && chunks.length > 0) {
       throw new Error(`Expected "@@" chunk header, found: ${lines[index]}`)
     }
 
     const metadata = hasExplicitHeader ? parseChunkHeader(lines[index]) : {}
-    if (hasExplicitHeader) index += 1
-    const parsedChunk = createUpdateChunk(lines, index, metadata)
+    const patchLine = index + 1
+    if (hasExplicitHeader) {
+      index += 1
+    }
+    const parsedChunk = createUpdateChunk(lines, index, metadata, filePath, patchLine)
     chunks.push(parsedChunk.chunk)
     index = parsedChunk.nextIndex
   }
 
-  if (chunks.length === 0) throw new Error('Update file hunk is empty')
+  if (chunks.length === 0) {
+    throw emptyUpdateHunkError(filePath, startIndex + 1)
+  }
 
   return { chunks, nextIndex: index }
 }
@@ -223,7 +253,7 @@ export function parseApplyPatch(patchText: string): ParsedApplyPatch {
       hunks.push({ path: header.filePath, type: 'delete' })
       index = header.nextIndex
     } else {
-      const parsedFile = parseUpdatedFile(lines, header.nextIndex)
+      const parsedFile = parseUpdatedFile(lines, header.nextIndex, header.filePath)
       hunks.push({
         chunks: parsedFile.chunks,
         ...(header.movePath ? { movePath: header.movePath } : {}),

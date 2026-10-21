@@ -1,5 +1,11 @@
 # Durable project knowledge
 
+- Reverted-message submission must invalidate discarded compaction dividers at the same time as later messages. Waiting for the response to finish leaves same-anchor dividers beside new output; older in-flight marker loads must not restore them. Verify with the real stale marker list, including multiple compactions anchored to the edited user message.
+
+- On 2026-10-21 the user clarified that Revert should keep later messages visible while the selected message is edited and its checkpoint restored. Keep the active context at the reverted point, preserve the placement of compaction dividers alongside visible history, and replace the later branch only when the edited message is submitted.
+
+- On 2026-10-21 the user approved user-first compaction retention: keep the latest actual request intact, protect bounded earlier user intent before large assistant explanations, preserve grounded progress and remaining obligations in the handoff, and count all runtime context in the retention budget. Earlier requests remain historical; do not reopen completed work or infer fresh approval merely because their wording survives. Preserve continuity across repeated compactions without a growing numbered prompt ledger.
+
 - Compaction UI regression (2026-10-21): replacing a live boundary with a saved marker must keep previous tools finalized in the same work timeline. A streaming draft may predate compaction and is not a safe fallback position for the marker. Verify both closed and manually opened groups across marker loading and resumed output; newly active tools must still appear normally.
 
 - On 2026-10-21 the user approved proactive generative UI in AI responses while retaining Markdown. Prefer native TideUI for useful structured comparisons, options, timelines, metrics, progress and interactions without requiring an explicit visual request. Keep explanations, code, commands and short answers in Markdown, combine formats without duplication, and use custom HTML when its layout or local interaction capabilities add value beyond native components. Avoid decorative interfaces and fabricated data or functionality.
