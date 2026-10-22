@@ -49,6 +49,7 @@ export function useBrowserPageActions({
   const zoomRef = useRef(100)
   const pendingZoomRef = useRef<number | null>(null)
   const zoomRevisionRef = useRef(0)
+  const [zoomFeedbackRevision, setZoomFeedbackRevision] = useState(0)
   const navigationReadyRef = useRef(false)
   const [canCapturePage, setCanCapturePage] = useState(false)
   const getTarget = useCallback(() => {
@@ -79,6 +80,7 @@ export function useBrowserPageActions({
             .find((level) => level < zoomRef.current) ?? 25
       }
       const revision = ++zoomRevisionRef.current
+      setZoomFeedbackRevision(revision)
       pendingZoomRef.current = percent
       zoomRef.current = percent
       setPageState((current) => ({ ...current, zoomPercent: percent }))
@@ -193,18 +195,36 @@ export function useBrowserPageActions({
     syncZoom()
     guest.addEventListener('dom-ready', handleDomReady)
     guest.addEventListener('did-start-navigation', handleNavigation)
-    guest.addEventListener('zoom-changed', syncZoom)
     guest.addEventListener('render-process-gone', handleGuestGone)
     guest.addEventListener('destroyed', handleGuestGone)
     return () => {
       disposed = true
       guest.removeEventListener('dom-ready', handleDomReady)
       guest.removeEventListener('did-start-navigation', handleNavigation)
-      guest.removeEventListener('zoom-changed', syncZoom)
       guest.removeEventListener('render-process-gone', handleGuestGone)
       guest.removeEventListener('destroyed', handleGuestGone)
     }
   }, [active, getTarget, isElectron, isNewTab, webviewRef])
+
+  useEffect(() => {
+    if (!isElectron || isNewTab || !active) {
+      return
+    }
+    return window.tidecodeBrowserPageActions.onZoomRequest((id, direction) => {
+      try {
+        if (getTarget().webContentsId !== id) {
+          return
+        }
+        if (direction === 'in') {
+          void changeZoom(1).catch(console.error)
+        } else if (direction === 'out') {
+          void changeZoom(-1).catch(console.error)
+        }
+      } catch {
+        // A guest can detach while the user switches tabs.
+      }
+    })
+  }, [active, changeZoom, getTarget, isElectron, isNewTab])
 
   useEffect(() => {
     if (active) {
@@ -227,5 +247,5 @@ export function useBrowserPageActions({
     })
   }, [isElectron, openDevTools, webviewRef])
 
-  return { openDevTools, captureScreenshot, canCapturePage }
+  return { openDevTools, captureScreenshot, canCapturePage, changeZoom, zoomPercent: pageState.zoomPercent, zoomFeedbackRevision }
 }

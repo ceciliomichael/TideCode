@@ -1,10 +1,10 @@
 import type { WebContents } from 'electron'
-import { AGENT_BROWSER_HEIGHT, AGENT_BROWSER_WIDTH, requireBrowserUrl } from './agentTabs'
+import { requireBrowserUrl } from './agentTabs'
 import { withAgentViewport } from './agentPageCapture'
 import { locateBrowserElement } from './agentPageStructure'
 
 export type AgentBrowserInteraction =
-  | { action: 'click'; x?: number; y?: number; element_ref?: string; button?: 'left' | 'right' | 'middle' }
+  | { action: 'click'; element_ref: string; button?: 'left' | 'right' | 'middle' }
   | { action: 'fill'; element_ref: string; text: string }
   | { action: 'type'; text: string }
   | { action: 'key'; key: string }
@@ -59,29 +59,34 @@ async function navigate(contents: WebContents, action: AgentBrowserInteraction) 
 }
 
 export async function interactWithAgentPage(contents: WebContents, action: AgentBrowserInteraction) {
+  if (action.action === 'click'
+    && (typeof action.element_ref !== 'string' || !action.element_ref.trim() || 'x' in action || 'y' in action)) {
+    throw new Error('Browser clicks require an element_ref and do not accept x or y.')
+  }
   if (['navigate', 'back', 'forward', 'reload'].includes(action.action)) {
     await navigate(contents, action)
   } else {
-    const resolved = (action.action === 'click' || action.action === 'fill') && action.element_ref
-      ? await locateBrowserElement(contents, action.element_ref)
-      : null
-    await withAgentViewport(contents, async (send) => {
+    if ((action.action === 'fill' || action.action === 'type')
+      && (typeof action.text !== 'string' || action.text.length > 20_000)) {
+      throw new Error('Input text must be at most 20,000 characters.')
+    }
+    await withAgentViewport(contents, async (send, viewport) => {
+      const resolved = (action.action === 'click' || action.action === 'fill') && action.element_ref
+        ? await locateBrowserElement(contents, action.element_ref, send)
+        : null
       if (action.action === 'click' || action.action === 'fill') {
-        const x = resolved?.x ?? (action.action === 'click' ? action.x : undefined)
-        const y = resolved?.y ?? (action.action === 'click' ? action.y : undefined)
-        assertCoordinate(x as number, AGENT_BROWSER_WIDTH, 'x')
-        assertCoordinate(y as number, AGENT_BROWSER_HEIGHT, 'y')
+        if (action.action === 'fill' && !resolved?.editable) {
+          throw new Error('The selected element is not an editable field.')
+        }
+        if (!resolved) {
+          throw new Error('The browser interaction requires an element_ref.')
+        }
+        const { x, y } = resolved
         const button = action.action === 'click' ? action.button ?? 'left' : 'left'
         await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
         await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: 1 })
         await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: 1 })
         if (action.action === 'fill') {
-          if (!resolved?.editable) {
-            throw new Error('The selected element is not an editable field.')
-          }
-          if (typeof action.text !== 'string' || action.text.length > 20_000) {
-            throw new Error('Fill text must be at most 20,000 characters.')
-          }
           // Ctrl+A selects the current field contents without touching the clipboard.
           const modifier = process.platform === 'darwin' ? 4 : 2
           await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', code: 'KeyA', modifiers: modifier, windowsVirtualKeyCode: 65 })
@@ -89,9 +94,6 @@ export async function interactWithAgentPage(contents: WebContents, action: Agent
           await send('Input.insertText', { text: action.text })
         }
       } else if (action.action === 'type') {
-        if (typeof action.text !== 'string' || action.text.length > 20_000) {
-          throw new Error('Typing requires text of at most 20,000 characters.')
-        }
         await send('Input.insertText', { text: action.text })
       } else if (action.action === 'key') {
         const key = normalizeBrowserKey(action.key)
@@ -111,10 +113,10 @@ export async function interactWithAgentPage(contents: WebContents, action: Agent
         await send('Input.dispatchKeyEvent', { type: 'keyDown', ...params })
         await send('Input.dispatchKeyEvent', { type: 'keyUp', ...params })
       } else if (action.action === 'scroll') {
-        const x = action.x ?? AGENT_BROWSER_WIDTH / 2
-        const y = action.y ?? AGENT_BROWSER_HEIGHT / 2
-        assertCoordinate(x, AGENT_BROWSER_WIDTH, 'x')
-        assertCoordinate(y, AGENT_BROWSER_HEIGHT, 'y')
+        const x = action.x ?? viewport.width / 2
+        const y = action.y ?? viewport.height / 2
+        assertCoordinate(x, viewport.width, 'x')
+        assertCoordinate(y, viewport.height, 'y')
         const deltaX = action.delta_x ?? 0
         const deltaY = action.delta_y ?? 500
         if (![deltaX, deltaY].every((value) => Number.isFinite(value) && Math.abs(value) <= 10_000)) {

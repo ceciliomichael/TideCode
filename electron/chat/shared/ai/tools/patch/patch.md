@@ -1,5 +1,11 @@
 # tools.patch
 
+## Keep patched source readable
+
+Write source for people to read and maintain. Keep block bodies and nested structures in expanded multiline form with consistent indentation. Put distinct declarations, statements, and sibling structural elements on separate physical source lines, including every embedded language. Editor word wrapping does not count. Concise replies and simple implementations do not justify compressed source. Preserve the surrounding project's readable conventions; do not minify unless explicitly requested or preserving an existing generated/minified artifact.
+
+Inspect added and replacement source before applying the patch. After applying it, read back the affected source, following continuation output when truncated, and correct any packed sections introduced by the patch before finishing. Successful application, valid syntax, and a working preview do not verify source readability. If the user reports compressed source, fix and inspect the authorized source rather than only acknowledging the mistake or offering to format it later.
+
 Through exec: `{"code":"return await tools.patch({ patch: payloads.patchText });","payloads":{"patchText":"*** Begin Patch\n*** Update File: src/example.ts\n@@\n-const offset = 6\n+const offset = 8\n*** End Patch"}}`. Obtain the tool contract first. Exec recovers misplaced top-level strings, exact bare payload bindings, and unique case/underscore/hyphen name variations; conflicting values and ambiguous aliases reject. Patch syntax, permissions, and source-context validation still apply.
 
 Each `@@` starts a hunk and must be followed by its context, additions, or removals. It does not close a hunk. Continue directly with the next file header or `*** End Patch` after the last body line. A single bare trailing `@@` immediately before either boundary is tolerated only after an actual edit in that file; empty first/interior hunks and empty headers carrying context or line numbers remain errors. Empty-hunk diagnostics identify the file and patch line so you can correct the patch before retrying.

@@ -194,7 +194,7 @@ export function ProviderConfigDialog({
             ) : null}
 
             {localError ? (
-              <AppNoticeSurface className="mt-5" title="Provider action failed" message={localError} fallbackMessage="Check your provider settings and try again." />
+              <AppNoticeSurface className="mt-5" operation="provider.save" title="Provider action failed" message={localError} />
             ) : null}
           </div>
 

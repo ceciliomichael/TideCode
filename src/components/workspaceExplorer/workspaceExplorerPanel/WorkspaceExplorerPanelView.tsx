@@ -350,7 +350,7 @@ export function WorkspaceExplorerPanelView({
           <>
             {panelState.errorMessage ? (
               <div className="mx-3 mt-2 shrink-0">
-                <AppNoticeSurface title="Explorer action failed" message={panelState.errorMessage} fallbackMessage="The file action could not be completed. Try again." onDismiss={panelState.clearErrorMessage} dismissLabel="Dismiss explorer error" />
+                <AppNoticeSurface operation="file.transfer" title="Explorer action failed" message={panelState.errorMessage} onDismiss={panelState.clearErrorMessage} dismissLabel="Dismiss explorer error" />
               </div>
             ) : null}
             {!showExplorerTree ? (

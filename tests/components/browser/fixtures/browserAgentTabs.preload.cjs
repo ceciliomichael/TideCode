@@ -6,7 +6,7 @@ ipcRenderer.on('browser:openAgentTab', (_event, input) => {
   const webview = document.createElement('webview')
   webview.setAttribute('partition', 'persist:tidecode-browser')
   webview.setAttribute('src', input.url)
-  webview.setAttribute('style', 'display:flex;width:100%;height:100%;')
+  webview.setAttribute('style', 'display:flex;width:440px;height:340px;opacity:0;')
   webview.addEventListener('dom-ready', () => {
     ipcRenderer.send('fixture-webview-loaded')
   }, { once: true })

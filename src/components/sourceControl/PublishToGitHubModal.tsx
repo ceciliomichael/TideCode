@@ -390,7 +390,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
               </div>
 
               {error && (
-                <AppNoticeSurface title="Publishing failed" message={error} fallbackMessage="The repository could not be published. Try again." />
+                <AppNoticeSurface operation="github.publish" title="Publishing failed" message={error} />
               )}
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
@@ -454,7 +454,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
               ) : (
                 <div className="flex flex-col items-center gap-3">
                   {error ? (
-                    <AppNoticeSurface title="GitHub sign-in failed" message={error} fallbackMessage="Could not sign in to GitHub. Try again." />
+                    <AppNoticeSurface operation="github.signIn" title="GitHub sign-in failed" message={error} />
                   ) : null}
                   <button
                     type="button"
@@ -564,7 +564,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
               </div>
 
               {error && (
-                <AppNoticeSurface title="Publishing failed" message={error} fallbackMessage="The repository could not be published. Try again." />
+                <AppNoticeSurface operation="github.publish" title="Publishing failed" message={error} />
               )}
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">

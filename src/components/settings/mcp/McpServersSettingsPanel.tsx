@@ -94,7 +94,7 @@ export function McpServersSettingsPanel({
         </header>
 
         {visibleErrorMessage ? (
-          <AppNoticeSurface title="Could not update servers" message={visibleErrorMessage} fallbackMessage="Check the server configuration and try again." />
+          <AppNoticeSurface operation="mcp.load" title="Could not update servers" message={visibleErrorMessage} />
         ) : null}
 
         <McpServerList

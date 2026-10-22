@@ -546,7 +546,7 @@ export function UserModelDialog({
             ) : null}
 
             {errorMessage ? (
-              <AppNoticeSurface title="Could not save model" message={errorMessage} fallbackMessage="Check the model details and try again." />
+              <AppNoticeSurface operation="model.save" title="Could not save model" message={errorMessage} />
             ) : null}
           </div>
 

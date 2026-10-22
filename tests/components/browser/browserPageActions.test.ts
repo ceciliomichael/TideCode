@@ -126,20 +126,16 @@ test('zoom applies only to an owned browser guest and validates the supported bo
   )
 })
 
-test('Developer Mode and annotation IPC handlers register immediately when the browser panel opens', () => {
-  const { handlers, event } = fixture()
+test('annotation IPC handlers register immediately when the browser panel opens', () => {
+  const { handlers } = fixture()
   for (const channel of [
     'browser:registerAgentTab',
-    'browser:getDeveloperMode',
-    'browser:setDeveloperMode',
     'browser:listAnnotations',
     'browser:saveAnnotation',
     'browser:removeAnnotation',
   ]) {
     assert.equal(typeof handlers.get(channel), 'function', channel)
   }
-  const getMode = handlers.get('browser:getDeveloperMode')!
-  assert.equal(getMode(event, path.join(tmpdir(), 'tidecode-browser-project')), false)
 })
 
 test('screenshots save only owned guests and restrict clipboard and reveal actions to saved files', async (t) => {

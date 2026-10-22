@@ -1,4 +1,5 @@
 import { BrowserScreenshotButton } from './BrowserScreenshotButton'
+import { BrowserZoomPopover } from './BrowserZoomPopover'
 import { AppNoticeSurface } from '../ui/AppNoticeSurface'
 import { BrowserAnnotations } from './BrowserAnnotations'
 import { createElement, FormEvent, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
@@ -101,7 +102,7 @@ function BrowserTabSession({
   const [canGoForward, setCanGoForward] = useState(false)
   const [loadFailure, setLoadFailure] = useState<BrowserLoadFailure | null>(null)
   const isNewTab = !currentUrl
-  const { openDevTools, captureScreenshot, canCapturePage } = useBrowserPageActions({ projectPath, active, isElectron, isNewTab, webviewRef, controlsRef, onStateChange: onPageStateChange })
+  const { openDevTools, captureScreenshot, canCapturePage, changeZoom, zoomPercent, zoomFeedbackRevision } = useBrowserPageActions({ projectPath, active, isElectron, isNewTab, webviewRef, controlsRef, onStateChange: onPageStateChange })
 
   const releaseAddressEditing = useCallback(() => {
     addressEditingRef.current = false
@@ -552,10 +553,16 @@ function BrowserTabSession({
                 sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
                 />
               )}
+          <BrowserZoomPopover
+            active={active && isElectron && !isNewTab && !loadFailure}
+            revision={zoomFeedbackRevision}
+            percent={zoomPercent}
+            onChangeZoom={changeZoom}
+          />
           {isElectron && loadFailure ? (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-background px-6 text-foreground">
             <div className="w-full max-w-xl">
-              <AppNoticeSurface title="This page could not be loaded" message={loadFailure.message} fallbackMessage="Check the website address or your connection, then try again.">
+              <AppNoticeSurface operation="browser.pageLoad" title="This page could not be loaded" message={loadFailure.message}>
                 <div className="mt-1.5 break-all text-xs text-muted-foreground">{loadFailure.url}</div>
               <div className="mt-2 flex items-center gap-2">
                 <button

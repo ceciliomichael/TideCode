@@ -7,6 +7,86 @@ import test from 'node:test'
 import { TerminalBroker } from '../../electron/terminal/broker/terminalBroker'
 import { sessions } from '../../electron/terminal/sessionRegistry'
 import type { PersistedTerminalBrokerState } from '../../electron/terminal/broker/persistence'
+import { ApplicationRunLifecycle } from '../../electron/runService/applicationRunLifecycle'
+
+test('turn completion and desktop closure terminate a real server and child without touching other sessions', { timeout: 60_000 }, async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tc-process-tree-'))
+  const broker = new TerminalBroker({ reaperIntervalMs: 60_000 })
+  const internals = broker as unknown as { persistence: { save: () => Promise<void>; flush: () => Promise<void> } }
+  internals.persistence.save = async () => undefined
+  internals.persistence.flush = async () => undefined
+  t.after(async () => {
+    await broker.shutdown()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+  const fixture = path.join(directory, 'server.cjs')
+  const marker = path.join(directory, 'pids.json')
+  await fs.writeFile(fixture, `
+const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const http = require('node:http');
+const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });
+http.createServer((req, res) => res.end('alive')).listen(0, '127.0.0.1', function () {
+  fs.writeFileSync(process.argv[2], JSON.stringify({ parent: process.pid, child: child.pid, port: this.address().port }));
+});
+`)
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === 'EPERM'
+    }
+  }
+  const other = await broker.createSession({ clientId: 'ai:other', ownerKind: 'ai', runId: 'other', workspaceRootPath: directory })
+  const manual = await broker.createSession({ clientId: 'desktop-manual', ownerKind: 'visible', workspaceRootPath: directory })
+  for (const reason of ['run_completed', 'surface_shutdown'] as const) {
+    await fs.rm(marker, { force: true })
+    const runId = `cleanup-${reason}`
+    const terminal = await broker.createSession({ clientId: `ai:${runId}`, ownerKind: 'ai', runId, workspaceRootPath: directory })
+    const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
+    const command = process.platform === 'win32'
+      ? `& '${process.execPath.replaceAll("'", "''")}' '${fixture.replaceAll("'", "''")}' '${marker.replaceAll("'", "''")}'\r`
+      : `${quote(process.execPath)} ${quote(fixture)} ${quote(marker)}\r`
+    await broker.write({ brokerSessionId: terminal.brokerSessionId, clientId: `ai:${runId}`, data: command })
+    let pids: { parent: number; child: number; port: number } | undefined
+    const deadline = Date.now() + 15_000
+    while (Date.now() < deadline) {
+      try {
+        pids = JSON.parse(await fs.readFile(marker, 'utf8'))
+        break
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+    }
+    assert.ok(pids, 'the test server and child must actually start')
+    assert.equal(alive(pids.parent), true)
+    assert.equal(alive(pids.child), true)
+    const cancel = async () => {
+      const results = await broker.applyRunCancellation(runId, {
+        policy: 'terminate', reason, requestedAt: Date.now(), surface: 'system', runId,
+      })
+      assert.equal(results[0].state, 'terminated')
+    }
+    if (reason === 'surface_shutdown') {
+      const lifecycle = new ApplicationRunLifecycle()
+      const desktop = {}
+      lifecycle.register(desktop)
+      lifecycle.begin(desktop, runId)!.attach(cancel)
+      await lifecycle.stop(desktop, true)
+    } else {
+      await cancel()
+    }
+    const exitDeadline = Date.now() + 5_000
+    while ((alive(pids.parent) || alive(pids.child)) && Date.now() < exitDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    assert.equal(alive(pids.parent), false, 'the server must exit')
+    assert.equal(alive(pids.child), false, 'its child must exit')
+    assert.equal(alive(other.snapshot.processId!), true, 'another run must stay alive')
+    assert.equal(alive(manual.snapshot.processId!), true, 'the manual terminal must stay alive')
+  }
+})
 
 test('broker retains an attached exited terminal, then releases output and owner state after detach', async (t) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-terminal-lifecycle-'))

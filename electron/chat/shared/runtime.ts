@@ -184,7 +184,35 @@ export async function runToolEnabledChatStream(input: {
   let codeModeExecutor: CodeModeExecutor | null = null
   let terminalOwner: WebContents | null = null
   let runWasRecorded = false
-  let terminalOutcome: 'completed' | 'failed' = 'failed'
+  let terminalCleanup: Promise<void> | null = null
+  const stopTurnTerminals = (completed: boolean) => {
+    terminalCleanup ??= (async () => {
+      // Abort executor work before sweeping this turn's terminal sessions.
+      await codeModeExecutor?.dispose()
+      if (!workspaceRootPath) {
+        return
+      }
+      const cancellation = input.abortController.signal.aborted
+        ? resolveStreamCancellation(input.abortController.signal)
+        : {
+            reason: completed ? 'run_completed' as const : 'provider_failure' as const,
+            requestedAt: Date.now(),
+            surface: 'system' as const,
+          }
+      const terminals = await getTerminalBroker().applyRunCancellation(runId, {
+        ...cancellation,
+        policy: 'terminate',
+        conversationId,
+        runId,
+      })
+      const unfinished = terminals.filter((terminal) => !['terminated', 'session_lost'].includes(terminal.state))
+      if (unfinished.length > 0) {
+        console.error('AI turn terminal cleanup failed:', unfinished)
+        throw new Error('Some AI commands could not be stopped. Check the terminal cleanup diagnostics.')
+      }
+    })()
+    return terminalCleanup
+  }
   let queuedHistoryWrites = Promise.resolve()
   const queueHistoryWrite = (action: () => Promise<unknown>) => {
     queuedHistoryWrites = queuedHistoryWrites.then(() => safelyPersistHistory(action))
@@ -696,6 +724,8 @@ export async function runToolEnabledChatStream(input: {
       throw new Error('Chat stream aborted.')
     }
 
+    await stopTurnTerminals(true)
+
     // A run can end immediately after a completed tool call. In that case the
     // provider never asks for another model step, so prepareStep has no chance
     // to install the compacted projection. Do one final AI-only compaction pass
@@ -871,8 +901,15 @@ export async function runToolEnabledChatStream(input: {
       streamId: input.streamId,
       type: 'completed',
     })
-    terminalOutcome = 'completed'
   } catch (error) {
+    let cleanupFailed = false
+    try {
+      await stopTurnTerminals(false)
+    } catch (cleanupError) {
+      cleanupFailed = true
+      console.error('Failed to stop AI commands at the end of the chat turn:', cleanupError)
+      error = cleanupError
+    }
     await queuedHistoryWrites
     if (conversationId && runWasRecorded) {
       const cancellation = input.abortController.signal.aborted
@@ -881,12 +918,12 @@ export async function runToolEnabledChatStream(input: {
       await safelyPersistHistory(() => recordRunTerminal(
         conversationId,
         runId,
-        input.abortController.signal.aborted ? 'run_aborted' : 'run_failed',
+        input.abortController.signal.aborted && !cleanupFailed ? 'run_aborted' : 'run_failed',
         error instanceof Error ? error.message : String(error),
         cancellation,
       ))
     }
-    if (input.abortController.signal.aborted) {
+    if (input.abortController.signal.aborted && !cleanupFailed) {
       emitChatStreamEvent(input.webContents, {
         conversationId,
         streamId: input.streamId,
@@ -901,29 +938,6 @@ export async function runToolEnabledChatStream(input: {
       })
     }
   } finally {
-    if (workspaceRootPath) {
-      const cancellation = input.abortController.signal.aborted
-        ? resolveStreamCancellation(input.abortController.signal)
-        : terminalOutcome === 'completed'
-          ? {
-              policy: 'terminate' as const,
-              reason: 'run_completed' as const,
-              requestedAt: Date.now(),
-              surface: 'system' as const,
-            }
-          : {
-              policy: 'terminate_after_grace' as const,
-              reason: 'provider_failure' as const,
-              requestedAt: Date.now(),
-              surface: 'system' as const,
-            }
-      await getTerminalBroker().applyRunCancellation(runId, {
-        ...cancellation,
-        conversationId,
-        runId,
-      }).catch(() => undefined)
-      releaseTerminalToolStateForTurn(runId)
-    }
-    await codeModeExecutor?.dispose().catch(() => undefined)
+    releaseTerminalToolStateForTurn(runId)
   }
 }

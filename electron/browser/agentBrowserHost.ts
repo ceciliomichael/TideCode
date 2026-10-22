@@ -1,14 +1,13 @@
 import type { WebContents } from 'electron'
 import {
-  AGENT_BROWSER_HEIGHT,
-  AGENT_BROWSER_WIDTH,
   listAgentBrowserTabs,
   openAgentBrowserTab,
   terminateAgentBrowserTab,
   withAgentBrowserTab,
 } from './agentTabs'
-import { captureAgentPage } from './agentPageCapture'
-import { formatBrowserElements, readBrowserStructure } from './agentPageStructure'
+import { captureAgentPageInViewport, withAgentViewport } from './agentPageCapture'
+import { rememberAgentViewport, resolveAgentViewport } from './agentViewport'
+import { formatBrowserElements, readBrowserStructureInViewport } from './agentPageStructure'
 import { interactWithAgentPage, type AgentBrowserInteraction } from './agentPageInput'
 import { readBrowserDiagnostics, type BrowserDiagnosticRequest } from './agentPageDiagnostics'
 import { resolveBrowserAnnotationTargets } from './agentAnnotations'
@@ -53,17 +52,25 @@ export async function executeDesktopBrowserRequest(
   }
   if (request.operation === 'read') {
     const { view, offset, limit } = request
+    const viewport = resolveAgentViewport(request)
     if (!['combined', 'visual', 'structure', 'annotations'].includes(view)) {
       throw new Error('Unknown browser read mode.')
     }
     const result = await withAgentBrowserTab(workspace, request.tabId, async (tab) => {
-      const png = view === 'combined' || view === 'visual'
-        ? await captureAgentPage(tab.contents)
-        : null
-      const structure = view === 'combined' || view === 'structure'
-        ? await readBrowserStructure(tab.contents, offset, limit)
-        : null
-      return { png, structure, url: tab.contents.getURL(), title: tab.contents.getTitle() }
+      const page = await withAgentViewport(tab.contents, async (send) => {
+        const png = view === 'combined' || view === 'visual'
+          ? await captureAgentPageInViewport(send, viewport)
+          : null
+        const structure = view === 'combined' || view === 'structure'
+          ? await readBrowserStructureInViewport(tab.contents, send, offset, limit, viewport)
+          : null
+        return { png, structure, url: tab.contents.getURL(), title: tab.contents.getTitle() }
+      }, viewport)
+      if (page.png && page.png.length > MAX_SCREENSHOT_BYTES) {
+        throw new Error('Browser screenshot exceeds the allowed image size.')
+      }
+      rememberAgentViewport(tab.contents, viewport)
+      return page
     })
     const annotations = (request.includeAnnotations || view === 'annotations') && request.conversationId
       ? await listBrowserAnnotations(request.conversationId, workspace)
@@ -74,7 +81,7 @@ export async function executeDesktopBrowserRequest(
         resolveBrowserAnnotationTargets(tab.contents, onPage))
       : []
     const label = 'Tab: ' + request.tabId + '\nURL: ' + result.url
-      + '\nViewport: ' + AGENT_BROWSER_WIDTH + 'x' + AGENT_BROWSER_HEIGHT
+      + '\nViewport: ' + viewport.width + 'x' + viewport.height
     const details = [
       label,
       'Title: ' + (result.title || 'Untitled'),
@@ -91,13 +98,10 @@ export async function executeDesktopBrowserRequest(
         resolvedAnnotations.map((item) => item.annotation.id + ': ' + item.status).join('\n'),
       ] : []),
     ].join('\n\n')
-    if (result.png && result.png.length > MAX_SCREENSHOT_BYTES) {
-      throw new Error('Browser screenshot exceeds the allowed image size.')
-    }
     return {
       data: {
         tab_id: request.tabId, body: details, url: result.url,
-        width: AGENT_BROWSER_WIDTH, height: AGENT_BROWSER_HEIGHT,
+        width: viewport.width, height: viewport.height,
       },
       ...(result.png ? { imageBase64: result.png.toString('base64') } : {}),
     }

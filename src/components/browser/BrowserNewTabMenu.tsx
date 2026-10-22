@@ -46,7 +46,7 @@ export function BrowserNewTabMenu({ onCreateTab }: BrowserNewTabMenuProps) {
       await onCreateTab(incognito)
       close()
     } catch (cause) {
-      showAppError(cause, 'The browser tab could not be opened. Try again.', { title: 'Could not open tab' })
+      showAppError(cause, 'The browser tab could not be opened. Try again.', { operation: 'browser.tab' })
     } finally {
       setPending(false)
     }
@@ -94,6 +94,7 @@ export function BrowserNewTabMenu({ onCreateTab }: BrowserNewTabMenuProps) {
         </button>
       </Tooltip>
       <DropdownPopover
+        dismissOnWindowBlur
         id={id}
         role="menu"
         aria-label="New browser tab options"

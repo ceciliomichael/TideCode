@@ -148,6 +148,14 @@ export function closeBrowserGuestDevTools(guestWebContents: WebContents) {
   destroyBrowserGuestFloatingDevTools(guestWebContents.id)
 }
 
+export function registerBrowserGuestZoom(guest: WebContents, ownerWindow: BrowserWindow) {
+  guest.on('zoom-changed', (_event, direction) => {
+    if (!ownerWindow.isDestroyed()) {
+      ownerWindow.webContents.send('browser:zoomRequested', guest.id, direction)
+    }
+  })
+}
+
 function getInitialWindowBounds(savedState: TideCodeWindowState | null) {
   const { workArea } = screen.getPrimaryDisplay()
   const availableWidth = Math.max(1, workArea.width - WINDOW_SCREEN_MARGIN)
@@ -242,6 +250,7 @@ export async function createApplicationWindow(input: {
     }
   })
   win.webContents.on('did-attach-webview', (_event, guestWebContents) => {
+    registerBrowserGuestZoom(guestWebContents, win)
     trackPrivateBrowserGuest(guestWebContents)
     if (isNormalBrowserSession(guestWebContents.session)) {
       browserFaviconCache.track(guestWebContents)

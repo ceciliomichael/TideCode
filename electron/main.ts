@@ -29,7 +29,7 @@ import { RemoteWorkspaceHost } from './remote/host'
 import { registerRemoteWorkspaceHostIpc } from './remote/ipc'
 import { REMOTE_EVENT_CHANNELS } from '../src/remote/protocol'
 import { hasSharedAppSettingsInput } from '../src/lib/appSettingsScopes'
-import { disconnectRunServiceForApplication } from './runService/ensureService'
+import { disconnectRunServiceForApplication, stopRunServiceWorkForApplication } from './runService/ensureService'
 import { ensureRunServiceClient } from './runService/ensureService'
 import { configureDesktopBrowserHost } from './runService/desktopBrowserHostConnection'
 import { executeDesktopBrowserRequest } from './browser/agentBrowserHost'
@@ -214,16 +214,31 @@ async function createWindow(initialLaunchRequest: TideCodeLaunchRequest | null =
   currentWindow.on('query-session-end', () => {
     isSystemShutdownInProgress = true
   })
+  let isWindowCloseCleanupInProgress = false
+  let isWindowCloseCleanupComplete = false
   currentWindow.on('close', (event) => {
-    if (
-      process.platform === 'win32'
-      && !isQuitFlushInProgress
-      && !isSystemShutdownInProgress
-      && !isUpdateInstallInProgress()
-    ) {
-      event.preventDefault()
-      currentWindow.hide()
+    if (isQuitFlushInProgress || isSystemShutdownInProgress || isUpdateInstallInProgress() || isWindowCloseCleanupComplete) {
+      return
     }
+    event.preventDefault()
+    if (isWindowCloseCleanupInProgress) {
+      return
+    }
+    isWindowCloseCleanupInProgress = true
+    void stopRunServiceWorkForApplication().catch((error) => {
+      console.error('Failed to stop AI commands when closing TideCode.', error)
+    }).finally(() => {
+      isWindowCloseCleanupInProgress = false
+      if (currentWindow.isDestroyed()) {
+        return
+      }
+      if (process.platform === 'win32') {
+        currentWindow.hide()
+      } else {
+        isWindowCloseCleanupComplete = true
+        currentWindow.close()
+      }
+    })
   })
   currentWindow.once('closed', () => {
     if (win === currentWindow) win = null

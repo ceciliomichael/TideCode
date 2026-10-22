@@ -7,7 +7,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react'
-import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { resolveAppError } from '../../../lib/errors/resolveAppError'
 import { getPathBasename, getPathDirname } from '../../../lib/pathPresentation'
 import type {
   PendingExplorerCreation,
@@ -144,9 +144,9 @@ export function useWorkspaceExplorerRename({
       setRenameName('')
     } catch (error) {
       setErrorMessage(
-        toUserFacingErrorMessage(error, 'The workspace item could not be renamed.', {
+        resolveAppError(error, 'file.rename', {
           itemKind: entry.isDirectory ? 'folder' : 'file',
-        }),
+        }).message,
       )
     } finally {
       isSubmittingRenameRef.current = false

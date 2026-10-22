@@ -1,32 +1,28 @@
+import { resolveAppError } from '../../lib/errors/resolveAppError'
+import type { AppErrorFeedback, AppErrorId } from '../../lib/errors/errorCatalog'
+
 export interface AppNotification {
   id: number
-  title: string
-  message: string
-  fallbackMessage: string
+  feedback: AppErrorFeedback
   action?: { label: string; onClick: () => void }
 }
 
 export const NOTIFICATION_EVENT = 'tidecode:app-notification'
+export const ERROR_TOAST_DURATION_MS = 3000
 let nextNotificationId = 0
 
 export function showAppError(
   error: unknown,
   fallbackMessage: string,
-  options: { title?: string; action?: { label: string; onClick: () => void } } = {},
+  options: { title?: string; operation?: AppErrorId; action?: { label: string; onClick: () => void } } = {},
 ) {
-  const message = error instanceof Error
-    ? error.message
-    : typeof error === 'string'
-      ? error
-      : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
-        ? error.message
-        : ''
+  const feedback = resolveAppError(error, options.operation, { fallbackMessage })
   window.dispatchEvent(new CustomEvent<AppNotification>(NOTIFICATION_EVENT, {
     detail: {
       id: ++nextNotificationId,
-      title: options.title ?? 'Action could not be completed',
-      message,
-      fallbackMessage,
+      feedback: feedback.id === 'app.unexpected' && options.title
+        ? { ...feedback, title: options.title }
+        : feedback,
       action: options.action,
     },
   }))

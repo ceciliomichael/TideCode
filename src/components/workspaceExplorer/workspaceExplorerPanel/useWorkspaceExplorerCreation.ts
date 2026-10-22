@@ -6,7 +6,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react'
-import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { resolveAppError } from '../../../lib/errors/resolveAppError'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
 import { getPathDirname } from '../../../lib/pathPresentation'
 import type {
@@ -121,13 +121,12 @@ export function useWorkspaceExplorerCreation({
       await onCreateEntry(nextRelativePath, draft.isDirectory)
     } catch (error) {
       setErrorMessage(null)
+      const feedback = resolveAppError(error, draft.isDirectory ? 'folder.create' : 'file.create', {
+        itemKind: draft.isDirectory ? 'folder' : 'file',
+      })
       showErrorDialog({
-        message: toUserFacingErrorMessage(
-          error,
-          draft.isDirectory ? 'The folder could not be created.' : 'The file could not be created.',
-          { itemKind: draft.isDirectory ? 'folder' : 'file' },
-        ),
-        title: draft.isDirectory ? 'Folder was not created' : 'File was not created',
+        message: feedback.message,
+        title: feedback.title,
       })
       return
     } finally {

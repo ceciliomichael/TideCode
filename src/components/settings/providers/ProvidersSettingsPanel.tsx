@@ -135,7 +135,7 @@ export function ProvidersSettingsPanel(props: ProvidersSettingsPanelProps) {
         </header>
 
         {props.errorMessage ? (
-          <AppNoticeSurface title="Could not update providers" message={props.errorMessage} fallbackMessage="Check your provider settings and try again." />
+          <AppNoticeSurface operation={props.isLoading ? 'provider.load' : 'provider.save'} title="Could not update providers" message={props.errorMessage} />
         ) : null}
 
         <div className="flex flex-col gap-2.5">

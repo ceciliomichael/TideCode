@@ -11,6 +11,7 @@ import {
   getRunServiceDirectory,
   getRunServiceEndpoint,
 } from '../../electron/runService/paths'
+import { RUN_SERVICE_PROTOCOL_VERSION } from '../../electron/runService/protocol'
 
 test('development run-service namespaces are stable per runtime root and separate workspaces', () => {
   const first = createDevelopmentRunServiceNamespace('C:\\work\\tidecode', 'win32')
@@ -67,6 +68,7 @@ test('production and development services use different directories and Windows 
     environment: developmentEnvironment,
     homeDirectory,
     platform: 'win32',
+    windowsIntegrityLevel: 8192,
   })
 
   assert.equal(productionDirectory, path.join(homeDirectory, '.tidecode', 'run-service'))
@@ -75,7 +77,32 @@ test('production and development services use different directories and Windows 
     path.join(homeDirectory, '.tidecode', 'run-service', 'dev-0123456789abcdef'),
   )
   assert.notEqual(productionEndpoint, developmentEndpoint)
-  assert.match(developmentEndpoint, /-dev-0123456789abcdef$/u)
+  assert.match(developmentEndpoint, /-dev-0123456789abcdef-il-8192$/u)
+})
+
+test('Windows development pipes separate security levels without changing saved data paths', () => {
+  const options = {
+    environment: { [RUN_SERVICE_NAMESPACE_ENV]: 'dev-0123456789abcdef' },
+    homeDirectory: 'C:\\Users\\tester',
+    platform: 'win32' as const,
+  }
+  const normalOptions = { ...options, windowsIntegrityLevel: 8192 }
+  const elevatedOptions = { ...options, windowsIntegrityLevel: 12288 }
+
+  assert.notEqual(getRunServiceEndpoint(normalOptions), getRunServiceEndpoint(elevatedOptions))
+  assert.equal(getRunServiceEndpoint(normalOptions), getRunServiceEndpoint({ ...normalOptions }))
+  assert.equal(getRunServiceDirectory(normalOptions), getRunServiceDirectory(elevatedOptions))
+  assert.throws(() => getRunServiceEndpoint({ ...options, windowsIntegrityLevel: NaN }), /Windows security level/u)
+})
+
+test('production and explicit non-development endpoints do not depend on Windows integrity', () => {
+  for (const environment of [{}, { [RUN_SERVICE_NAMESPACE_ENV]: 'feature_test-7' }]) {
+    const options = { environment, homeDirectory: 'C:\\Users\\tester', platform: 'win32' as const }
+    assert.equal(
+      getRunServiceEndpoint({ ...options, windowsIntegrityLevel: 8192 }),
+      getRunServiceEndpoint({ ...options, windowsIntegrityLevel: 12288 }),
+    )
+  }
 })
 
 test('Unix development sockets live inside the namespaced service directory', () => {
@@ -95,7 +122,7 @@ test('Unix development sockets live inside the namespaced service directory', ()
       '.tidecode',
       'run-service',
       'dev-0123456789abcdef',
-      'service-v14.sock',
+      `service-v${RUN_SERVICE_PROTOCOL_VERSION}.sock`,
     ),
   )
 })

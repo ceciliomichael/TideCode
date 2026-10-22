@@ -3,6 +3,7 @@ import test from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { AppNoticeSurface } from '../../../src/components/ui/AppNoticeSurface'
+import { resolveAppError } from '../../../src/lib/errors/resolveAppError'
 
 test('application errors use raised notification styling and hide technical failures', () => {
   const html = renderToStaticMarkup(createElement(AppNoticeSurface, {
@@ -40,4 +41,16 @@ test('notifications still explain errors without exception messages', () => {
     fallbackMessage: 'The attachment could not be added. Try again.',
   }))
   assert.match(html, /The attachment could not be added. Try again./)
+})
+
+test('resolved feedback controls both title and description, without being parsed again', () => {
+  const feedback = resolveAppError('Folder already exists: C:\\Users\\Admin\\demo', 'project.add')
+  const html = renderToStaticMarkup(createElement(AppNoticeSurface, {
+    title: 'Conversation unavailable',
+    message: 'Unable to create that folder.',
+    feedback,
+  }))
+  assert.match(html, /Folder already added/)
+  assert.match(html, /Select it from the sidebar/)
+  assert.doesNotMatch(html, /Conversation unavailable|Unable to create that folder/)
 })

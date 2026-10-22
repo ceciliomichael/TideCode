@@ -1,4 +1,5 @@
-import { EllipsisVertical, Minus, Plus, RotateCcw } from 'lucide-react'
+import { EllipsisVertical } from 'lucide-react'
+import { BrowserZoomControls } from './BrowserZoomControls'
 import {
   useCallback,
   useEffect,
@@ -24,8 +25,6 @@ interface BrowserMenuProps {
 
 const itemClass =
   'flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-foreground transition-colors hover:bg-[var(--dropdown-option-hover-surface)] focus-visible:bg-[var(--dropdown-option-hover-surface)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50'
-const zoomButtonClass =
-  'inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50'
 
 export function BrowserMenu({
   partition,
@@ -67,7 +66,7 @@ export function BrowserMenu({
         close()
       }
     } catch (error) {
-      showAppError(error, 'The browser action could not be completed. Try again.', { title: 'Browser action failed' })
+      showAppError(error, 'The browser action could not be completed. Try again.', { operation: 'browser.action' })
     } finally {
       setPending(false)
     }
@@ -112,6 +111,7 @@ export function BrowserMenu({
         </button>
       </Tooltip>
       <DropdownPopover
+        dismissOnWindowBlur
         id={id}
         role="dialog"
         aria-label="Browser actions"
@@ -137,46 +137,11 @@ export function BrowserMenu({
           </>
         ) : null}
         {pageState.isWebsite ? (
-          <div
-            role="group"
-            aria-label="Page zoom"
-            className="flex h-10 items-center gap-2 px-3 text-sm"
-          >
-            <span className="mr-auto">Zoom</span>
-            <button
-              type="button"
-              aria-label="Zoom out"
-              className={zoomButtonClass}
-              disabled={pending || pageState.zoomPercent <= 25}
-              onClick={() => void runAction(() => onChangeZoom(-1))}
-            >
-              <Minus size={14} />
-            </button>
-            <span
-              aria-live="polite"
-              className="w-10 text-center text-xs tabular-nums text-muted-foreground"
-            >
-              {pageState.zoomPercent}%
-            </span>
-            <button
-              type="button"
-              aria-label="Zoom in"
-              className={zoomButtonClass}
-              disabled={pending || pageState.zoomPercent >= 500}
-              onClick={() => void runAction(() => onChangeZoom(1))}
-            >
-              <Plus size={14} />
-            </button>
-            <button
-              type="button"
-              aria-label="Reset page zoom"
-              className="inline-flex h-7 w-5 items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-50"
-              disabled={pending || pageState.zoomPercent === 100}
-              onClick={() => void runAction(() => onChangeZoom(0))}
-            >
-              <RotateCcw size={14} />
-            </button>
-          </div>
+          <BrowserZoomControls
+            percent={pageState.zoomPercent}
+            disabled={pending}
+            onChangeZoom={(direction) => void runAction(() => onChangeZoom(direction))}
+          />
         ) : null}
         {pageState.isWebsite ? <div className="my-1 h-px bg-border" /> : null}
         <button

@@ -128,7 +128,7 @@ export function SkillAddDialog({
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4 sm:p-6">
             {activeError ? (
-              <AppNoticeSurface title="Could not save skill" message={activeError} fallbackMessage="Check the skill details and try again." />
+              <AppNoticeSurface operation="skill.save" title="Could not save skill" message={activeError} />
             ) : null}
 
             <div className="space-y-1.5">

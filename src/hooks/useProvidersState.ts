@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { toUserFacingErrorMessage } from '../lib/userFacingError'
+import { resolveAppError } from '../lib/errors/resolveAppError'
 import type { ApiKeyProviderId, ProvidersState, SaveApiKeyProviderInput } from '../types/chat'
 import { applyOptimisticProviderRemoval, applyOptimisticProviderSave } from './providerOptimisticState'
 
@@ -52,7 +52,7 @@ export function useProvidersState() {
       setState((currentValue) => ({
         ...currentValue,
         activeOperation: null,
-        errorMessage: 'Unable to load provider settings.',
+        errorMessage: resolveAppError(error, 'provider.load').message,
         isLoading: false,
       }))
     }
@@ -139,7 +139,10 @@ export function useProvidersState() {
         return true
       } catch (error) {
         console.error('Failed to update provider settings', error)
-        const errorMessage = toUserFacingErrorMessage(error, DEFAULT_ERROR_MESSAGE)
+        const operation = operationKey?.startsWith('codex:connect') || operationKey?.startsWith('codex:add-account')
+          ? 'provider.connect'
+          : 'provider.save'
+        const errorMessage = resolveAppError(error, operation, { fallbackMessage: DEFAULT_ERROR_MESSAGE }).message
         setState((currentValue) => ({
           ...currentValue,
           activeOperation: null,

@@ -189,6 +189,10 @@ export class TideCodeRunServiceClient {
     await this.requestControlRaw<null>('registerBrowserHost')
   }
 
+  async stopApplicationRuns() {
+    await this.requestControlRaw<null>('stopApplicationRuns')
+  }
+
   async replyBrowserHost(input: {
     requestId: string
     ok: boolean

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { RemoteHostStatus, TideCodeRemoteHostBridgeApi } from '../../remote/protocol'
-import { toUserFacingErrorMessage } from '../../lib/userFacingError'
+import { resolveAppError } from '../../lib/errors/resolveAppError'
 
 function getRemoteHostBridge(): TideCodeRemoteHostBridgeApi | undefined {
   return (window as Window & { tidecodeRemoteHost?: TideCodeRemoteHostBridgeApi }).tidecodeRemoteHost
@@ -53,7 +53,7 @@ export function RemoteAccessIndicator() {
       type="button"
       onClick={copyRemoteUrl}
       disabled={!status?.remoteUrl}
-      title={status?.remoteUrl ? 'Copy TideCode LAN remote URL. No login is required on the current LAN-only build.' : status?.error ? toUserFacingErrorMessage(status.error, 'Remote access is unavailable. Check its settings.') : 'Remote host is starting'}
+      title={status?.remoteUrl ? 'Copy TideCode LAN remote URL. No login is required on the current LAN-only build.' : status?.error ? resolveAppError(status.error, 'remote.connect').message : 'Remote host is starting'}
       className="fixed bottom-3 right-3 z-40 flex max-w-[min(520px,calc(100vw-24px))] items-center gap-2 rounded-lg border border-border bg-surface-raised/95 px-3 py-2 text-xs text-muted-foreground shadow-soft backdrop-blur transition hover:text-foreground disabled:cursor-default disabled:opacity-70"
     >
       <span className={'h-2 w-2 shrink-0 rounded-full ' + dotClass} />

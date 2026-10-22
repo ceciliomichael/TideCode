@@ -235,7 +235,7 @@ export function SidebarPanel({
               <button
                 type="button"
                 onClick={() => {
-                  void handleAddProject()
+                  void handleAddProject().catch(() => undefined)
                 }}
                 className={actionButtonClassName}
                 aria-label="Open folder picker"

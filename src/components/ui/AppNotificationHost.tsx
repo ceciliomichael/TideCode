@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AppNoticeSurface } from './AppNoticeSurface'
-import { NOTIFICATION_EVENT, type AppNotification } from './appNotifications'
+import { ERROR_TOAST_DURATION_MS, NOTIFICATION_EVENT, type AppNotification } from './appNotifications'
 
 function TimedNotification({ notice, onDismiss }: { notice: AppNotification; onDismiss: (id: number) => void }) {
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
-  const remainingRef = useRef(5500)
+  const remainingRef = useRef(ERROR_TOAST_DURATION_MS)
   const close = useCallback(() => onDismiss(notice.id), [notice.id, onDismiss])
 
   useEffect(() => {
@@ -24,9 +24,8 @@ function TimedNotification({ notice, onDismiss }: { notice: AppNotification; onD
   return (
     <AppNoticeSurface
       mode="toast"
-      title={notice.title}
-      message={notice.message}
-      fallbackMessage={notice.fallbackMessage}
+      title={notice.feedback.title}
+      feedback={notice.feedback}
       onDismiss={close}
       action={notice.action}
       ariaLabel="Application error notification"

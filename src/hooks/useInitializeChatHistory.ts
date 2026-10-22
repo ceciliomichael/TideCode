@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { createSingleFlightTask, type SingleFlightTask } from '../lib/singleFlightTask'
 import { loadInitialChatHistory } from './chatHistoryWorkflows'
+import type { AppErrorFeedback } from '../lib/errors/errorCatalog'
+import { resolveAppError } from '../lib/errors/resolveAppError'
 
 interface UseInitializeChatHistoryInput {
   enabled: boolean
@@ -8,7 +10,7 @@ interface UseInitializeChatHistoryInput {
   preferredDraftFolderId: string | null
   preferredConversationId: string | null
   openEmptyConversationOnLaunch: boolean
-  setError: (errorMessage: string | null) => void
+  setAppError: (feedback: AppErrorFeedback) => void
   setIsLoading: (isLoading: boolean) => void
 }
 
@@ -19,7 +21,7 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
     openEmptyConversationOnLaunch,
     preferredConversationId,
     preferredDraftFolderId,
-    setError,
+    setAppError,
     setIsLoading,
   } = input
   const initializationTaskRef = useRef<SingleFlightTask<Awaited<ReturnType<typeof loadInitialChatHistory>>> | null>(null)
@@ -50,7 +52,7 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
       } catch (caughtError) {
         console.error(caughtError)
         if (isMounted) {
-          setError('Unable to load saved conversations.')
+          setAppError(resolveAppError(caughtError, 'conversation.load'))
         }
       } finally {
         if (isMounted) {
@@ -70,7 +72,7 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
     openEmptyConversationOnLaunch,
     preferredConversationId,
     preferredDraftFolderId,
-    setError,
+    setAppError,
     setIsLoading,
   ])
 }

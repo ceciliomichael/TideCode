@@ -1,4 +1,5 @@
 import type { WebContents } from 'electron'
+import { AgentBrowserOperation } from './agentBrowserOperation'
 
 type CdpParameters = Record<string, unknown>
 export type CdpSend = (method: string, parameters?: CdpParameters) => Promise<unknown>
@@ -94,6 +95,7 @@ function ensureState(contents: WebContents): SessionState {
 export async function withBrowserProtocol<T>(
   contents: WebContents,
   operation: (send: CdpSend) => Promise<T>,
+  operationBudget = new AgentBrowserOperation(),
 ): Promise<T> {
   const state = ensureState(contents)
   if (contents.isDevToolsOpened()) {
@@ -104,7 +106,16 @@ export async function withBrowserProtocol<T>(
     debuggerApi.attach('1.3')
     state.initialized = false
   }
-  const send: CdpSend = (method, parameters = {}) => debuggerApi.sendCommand(method, parameters)
+  const send: CdpSend = (method, parameters = {}) => operationBudget.run(
+    method,
+    () => debuggerApi.sendCommand(method, parameters),
+    () => {
+      state.initialized = false
+      if (!contents.isDestroyed() && debuggerApi.isAttached()) {
+        debuggerApi.detach()
+      }
+    },
+  )
   if (!state.initialized) {
     await send('Runtime.enable')
     await send('Log.enable')

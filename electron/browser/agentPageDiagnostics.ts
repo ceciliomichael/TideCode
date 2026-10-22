@@ -1,18 +1,6 @@
 import type { WebContents } from 'electron'
 import { withBrowserProtocol, listBrowserDiagnosticEvents, scrubBrowserDiagnosticText } from './agentCdpSession'
 
-const developerModeProjects = new Set<string>()
-
-export function isBrowserDeveloperModeEnabled(projectPath: string): boolean {
-  return developerModeProjects.has(projectPath)
-}
-
-export function setBrowserDeveloperMode(projectPath: string, enabled: boolean) {
-  if (enabled) developerModeProjects.add(projectPath)
-  else developerModeProjects.delete(projectPath)
-  return enabled
-}
-
 export interface BrowserDiagnosticRequest {
   action: 'console' | 'network' | 'performance' | 'evaluate' | 'cdp'
   expression?: string
@@ -23,7 +11,7 @@ export interface BrowserDiagnosticRequest {
 
 export async function readBrowserDiagnostics(
   contents: WebContents,
-  projectPath: string,
+  _projectPath: string,
   input: BrowserDiagnosticRequest,
 ) {
   const limit = input.limit ?? 50
@@ -48,9 +36,6 @@ export async function readBrowserDiagnostics(
           .filter((metric) => Number.isFinite(metric.value))
           .slice(0, 80),
       }
-    }
-    if (!isBrowserDeveloperModeEnabled(projectPath)) {
-      throw new Error('Full Developer Mode is off. Enable it in the TideCode browser toolbar before using evaluation or raw CDP commands.')
     }
     if (input.action === 'evaluate') {
       if (typeof input.expression !== 'string' || !input.expression.trim() || input.expression.length > 10_000) {

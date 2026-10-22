@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { toUserFacingErrorMessage } from '../lib/userFacingError'
+import { resolveAppError } from '../lib/errors/resolveAppError'
+import { getAppError } from '../lib/errors/errorCatalog'
+import type { AppErrorFeedback } from '../lib/errors/errorCatalog'
 import {
   getMessagesThroughUserMessage,
   prepareRevertSessionForMessage,
@@ -51,6 +53,7 @@ interface UseChatSendActionsInput
     | 'hasPendingAbortRequest'
     | 'consumePendingAbortBeforeStreamStart'
   > {
+  setAppError: (feedback: AppErrorFeedback) => void
   beginRevertEditingMessage: (
     conversationId: string,
     messageId: string,
@@ -107,10 +110,6 @@ function isMissingCheckpointError(error: unknown) {
 
 function isMessageNotFoundError(error: unknown) {
   return error instanceof Error && /^message not found:/i.test(error.message.trim())
-}
-
-function toActionErrorMessage(error: unknown, fallbackMessage: string) {
-  return toUserFacingErrorMessage(error, fallbackMessage)
 }
 
 function sleep(milliseconds: number) {
@@ -921,7 +920,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         )
         if (!hasEditableMessage) {
           input.cancelEditingMessage()
-          input.setError('This message is no longer available to edit.')
+          input.setAppError(getAppError('conversation.messageUnavailable'))
           return
         }
 
@@ -939,7 +938,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           console.error(caughtError)
           clearOptimisticEditedPresentation(conversationId)
           input.cancelEditingMessage()
-          input.setError('Unable to reload that conversation right now.')
+          input.setAppError(resolveAppError(caughtError, 'conversation.edit'))
           return
         }
 
@@ -951,7 +950,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         if (!hasPersistedEditableMessage) {
           clearOptimisticEditedPresentation(conversationId)
           input.cancelEditingMessage()
-          input.setError('This message is no longer available to edit.')
+          input.setAppError(getAppError('conversation.messageUnavailable'))
           return
         }
 
@@ -1015,11 +1014,11 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         clearOptimisticEditedPresentation(conversationId)
         if (isMessageNotFoundError(caughtError)) {
           input.cancelEditingMessage()
-          input.setError('This message is no longer available to edit.')
+          input.setAppError(getAppError('conversation.messageUnavailable'))
           return
         }
 
-        input.setError(toActionErrorMessage(caughtError, 'Unable to resend your edit.'))
+        input.setAppError(resolveAppError(caughtError, 'conversation.edit'))
       } finally {
         actionInFlightRef.current = false
         if (!startedPersistAndStream) {
@@ -1087,7 +1086,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
       if (stopError) {
         console.error(stopError)
-        input.setError('Unable to stop the current response.')
+        input.setAppError(resolveAppError(stopError, 'conversation.send'))
       }
     })()
     abortResponseOperationsRef.current.set(scopeKey, abortResponseOperation)
@@ -1174,7 +1173,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         console.error(caughtError)
         input.clearHistoryCutoff(conversationId)
         input.cancelEditingMessage()
-        input.setError(toActionErrorMessage(caughtError, 'Unable to revert to that checkpoint.'))
+        input.setAppError(resolveAppError(caughtError, 'conversation.edit'))
         return false
       } finally {
         actionInFlightRef.current = false

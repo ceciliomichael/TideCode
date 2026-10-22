@@ -15,11 +15,57 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { createAgentToolBundle } from '../../electron/chat/shared/tools/factory'
+import { createBrowserToolSet } from '../../electron/chat/shared/tools/browserTools'
+import { asSchema } from '@ai-sdk/provider-utils'
 import { getApiInstructions } from '../../electron/chat/shared/ai/registry/documentation'
 import { listAgentBrowserTabs, requireBrowserUrl } from '../../electron/browser/agentTabs'
 import { setRunServiceBrowserHandler } from '../../electron/runService/browserService'
 import { formatBrowserElements } from '../../electron/browser/agentPageStructure'
 import { scrubBrowserDiagnosticText } from '../../electron/browser/agentCdpSession'
+import { DEFAULT_AGENT_VIEWPORT, getAgentViewport, rememberAgentViewport, resolveAgentViewport } from '../../electron/browser/agentViewport'
+import type { WebContents } from 'electron'
+
+test('browser viewport defaults, dimension validation and per-tab ownership are explicit', () => {
+  assert.deepEqual(resolveAgentViewport(), { width: 1280, height: 720 })
+  assert.deepEqual(resolveAgentViewport({ width: 390 }), { width: 390, height: 720 })
+  assert.deepEqual(resolveAgentViewport({ height: 844 }), { width: 1280, height: 844 })
+  for (const value of [0, -1, 4097, 1.5, NaN, Infinity, '390', null]) {
+    assert.throws(() => resolveAgentViewport({ width: value }), /viewport width/)
+    assert.throws(() => resolveAgentViewport({ height: value }), /viewport height/)
+  }
+  const phone = {} as WebContents
+  const desktop = {} as WebContents
+  rememberAgentViewport(phone, { width: 390, height: 844 })
+  assert.deepEqual(getAgentViewport(phone), { width: 390, height: 844 })
+  assert.deepEqual(getAgentViewport(desktop), DEFAULT_AGENT_VIEWPORT)
+})
+
+test('browser.read forwards actual viewport dimensions and rejects invalid sizes before contacting the host', async () => {
+  const requests: Array<{ operation: string; width?: number; height?: number }> = []
+  setRunServiceBrowserHandler(async (request) => {
+    requests.push(request)
+    const viewport = resolveAgentViewport(request)
+    return { data: { ...viewport, body: 'Viewport checked' } }
+  })
+  try {
+    const read = createBrowserToolSet({ workspaceRootPath: 'C:/viewport-test' })['browser.read']
+    await read.execute!({ tab_id: 'same-tab', view: 'structure' }, {} as never)
+    const mobile = await read.execute!({ tab_id: 'same-tab', width: 390, height: 844 }, {} as never)
+    assert.equal(requests[0].width, 1280)
+    assert.equal(requests[0].height, 720)
+    assert.equal(requests[1].width, 390)
+    assert.equal(requests[1].height, 844)
+    assert.deepEqual(mobile.semantics, { tab_id: 'same-tab', width: 390, height: 844 })
+    const invalid = await read.execute!({ tab_id: 'same-tab', width: 4097 }, {} as never)
+    assert.equal(invalid.status, 'error')
+    assert.equal(requests.length, 2)
+    const instructions = getApiInstructions('browser.read')
+    assert.match(instructions, /width and height/)
+    assert.match(instructions, /latest successful read/)
+  } finally {
+    setRunServiceBrowserHandler(null)
+  }
+})
 
 test('browser URL policy permits HTTP(S), localhost and rejects privileged protocols and embedded credentials', () => {
   assert.equal(requireBrowserUrl('https://example.com/path'), 'https://example.com/path')
@@ -118,6 +164,56 @@ test('structure formatter gives scoped element references and pagination', () =>
   assert.match(text, /el-abc-42/)
   assert.match(text, /Save profile/)
   assert.match(text, /Elements 11-11 of 21/)
+})
+
+test('read observes the existing tab without URL input and non-navigation interactions do not request navigation', async () => {
+  const requests: Array<{ operation: string; [key: string]: unknown }> = []
+  setRunServiceBrowserHandler(async (request) => {
+    requests.push(request)
+    return { data: { action: 'click', url: 'http://localhost/current', title: 'Current page', loading: false, body: 'Current state', width: 1280, height: 720 } }
+  })
+  try {
+    const tools = createBrowserToolSet({ workspaceRootPath: 'C:/browser-contract-test' })
+    const readSchema = asSchema(tools['browser.read'].inputSchema).jsonSchema as { required: string[]; properties: Record<string, unknown> }
+    assert.deepEqual(readSchema.required, ['tab_id'])
+    assert.ok(!('url' in readSchema.properties))
+    await tools['browser.read'].execute!({ tab_id: 'existing-tab', view: 'structure' }, {} as never)
+    await tools['browser.interact'].execute!({ tab_id: 'existing-tab', action: 'click', element_ref: 'el-current' }, {} as never)
+    assert.deepEqual(requests.map((request) => request.operation), ['read', 'interact'])
+    assert.equal(requests[0].tabId, 'existing-tab')
+    assert.ok(!('url' in requests[0]))
+    assert.deepEqual(requests[1].action, { action: 'click', element_ref: 'el-current' })
+    assert.equal(requests[1].tabId, 'existing-tab')
+  } finally {
+    setRunServiceBrowserHandler(null)
+  }
+})
+
+test('browser clicks require a reference and reject coordinates before forwarding, while scroll anchors remain supported', async () => {
+  const requests: unknown[] = []
+  setRunServiceBrowserHandler(async (request) => {
+    requests.push(request)
+    return { data: { action: 'click', url: 'http://localhost/', loading: false } }
+  })
+  try {
+    const interact = createBrowserToolSet({ workspaceRootPath: 'C:/browser-reference-test' })['browser.interact']
+    for (const input of [
+      { action: 'click' },
+      { action: 'click', element_ref: ' ' },
+      { action: 'click', x: 10, y: 20 },
+      { action: 'click', element_ref: 'el-current', x: 10, y: 20 },
+    ]) {
+      const result = await interact.execute!({ tab_id: 'existing-tab', ...input }, {} as never)
+      assert.equal(result.status, 'error')
+      assert.match(result.body ?? '', /clicks require an element_ref/)
+    }
+    assert.equal(requests.length, 0, 'rejected clicks never reach the desktop')
+    await interact.execute!({ tab_id: 'existing-tab', action: 'click', element_ref: 'el-current' }, {} as never)
+    await interact.execute!({ tab_id: 'existing-tab', action: 'scroll', x: 10, y: 20, delta_y: 200 }, {} as never)
+    assert.equal(requests.length, 2)
+  } finally {
+    setRunServiceBrowserHandler(null)
+  }
 })
 
 test('diagnostic output redacts URL parameters and common secrets', () => {

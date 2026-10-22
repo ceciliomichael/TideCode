@@ -174,7 +174,7 @@ export function ModelsSettingsPanel({ launchRequest, onLaunchRequestHandled, pro
       {[customModelsErrorMessage, providerModelsErrorMessage, operationError]
         .filter((message): message is string => Boolean(message))
         .map((message) => (
-          <AppNoticeSurface key={message} title="Model action failed" message={message} fallbackMessage="The models could not be updated. Try again." />
+          <AppNoticeSurface key={message} operation="model.load" title="Model action failed" message={message} />
         ))}
 
       <section className="flex min-h-[280px] max-h-[calc(100dvh-14rem)] flex-none flex-col overflow-hidden rounded-xl border border-border bg-surface md:min-h-[360px] md:max-h-[calc(100dvh-16.5rem)]">

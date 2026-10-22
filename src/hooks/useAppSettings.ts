@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_APP_SETTINGS } from '../lib/defaultAppSettings'
+import { resolveAppError } from '../lib/errors/resolveAppError'
 import { resetLaunchOnlyAppSettings } from './appSettingsLaunchState'
 import { getCachedAppearancePreference } from '../lib/theme'
 import { preserveLocalSurfaceSettings } from '../lib/appSettingsScopes'
@@ -90,7 +91,7 @@ export function useAppSettings() {
           return
         }
 
-        setErrorMessage('Unable to load your saved settings right now.')
+        setErrorMessage(resolveAppError(error, 'settings.load').message)
         setSaveState('error')
       } finally {
         if (isMounted) {
@@ -187,7 +188,7 @@ export function useAppSettings() {
         settingsRef.current = visibleSettings
         setSettings(visibleSettings)
         setSaveState(pendingUpdatesRef.current.size > 0 ? 'saving' : 'error')
-        setErrorMessage('Unable to save your settings right now.')
+        setErrorMessage(resolveAppError(error, 'settings.save').message)
         return null
       })
   }, [])

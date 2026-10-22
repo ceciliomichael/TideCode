@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { toUserFacingErrorMessage } from '../lib/userFacingError'
+import { resolveAppError } from '../lib/errors/resolveAppError'
 import type { GitBranchState } from '../types/chat'
 import {
   getCachedGitBranchState,
@@ -81,7 +81,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         requestWorkspacePath === activeWorkspacePathRef.current
       ) {
         setBranchState(EMPTY_BRANCH_STATE)
-        setErrorMessage(toUserFacingErrorMessage(error, 'The Git branches could not be loaded.'))
+        setErrorMessage(resolveAppError(error, 'git.load').message)
       }
     } finally {
       if (
@@ -120,7 +120,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
       } catch (error) {
         if (!isCancelled && normalizedWorkspacePath === activeWorkspacePathRef.current) {
           setBranchState(EMPTY_BRANCH_STATE)
-          setErrorMessage(toUserFacingErrorMessage(error, 'The Git branches could not be loaded.'))
+          setErrorMessage(resolveAppError(error, 'git.load').message)
         }
       } finally {
         if (!isCancelled && normalizedWorkspacePath === activeWorkspacePathRef.current) {
@@ -189,7 +189,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
       await refresh({ forceRefresh: true })
     } catch (error) {
       if (normalizedWorkspacePath === activeWorkspacePathRef.current) {
-        setErrorMessage(toUserFacingErrorMessage(error, 'The remote branches could not be refreshed.'))
+        setErrorMessage(resolveAppError(error, 'git.refresh').message)
         setIsLoading(false)
       }
     }
@@ -218,7 +218,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
           setBranchState(nextBranchState)
         }
       } catch (error) {
-        const message = toUserFacingErrorMessage(error, 'The branch could not be switched.')
+        const message = resolveAppError(error, 'git.branch').message
         setErrorMessage(message)
         throw error instanceof Error ? error : new Error(message)
       } finally {
@@ -252,7 +252,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
           setBranchState(nextBranchState)
         }
       } catch (error) {
-        const message = toUserFacingErrorMessage(error, 'The branch could not be created.')
+        const message = resolveAppError(error, 'git.branchCreate').message
         setErrorMessage(message)
         throw error instanceof Error ? error : new Error(message)
       } finally {

@@ -1,8 +1,9 @@
 import { CircleAlert, CircleCheck, Loader2 } from 'lucide-react'
 import { AppNoticeSurface } from '../ui/AppNoticeSurface'
+import type { AppErrorFeedback } from '../../lib/errors/errorCatalog'
 
 export type SourceControlOperationNotice =
-  | { kind: 'error'; message: string }
+  | { kind: 'error'; message: string; feedback?: AppErrorFeedback }
   | { kind: 'warning'; message: string }
   | { kind: 'success'; message: string }
 
@@ -25,7 +26,12 @@ export function SourceControlOperationStatus({
   if (kind === 'error') {
     return (
       <div className="shrink-0 px-3 py-2">
-        <AppNoticeSurface title="Source control action failed" message={message} fallbackMessage="The Git action could not be completed. Try again." />
+        <AppNoticeSurface
+          operation="git.sync"
+          title="Source control action failed"
+          message={message}
+          feedback={notice?.kind === 'error' ? notice.feedback : undefined}
+        />
       </div>
     )
   }

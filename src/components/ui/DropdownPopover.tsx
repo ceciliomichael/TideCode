@@ -19,6 +19,7 @@ interface DropdownPopoverProps extends Omit<
   children: ReactNode
   matchAnchorWidth?: boolean
   preferredPlacement?: 'above' | 'below'
+  dismissOnWindowBlur?: boolean
 }
 
 export function DropdownPopover({
@@ -29,6 +30,7 @@ export function DropdownPopover({
   children,
   matchAnchorWidth = true,
   preferredPlacement = 'below',
+  dismissOnWindowBlur = false,
   className,
   ...props
 }: DropdownPopoverProps) {
@@ -64,11 +66,15 @@ export function DropdownPopover({
     }
     document.addEventListener('mousedown', handleOutsideClick)
     document.addEventListener('keydown', handleEscape)
+    if (dismissOnWindowBlur) {
+      window.addEventListener('blur', onClose)
+    }
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick)
       document.removeEventListener('keydown', handleEscape)
+      window.removeEventListener('blur', onClose)
     }
-  }, [anchorRef, panelRef, isOpen, onClose])
+  }, [anchorRef, panelRef, isOpen, onClose, dismissOnWindowBlur])
 
   if (!isOpen) {
     return null

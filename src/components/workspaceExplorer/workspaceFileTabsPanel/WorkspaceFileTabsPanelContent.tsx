@@ -93,7 +93,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     if (activeTab.status === 'error' && !sourceTab) {
       return (
         <div className="h-full p-3">
-          <AppNoticeSurface title="Preview unavailable" message={getTabErrorMessage(activeTab.errorMessage, 'The preview could not be loaded.')} fallbackMessage="The preview could not be loaded. Try reopening the file." />
+          <AppNoticeSurface operation="file.preview" title="Preview unavailable" message={getTabErrorMessage(activeTab.errorMessage, 'The preview could not be loaded.')} />
         </div>
       )
     }
@@ -121,7 +121,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     if (activeTab.status === 'error') {
       return (
         <div className="h-full p-3">
-          <AppNoticeSurface title="Plan unavailable" message={getTabErrorMessage(activeTab.errorMessage, 'The plan could not be loaded.')} fallbackMessage="The plan could not be loaded. Try reopening it." />
+          <AppNoticeSurface operation="file.preview" title="Plan unavailable" message={getTabErrorMessage(activeTab.errorMessage, 'The plan could not be loaded.')} />
         </div>
       )
     }
@@ -166,7 +166,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     if (sourceTab.status === 'error') {
       return (
         <div className="h-full p-3">
-          <AppNoticeSurface title="File unavailable" message={getTabErrorMessage(sourceTab.errorMessage, 'The file could not be opened.')} fallbackMessage="The file could not be opened. Try again." />
+          <AppNoticeSurface operation="file.open" title="File unavailable" message={getTabErrorMessage(sourceTab.errorMessage, 'The file could not be opened.')} />
         </div>
       )
     }
@@ -197,7 +197,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   if (activeTab.status === 'error') {
     return (
       <div className="h-full p-3">
-        <AppNoticeSurface title="File unavailable" message={getTabErrorMessage(activeTab.errorMessage, 'The file could not be opened.')} fallbackMessage="The file could not be opened. Try again." />
+        <AppNoticeSurface operation="file.open" title="File unavailable" message={getTabErrorMessage(activeTab.errorMessage, 'The file could not be opened.')} />
       </div>
     )
   }

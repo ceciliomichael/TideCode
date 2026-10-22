@@ -67,7 +67,7 @@ export function SourceControlNoRepoView({ commitModelSelection, workspacePath, o
 
         {/* Error message */}
         {(initStep === 'error' && initError) && (
-          <AppNoticeSurface title="Could not create repository" message={initError} fallbackMessage="Check the folder permissions and try again." />
+          <AppNoticeSurface operation="git.init" title="Could not create repository" message={initError} />
         )}
 
         {/* Actions */}

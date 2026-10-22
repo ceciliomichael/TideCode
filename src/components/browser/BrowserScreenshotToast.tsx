@@ -5,7 +5,7 @@ import type {
   BrowserScreenshotAction,
 } from '../../types/browser'
 import { AppNoticeSurface } from '../ui/AppNoticeSurface'
-import { toUserFacingErrorMessage } from '../../lib/userFacingError'
+import { showAppError } from '../ui/appNotifications'
 
 interface BrowserScreenshotToastProps {
   containerRef: RefObject<HTMLDivElement | null>
@@ -27,11 +27,9 @@ export function BrowserScreenshotToast({
   const copyTimersRef = useRef<
     Partial<Record<'copyPath' | 'copyImage', number>>
   >({})
-  const [error, setError] = useState('')
   const runningRef = useRef(new Set<BrowserScreenshotAction>())
   const remainingDurationRef = useRef(3000)
-  const paused =
-    hovered || focused || pendingActions.length > 0 || Boolean(error)
+  const paused = hovered || focused || pendingActions.length > 0
 
   useEffect(() => {
     if (paused) {
@@ -63,7 +61,6 @@ export function BrowserScreenshotToast({
     }
     runningRef.current.add(action)
     setPendingActions((current) => [...current, action])
-    setError('')
     try {
       await window.tidecodeBrowserPageActions.screenshotAction({
         ...screenshot,
@@ -78,7 +75,9 @@ export function BrowserScreenshotToast({
         }, 2000)
       }
     } catch (cause) {
-      setError(toUserFacingErrorMessage(cause, 'The screenshot action could not be completed. Try again.'))
+      showAppError(cause, 'The screenshot action could not be completed. Try again.', {
+        operation: 'browser.screenshot',
+      })
     } finally {
       runningRef.current.delete(action)
       setPendingActions((current) =>
@@ -164,14 +163,6 @@ export function BrowserScreenshotToast({
           </span>
         </button>
       </div>
-      {error ? (
-        <p
-          role="alert"
-          className="mt-1.5 break-words text-xs text-muted-foreground"
-        >
-          {error}
-        </p>
-      ) : null}
     </AppNoticeSurface>,
     containerRef.current,
   )

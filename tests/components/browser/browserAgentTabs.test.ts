@@ -11,8 +11,8 @@ import { build } from 'esbuild'
 const require = createRequire(import.meta.url)
 const root = path.resolve(import.meta.dirname, '../../..')
 
-test('real Electron visible TideCode browser captures, reads, clicks, fills and gates CDP', {
-  timeout: 30000,
+test('real Electron browser preserves tab state and handles hidden reads, smooth-scrolling targets and protocol recovery', {
+  timeout: 45000,
   skip: process.env.TIDECODE_RUN_NATIVE_BROWSER_TESTS !== '1',
 }, async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'tidecode-browser-agent-'))
@@ -21,6 +21,7 @@ test('real Electron visible TideCode browser captures, reads, clicks, fills and 
     const entries = [
       'agentTabs', 'agentPageCapture', 'agentPageStructure',
       'agentPageInput', 'agentPageDiagnostics', 'agentAnnotations', 'agentBrowserHost',
+      'agentCdpSession',
     ].map((name) => path.join(root, 'electron/browser', name + '.ts').replace(/\\/gu, '/'))
     await writeFile(path.join(directory, 'entry.ts'), entries.map((file) => 'export * from ' + JSON.stringify(file)).join('\n'))
     await build({
@@ -37,13 +38,14 @@ test('real Electron visible TideCode browser captures, reads, clicks, fills and 
     let output = ''
     child.stdout.on('data', (data) => { output += data.toString() })
     child.stderr.on('data', (data) => { output += data.toString() })
-    const timeout = setTimeout(() => child.kill(), 25000)
+    const timeout = setTimeout(() => child.kill(), 40000)
     const exitCode = await new Promise<number | null>((resolve, reject) => {
       child.once('error', reject)
       child.once('exit', resolve)
     }).finally(() => clearTimeout(timeout))
     assert.equal(exitCode, 0, 'Electron output: ' + output)
     assert.match(output, /BROWSER_AGENT_PASS/)
+    process.stdout.write(output.split('\n').filter((line) => /FIRST_HIDDEN_COMBINED_MS|ORIGINAL_PAGE_|PROTOCOL_RECOVERY_MS/.test(line)).join('\n') + '\n')
   } finally {
     await rm(directory, { force: true, recursive: true })
   }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bug, MessageSquarePlus, Trash2, X } from 'lucide-react'
+import { MessageSquarePlus, Trash2, X } from 'lucide-react'
 import { Tooltip } from '../Tooltip'
 import { showAppError } from '../ui/appNotifications'
 import { AppNoticeSurface } from '../ui/AppNoticeSurface'
@@ -91,7 +91,6 @@ interface BrowserAnnotationsProps {
 export function BrowserAnnotations({
   active, conversationId, disabled, projectPath, tabId, getWebview,
 }: BrowserAnnotationsProps) {
-  const [developerEnabled, setDeveloperEnabled] = useState(false)
   const [annotations, setAnnotations] = useState<BrowserElementAnnotation[]>([])
   const [selected, setSelected] = useState<Selection | null>(null)
   const [comment, setComment] = useState('')
@@ -110,7 +109,7 @@ export function BrowserAnnotations({
         return
       }
       notifiedErrorRef.current = error
-      showAppError(error, 'The annotation action could not be completed. Try again.', { title: 'Annotation action failed' })
+      showAppError(error, 'The annotation action could not be completed. Try again.', { operation: 'browser.annotation' })
       setError('')
     }
   }, [error, open])
@@ -129,10 +128,6 @@ export function BrowserAnnotations({
   useEffect(() => {
     if (!active) return
     refresh()
-    if (!window.tidecodeBrowserPageActions?.getDeveloperMode) return
-    void window.tidecodeBrowserPageActions.getDeveloperMode(projectPath)
-      .then(setDeveloperEnabled)
-      .catch(() => setDeveloperEnabled(false))
   }, [active, projectPath, refresh])
 
   async function pick() {
@@ -186,25 +181,6 @@ export function BrowserAnnotations({
           <MessageSquarePlus size={16} />
         </button>
       </Tooltip>
-      <Tooltip content={developerEnabled ? 'Disable Full Developer Mode' : 'Enable Full Developer Mode for this project'} side="bottom" noWrap>
-        <button
-          type="button"
-          disabled={disabled}
-          aria-pressed={developerEnabled}
-          aria-label="Full Developer Mode"
-          onClick={() => {
-            void window.tidecodeBrowserPageActions.setDeveloperMode({ projectPath, enabled: !developerEnabled })
-              .then(setDeveloperEnabled)
-              .catch((failure) => setError(toUserFacingErrorMessage(failure, 'Annotations could not be loaded. Try again.')))
-          }}
-          className={[
-            'flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted',
-            developerEnabled ? 'text-amber-600' : 'text-muted-foreground hover:text-foreground',
-          ].join(' ')}
-        >
-          <Bug size={16} />
-        </button>
-      </Tooltip>
       {annotations.length > 0 ? (
         <button
           type="button"
@@ -252,7 +228,7 @@ export function BrowserAnnotations({
               </div>
             ))}
           </div>
-          {error ? <AppNoticeSurface className="mt-2" title="Annotation action failed" message={error} fallbackMessage="The annotation action could not be completed. Try again." onDismiss={() => setError('')} /> : null}
+          {error ? <AppNoticeSurface className="mt-2" operation="browser.annotation" title="Annotation action failed" message={error} onDismiss={() => setError('')} /> : null}
         </div>
       ) : null}
     </div>

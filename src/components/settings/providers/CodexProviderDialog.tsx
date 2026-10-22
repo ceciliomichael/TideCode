@@ -107,7 +107,7 @@ export function CodexProviderDialog({
               <p className="mt-1 text-sm leading-6 text-muted-foreground">Sign in through the browser to load Codex models and usage.</p>
             </div>
           )}
-          {localError ? <AppNoticeSurface className="mt-5" title="Codex action failed" message={localError} fallbackMessage="The account action could not be completed. Try again." /> : null}
+          {localError ? <AppNoticeSurface className="mt-5" operation="provider.connect" title="Codex action failed" message={localError} /> : null}
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-border px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">

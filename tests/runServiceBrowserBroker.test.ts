@@ -64,3 +64,28 @@ test('browser broker rejects requests without a registered desktop', async () =>
     url: 'https://example.com/',
   }), /connected desktop browser host/)
 })
+
+test('browser timeout identifies the request, ignores late replies and permits the next request', async () => {
+  const messages: Array<{ requestId: string }> = []
+  const host = {
+    destroyed: false,
+    write: (line: string) => { messages.push(JSON.parse(line)) },
+  } as unknown as Socket
+  const broker = new RunServiceBrowserBroker(20)
+  broker.register(host)
+  // Keep the process alive while the production broker uses an unref'ed timer.
+  const keepAlive = setInterval(() => undefined, 100)
+  try {
+    await assert.rejects(broker.request({
+      operation: 'read', projectPath: 'C:/test', tabId: 'slow-tab', view: 'combined',
+      offset: 0, limit: 80, conversationId: null, includeAnnotations: false,
+    }), /did not reply to read on tab slow-tab within 20ms/)
+    broker.receive(host, { requestId: messages[0].requestId, ok: true, result: { data: { late: true } } })
+    const next = broker.request({ operation: 'tabs', projectPath: 'C:/test', page: 1 })
+    broker.receive(host, { requestId: messages[1].requestId, ok: true, result: { data: { total: 0 } } })
+    assert.deepEqual(await next, { data: { total: 0 } })
+  } finally {
+    clearInterval(keepAlive)
+    broker.close()
+  }
+})

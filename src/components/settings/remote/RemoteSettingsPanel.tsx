@@ -4,7 +4,7 @@ import type { RemoteHostConfiguration, RemoteHostStatus } from '../../../remote/
 import { useIsMobileViewport } from '../../../hooks/useIsMobileViewport'
 import { SegmentedField } from '../../ui/SegmentedField'
 import { AppNoticeSurface } from '../../ui/AppNoticeSurface'
-import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { resolveAppError } from '../../../lib/errors/resolveAppError'
 import { SettingsPanelLayout, SettingsRow, SettingsSection } from '../shared/SettingsPanelPrimitives'
 import { RemoteSettingsSkeleton } from './RemoteSettingsSkeleton'
 
@@ -18,7 +18,7 @@ const BUTTON_CLASS = 'inline-flex min-h-10 items-center justify-center gap-2 rou
 const PRIMARY_BUTTON_CLASS = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-transparent bg-action px-3.5 text-sm font-semibold text-foreground transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50'
 
 function errorMessage(error: unknown) {
-  return toUserFacingErrorMessage(error, 'The remote setting could not be updated. Try again.')
+  return resolveAppError(error, 'remote.save').message
 }
 
 function kindLabel(kind: RemoteHostStatus['addresses'][number]['kind']) {
@@ -195,8 +195,8 @@ export function RemoteSettingsPanel() {
             </div>
             {status?.lifecycleState === 'restarting' ? <RefreshCw size={18} className="animate-spin text-brand" /> : null}
           </div>
-          {status?.error ? <AppNoticeSurface className="mt-4" title="Remote access unavailable" message={status.error} fallbackMessage="Remote access is unavailable. Check the settings and try again." /> : null}
-          {error ? <AppNoticeSurface className="mt-4" title="Could not update remote access" message={error} fallbackMessage="The remote setting could not be updated. Try again." /> : null}
+          {status?.error ? <AppNoticeSurface className="mt-4" operation="remote.connect" title="Remote access unavailable" message={status.error} /> : null}
+          {error ? <AppNoticeSurface className="mt-4" operation="remote.save" title="Could not update remote access" message={error} /> : null}
           {notice ? <div className="mt-4 rounded-xl border border-brand-border bg-brand-soft px-3 py-2.5 text-sm text-brand-soft-foreground">{notice}</div> : null}
         </div>
       </SettingsSection>

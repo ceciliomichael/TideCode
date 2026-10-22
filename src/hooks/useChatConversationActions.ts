@@ -6,6 +6,8 @@ import type {
   ReorderConversationFolderInput,
 } from '../types/chat'
 import { loadChatCompactionMarkers } from '../lib/chatCompactionMarkerCache'
+import { getAppError, type AppErrorFeedback } from '../lib/errors/errorCatalog'
+import { resolveAppError } from '../lib/errors/resolveAppError'
 import type { ConversationRuntimeSnapshot } from './chatMessageSendTypes'
 
 interface UseChatConversationActionsInput {
@@ -31,7 +33,7 @@ interface UseChatConversationActionsInput {
   resetComposerState: () => void
   selectedFolderId: string | null
   resolveFolderIdForWorkspacePath: (workspacePath: string | null) => string | null
-  setError: (errorMessage: string | null) => void
+  setAppError: (feedback: AppErrorFeedback) => void
   upsertConversation: (conversation: ConversationRecord) => void
 }
 
@@ -56,7 +58,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
     resetComposerState,
     selectedFolderId,
     resolveFolderIdForWorkspacePath,
-    setError,
+    setAppError,
     upsertConversation,
   } = input
   const conversationSelectionRequestRef = useRef(0)
@@ -100,10 +102,10 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       return folder.id
     } catch (caughtError) {
       console.error(caughtError)
-      setError('Unable to create that folder.')
+      setAppError(resolveAppError(caughtError, 'project.add'))
       throw caughtError
     }
-  }, [addFolder, clearError, resetDraft, setError])
+  }, [addFolder, clearError, resetDraft, setAppError])
 
   const createWorkspaceFolderFromPath = useCallback(
     async (folderPath: string) => {
@@ -116,11 +118,11 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         return folder.id
       } catch (caughtError) {
         console.error(caughtError)
-        setError('Unable to create that folder.')
+        setAppError(resolveAppError(caughtError, 'project.add'))
         throw caughtError
       }
     },
-    [addFolder, clearError, resetDraft, setError],
+    [addFolder, clearError, resetDraft, setAppError],
   )
 
   const selectFolder = useCallback(
@@ -171,7 +173,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         }
 
         if (!conversation) {
-          setError('That conversation could not be loaded.')
+          setAppError(getAppError('conversation.load'))
           return
         }
 
@@ -179,11 +181,11 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       } catch (caughtError) {
         console.error(caughtError)
         if (conversationSelectionRequestRef.current === requestId) {
-          setError('Unable to switch conversations.')
+          setAppError(resolveAppError(caughtError, 'conversation.switch'))
         }
       }
     },
-    [activeConversationId, applyConversation, cancelEditingMessage, clearError, conversationRuntimeStatesRef, setError],
+    [activeConversationId, applyConversation, cancelEditingMessage, clearError, conversationRuntimeStatesRef, setAppError],
   )
 
   const startEditingMessage = useCallback(
@@ -200,7 +202,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
 
       const conversationState = conversationRuntimeStatesRef.current[conversationId] ?? null
       if (conversationState?.isSending && conversationState.activeStreamId === null) {
-        setError('Wait for the current thread task to initialize before deleting it.')
+        setAppError(getAppError('conversation.deleteBusy'))
         return
       }
 
@@ -214,7 +216,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
           })
         } catch (caughtError) {
           console.error(caughtError)
-          setError('Unable to stop the current thread task before deleting it.')
+          setAppError(resolveAppError(caughtError, 'conversation.delete'))
           return
         }
       }
@@ -234,7 +236,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         resetDraft(deletedConversationFolderId)
       } catch (caughtError) {
         console.error(caughtError)
-        setError('Unable to delete that conversation.')
+        setAppError(resolveAppError(caughtError, 'conversation.delete'))
       }
     },
     [
@@ -245,9 +247,8 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       getDeletionContext,
       removeConversationRuntime,
       replaceConversationSummaries,
-      resetComposerState,
       resetDraft,
-      setError,
+      setAppError,
     ],
   )
 
@@ -257,7 +258,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
 
       const conversationState = conversationRuntimeStatesRef.current[conversationId] ?? null
       if (isArchived && conversationState?.isSending) {
-        setError('Wait for the current thread task to finish before archiving it.')
+        setAppError(getAppError('conversation.archiveBusy'))
         return
       }
 
@@ -273,10 +274,10 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         }
       } catch (caughtError) {
         console.error(caughtError)
-        setError(isArchived ? 'Unable to archive that thread.' : 'Unable to unarchive that thread.')
+        setAppError(resolveAppError(caughtError, isArchived ? 'conversation.archive' : 'conversation.unarchive'))
       }
     },
-    [activeConversationId, applyConversation, clearError, conversationRuntimeStatesRef, resetDraft, setError, upsertConversation],
+    [activeConversationId, applyConversation, clearError, conversationRuntimeStatesRef, resetDraft, setAppError, upsertConversation],
   )
 
   return {
@@ -296,7 +297,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         }
       } catch (caughtError) {
         console.error(caughtError)
-        setError('Unable to rename that thread.')
+        setAppError(resolveAppError(caughtError, 'conversation.rename'))
         throw caughtError
       }
     },
@@ -311,7 +312,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         }
       } catch (caughtError) {
         console.error(caughtError)
-        setError('Unable to pin that thread.')
+        setAppError(resolveAppError(caughtError, 'conversation.pin'))
         throw caughtError
       }
     },
@@ -326,7 +327,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         renameFolder(folder.id, folder.name)
       } catch (caughtError) {
         console.error(caughtError)
-        setError('Unable to rename that project folder.')
+        setAppError(resolveAppError(caughtError, 'project.rename'))
         throw caughtError
       }
     },
@@ -341,7 +342,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         removeFolder(folderId, deletedConversationIds)
       } catch (caughtError) {
         console.error(caughtError)
-        setError('Unable to remove that project folder.')
+        setAppError(resolveAppError(caughtError, 'project.remove'))
         throw caughtError
       }
     },
@@ -353,7 +354,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         await window.tidecodeHistory.reorderFolder(input)
       } catch (caughtError) {
         console.error(caughtError)
-        setError('Unable to reorder that project folder.')
+        setAppError(resolveAppError(caughtError, 'project.reorder'))
         throw caughtError
       }
     },

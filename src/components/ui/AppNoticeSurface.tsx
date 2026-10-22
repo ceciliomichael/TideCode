@@ -1,6 +1,9 @@
 import { X } from 'lucide-react'
 import type { HTMLAttributes, ReactNode } from 'react'
 import { toUserFacingErrorMessage } from '../../lib/userFacingError'
+import type { AppErrorFeedback } from '../../lib/errors/errorCatalog'
+import type { AppErrorId } from '../../lib/errors/errorCatalog'
+import { resolveAppError } from '../../lib/errors/resolveAppError'
 
 interface AppNoticeSurfaceProps extends HTMLAttributes<HTMLDivElement> {
   title: string
@@ -12,6 +15,8 @@ interface AppNoticeSurfaceProps extends HTMLAttributes<HTMLDivElement> {
   mode?: 'inline' | 'toast'
   ariaLabel?: string
   dismissLabel?: string
+  feedback?: AppErrorFeedback
+  operation?: AppErrorId
 }
 
 export function AppNoticeSurface({
@@ -24,13 +29,18 @@ export function AppNoticeSurface({
   mode = 'inline',
   ariaLabel,
   dismissLabel = 'Dismiss notification',
+  feedback,
+  operation,
   className = '',
   role = 'alert',
   ...events
 }: AppNoticeSurfaceProps) {
-  const description = message !== undefined && message !== null
+  const resolvedFeedback = feedback ?? (operation
+    ? resolveAppError(message, operation, { fallbackMessage })
+    : null)
+  const description = resolvedFeedback?.message ?? (message !== undefined && message !== null
     ? toUserFacingErrorMessage(message, fallbackMessage ?? 'This action could not be completed. Try again.')
-    : fallbackMessage ?? null
+    : fallbackMessage ?? null)
 
   return (
     <div
@@ -54,7 +64,7 @@ export function AppNoticeSurface({
         </button>
       ) : null}
       <div role={role === 'region' ? 'status' : undefined} className={['text-sm font-medium', onDismiss ? 'pr-6' : ''].join(' ')}>
-        {title}
+        {resolvedFeedback?.title ?? title}
       </div>
       {description ? <p className="mt-1.5 break-words text-xs leading-5 text-muted-foreground">{description}</p> : null}
       {children}

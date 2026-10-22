@@ -1,6 +1,6 @@
 import { GitCommitHorizontal } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { toUserFacingErrorMessage } from '../../lib/userFacingError'
+import { resolveAppError } from '../../lib/errors/resolveAppError'
 import { projectGitFileDiffScope, type ConversationFileDiff } from '../../lib/chatDiffs'
 import type { DiffPanelScope } from '../chat/ConversationDiffPanel'
 import type {
@@ -137,7 +137,7 @@ function SourceControlPanelContent({
   )
   const shouldUseSplitLayout = isChangesSectionOpen
   const displayedOperationNotice: SourceControlOperationNotice | null = fileActionErrorMessage
-    ? { kind: 'error', message: fileActionErrorMessage }
+    ? { kind: 'error', message: fileActionErrorMessage, feedback: resolveAppError(fileActionErrorMessage, 'git.refresh') }
     : operationNotice
   const {
     handleHistoryResizePointerDown,
@@ -272,9 +272,12 @@ function SourceControlPanelContent({
       }
       return true
     } catch (error) {
+      const operation = action === 'push' ? 'git.push' : action === 'pull' ? 'git.pull' : 'git.sync'
+      const feedback = resolveAppError(error, operation)
       setOperationNotice({
         kind: 'error',
-        message: toUserFacingErrorMessage(error, `The ${action} action could not be completed.`),
+        message: feedback.message,
+        feedback,
       })
       return false
     } finally {
@@ -298,9 +301,11 @@ function SourceControlPanelContent({
     try {
       await Promise.all([onRefreshAll(), refreshHistory({ silent: true })])
     } catch (error) {
+      const feedback = resolveAppError(error, 'git.refresh')
       setOperationNotice({
         kind: 'error',
-        message: toUserFacingErrorMessage(error, 'Source control could not be refreshed.'),
+        message: feedback.message,
+        feedback,
       })
     } finally {
       if (pendingRefreshOperation) {
@@ -332,9 +337,11 @@ function SourceControlPanelContent({
         message: commitResult.postCommitWarning ?? (input.action === 'commit-and-push' ? 'Committed and pushed changes.' : 'Committed changes.'),
       })
     } catch (error) {
+      const feedback = resolveAppError(error, 'git.commit')
       setOperationNotice({
         kind: 'error',
-        message: toUserFacingErrorMessage(error, 'The changes could not be committed.'),
+        message: feedback.message,
+        feedback,
       })
     }
   }

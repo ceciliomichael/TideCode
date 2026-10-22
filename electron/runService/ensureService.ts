@@ -10,6 +10,7 @@ import {
 import { RunServiceBuildMismatchError, TideCodeRunServiceClient } from './client'
 import { configureDevelopmentRunServiceNamespace, resolveRunServiceNamespace } from './namespace'
 import { registerDesktopBrowserHostIfConfigured } from './desktopBrowserHostConnection'
+import { getRunServiceEndpoint } from './paths'
 
 let sharedClientPromise: Promise<TideCodeRunServiceClient> | null = null
 let existingServiceProbe: Promise<TideCodeRunServiceClient | null> | null = null
@@ -148,11 +149,26 @@ async function waitForStaleServiceExit(buildId: string) {
     try {
       return await connectExistingService(buildId)
     } catch (error) {
+      rejectDeniedRunServiceConnection(error)
       if (error instanceof RunServiceBuildMismatchError) continue
       return null
     }
   }
   return null
+}
+
+function rejectDeniedRunServiceConnection(error: unknown) {
+  const connectionError = error as NodeJS.ErrnoException | null
+  if (process.platform !== 'win32' || connectionError?.syscall !== 'connect') {
+    return
+  }
+  if (connectionError.code !== 'EPERM' && connectionError.code !== 'EACCES') {
+    return
+  }
+
+  const failure = new Error(`Windows denied access to the TideCode run-service pipe ${getRunServiceEndpoint()}. Close the background service that owns this pipe and restart TideCode from a terminal with the same Windows security level.`)
+  Object.assign(failure, { code: connectionError.code, cause: error })
+  throw failure
 }
 
 async function launchAndConnectService() {
@@ -161,6 +177,7 @@ async function launchAndConnectService() {
   try {
     return await connectExistingService(launch.buildId)
   } catch (error) {
+    rejectDeniedRunServiceConnection(error)
     if (error instanceof RunServiceBuildMismatchError) {
       const replacement = await waitForStaleServiceExit(launch.buildId)
       if (replacement) return replacement
@@ -185,6 +202,7 @@ async function launchAndConnectService() {
       const client = await connectExistingService(launch.buildId)
       return client
     } catch (error) {
+      rejectDeniedRunServiceConnection(error)
       lastError = error
     }
   }
@@ -270,6 +288,13 @@ export async function connectRunServiceClientIfAvailable() {
   return client
 }
 
+export async function stopRunServiceWorkForApplication() {
+  const client = await sharedClientPromise?.catch(() => null)
+  if (client?.isConnected) {
+    await client.stopApplicationRuns()
+  }
+}
+
 export async function disconnectRunServiceForApplication() {
   runServiceShutdownRequested = true
   const clientPromise = sharedClientPromise
@@ -278,7 +303,13 @@ export async function disconnectRunServiceForApplication() {
   if (!clientPromise) return
   const client = await clientPromise.catch(() => null)
   if (!client) return
-  client.close()
+  try {
+    if (client.isConnected) {
+      await client.stopApplicationRuns()
+    }
+  } finally {
+    client.close()
+  }
 }
 
 export function resetRunServiceClientForTests() {

@@ -3,6 +3,7 @@ import type { ToolSet } from 'ai'
 import type { JSONSchema7 } from '@ai-sdk/provider'
 import { storeChatImageAttachment } from '../../../history/chatAttachments'
 import { requestTideCodeBrowser } from '../../../runService/browserService'
+import { resolveAgentViewport } from '../../../browser/agentViewport'
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
@@ -24,6 +25,8 @@ interface BrowserToolInput {
   delta_x?: number
   delta_y?: number
   view?: 'visual' | 'structure' | 'combined' | 'annotations'
+  width?: number
+  height?: number
   include_annotations?: boolean
   offset?: number
   limit?: number
@@ -124,9 +127,9 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
     'browser.interact': makeTool({
       tab_id: TAB_ID,
       action: { type: 'string', enum: [...ACTIONS] },
-      element_ref: STRING,
-      x: { type: 'number' },
-      y: { type: 'number' },
+      element_ref: { ...STRING, description: 'Required target reference for click and fill, from browser.read.' },
+      x: { type: 'number', description: 'Scroll anchor only, in viewport CSS pixels.' },
+      y: { type: 'number', description: 'Scroll anchor only, in viewport CSS pixels.' },
       button: { type: 'string', enum: ['left', 'right', 'middle'] },
       text: STRING,
       key: STRING,
@@ -134,9 +137,11 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
       delta_y: { type: 'number' },
       url: STRING,
     }, ['tab_id', 'action'], async ({ tab_id, ...action }) => {
-      if ((action.action === 'click' && !action.element_ref
-          && (typeof action.x !== 'number' || typeof action.y !== 'number'))
-        || (action.action === 'fill' && (!action.element_ref || typeof action.text !== 'string'))
+      if (action.action === 'click'
+        && (typeof action.element_ref !== 'string' || !action.element_ref.trim() || 'x' in action || 'y' in action)) {
+        throw new Error('Browser clicks require an element_ref and do not accept x or y.')
+      }
+      if ((action.action === 'fill' && (!action.element_ref || typeof action.text !== 'string'))
         || (action.action === 'type' && typeof action.text !== 'string')
         || (action.action === 'key' && typeof action.key !== 'string')
         || (action.action === 'navigate' && typeof action.url !== 'string')) {
@@ -155,15 +160,19 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
     }),
     'browser.read': makeTool({
       tab_id: TAB_ID,
+      width: { type: 'integer', minimum: 1, maximum: 4096, default: 1280, description: 'Viewport width in CSS pixels. Defaults to 1280.' },
+      height: { type: 'integer', minimum: 1, maximum: 4096, default: 720, description: 'Viewport height in CSS pixels. Defaults to 720.' },
       view: { type: 'string', enum: ['combined', 'visual', 'structure', 'annotations'] },
       include_annotations: { type: 'boolean' },
       offset: { type: 'integer', minimum: 0 },
       limit: { type: 'integer', minimum: 1, maximum: 200 },
     }, ['tab_id'], async ({
-      tab_id, view = 'combined', include_annotations = false, offset = 0, limit = 80,
+      tab_id, width, height, view = 'combined', include_annotations = false, offset = 0, limit = 80,
     }) => {
+      const viewport = resolveAgentViewport({ width, height })
       const { data, imageBase64 } = await requestTideCodeBrowser({
         operation: 'read',
+        ...viewport,
         projectPath: workspace,
         tabId: tab_id,
         view,

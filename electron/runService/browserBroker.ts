@@ -24,6 +24,8 @@ export class RunServiceBrowserBroker {
   private host: Socket | null = null
   private readonly pending = new Map<string, PendingBrowserRequest>()
 
+  constructor(private readonly requestTimeoutMs = REQUEST_TIMEOUT_MS) {}
+
   register(host: Socket) {
     if (this.host && this.host !== host) {
       this.disconnect(this.host)
@@ -54,8 +56,10 @@ export class RunServiceBrowserBroker {
     return new Promise<BrowserHostResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId)
-        reject(new Error('TideCode desktop browser operation timed out. Check whether the desktop is still running.'))
-      }, REQUEST_TIMEOUT_MS)
+        const target = 'tabId' in input ? ' on tab ' + input.tabId : ''
+        reject(new Error('Desktop browser host did not reply to ' + input.operation + target
+          + ' within ' + this.requestTimeoutMs + 'ms. This request timed out; it does not establish that the desktop disconnected.'))
+      }, this.requestTimeoutMs)
       timer.unref?.()
       this.pending.set(requestId, { host, resolve, reject, timer })
       try {

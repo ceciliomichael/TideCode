@@ -24,6 +24,7 @@ import type { ChatHistorySnapshot } from './chatHistoryWorkflows'
 import type { AppLanguage } from '../lib/appSettings'
 import { createClientId } from '../lib/clientId'
 import { retainConversationRuntimes } from './conversationRuntimeRetention'
+import type { AppErrorFeedback } from '../lib/errors/errorCatalog'
 
 interface ConversationRuntimeState {
   conversation: ConversationRecord
@@ -126,7 +127,16 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
   const sharedRunProjectionsByConversationIdRef = useRef(new Map<string, SharedRunProjection>())
   const [sharedRunningConversationIds, setSharedRunningConversationIds] = useState<Set<string>>(() => new Set())
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setErrorState] = useState<string | null>(null)
+  const [errorFeedback, setErrorFeedback] = useState<AppErrorFeedback | null>(null)
+  const setError = useCallback((message: string | null) => {
+    setErrorState(message)
+    setErrorFeedback(null)
+  }, [])
+  const setAppError = useCallback((feedback: AppErrorFeedback) => {
+    setErrorState(feedback.message)
+    setErrorFeedback(feedback)
+  }, [])
 
   const activeConversationState = activeConversationId ? conversationRuntimeStates[activeConversationId] ?? null : null
   const runningConversationIds = useMemo(() => {
@@ -798,7 +808,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     })
   }, [])
 
-  const clearError = useCallback(() => setError(null), [])
+  const clearError = useCallback(() => setError(null), [setError])
   const selectedFolderName =
     selectedFolderId !== null &&
     selectedFolderId === initialSelection?.initialSelectedFolderId &&
@@ -832,6 +842,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     draftAttachmentScopeId,
     draftAttachmentScopeIdRef,
     error,
+    errorFeedback,
     getDeletionContext,
     initializeHistory,
     isLoading,
@@ -847,6 +858,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     selectedFolderPath: selectedFolderId === null ? null : folderSummaries.find((folder) => folder.id === selectedFolderId)?.path ?? null,
     resolveFolderIdForWorkspacePath,
     setError,
+    setAppError,
     setIsLoading,
     synchronizeDraftFolder,
     updateConversationRuntimeState,

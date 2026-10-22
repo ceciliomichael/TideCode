@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { toUserFacingErrorMessage } from '../lib/userFacingError'
+import { resolveAppError } from '../lib/errors/resolveAppError'
+import type { AppErrorId } from '../lib/errors/errorCatalog'
 import type { CreateSkillInput, SkillSummary, SkillsState } from '../types/skills'
 
 export interface UseSkillsStateResult {
@@ -21,8 +22,8 @@ function getSkillsApi() {
   return typeof window !== 'undefined' ? window.tidecodeSkills : null
 }
 
-function getErrorMessage(error: unknown, fallbackMessage: string) {
-  return toUserFacingErrorMessage(error, fallbackMessage)
+function getErrorMessage(error: unknown, operation: AppErrorId) {
+  return resolveAppError(error, operation).message
 }
 
 export function useSkillsState(workspacePath?: string | null): UseSkillsStateResult {
@@ -48,11 +49,11 @@ export function useSkillsState(workspacePath?: string | null): UseSkillsStateRes
       setState(nextState)
       setErrorMessage(
         nextState.errorMessage
-          ? toUserFacingErrorMessage(nextState.errorMessage, 'Unable to load skills.')
+          ? getErrorMessage(nextState.errorMessage, 'skill.load')
           : null,
       )
     } catch (error) {
-      setErrorMessage(getErrorMessage(error, 'Unable to load skills.'))
+      setErrorMessage(getErrorMessage(error, 'skill.load'))
     } finally {
       setIsLoading(false)
     }
@@ -73,14 +74,14 @@ export function useSkillsState(workspacePath?: string | null): UseSkillsStateRes
       try {
         const result = await api.createSkill(input, normalizedWorkspacePath)
         if (result.error) {
-          setErrorMessage(toUserFacingErrorMessage(result.error, 'The skill could not be created.'))
+          setErrorMessage(getErrorMessage(result.error, 'skill.save'))
           return false
         }
 
         await fetchSkills()
         return true
       } catch (error) {
-        setErrorMessage(getErrorMessage(error, 'Failed to create skill.'))
+        setErrorMessage(getErrorMessage(error, 'skill.save'))
         return false
       }
     },
@@ -98,7 +99,7 @@ export function useSkillsState(workspacePath?: string | null): UseSkillsStateRes
       try {
         const result = await api.loadSkill(skill.name, normalizedWorkspacePath)
         if (result.error || !result.skill) {
-          setErrorMessage(toUserFacingErrorMessage(result.error, 'The skill could not be loaded.'))
+          setErrorMessage(getErrorMessage(result.error, 'skill.load'))
           return null
         }
 
@@ -108,7 +109,7 @@ export function useSkillsState(workspacePath?: string | null): UseSkillsStateRes
           name: result.skill.name,
         }
       } catch (error) {
-        setErrorMessage(getErrorMessage(error, 'Failed to load skill.'))
+        setErrorMessage(getErrorMessage(error, 'skill.load'))
         return null
       }
     },
@@ -126,14 +127,14 @@ export function useSkillsState(workspacePath?: string | null): UseSkillsStateRes
       try {
         const result = await api.updateSkill(skill.location, input, normalizedWorkspacePath)
         if (result.error) {
-          setErrorMessage(toUserFacingErrorMessage(result.error, 'The skill could not be saved.'))
+          setErrorMessage(getErrorMessage(result.error, 'skill.save'))
           return false
         }
 
         await fetchSkills()
         return true
       } catch (error) {
-        setErrorMessage(getErrorMessage(error, 'Failed to save skill.'))
+        setErrorMessage(getErrorMessage(error, 'skill.save'))
         return false
       }
     },

@@ -106,7 +106,7 @@ export function SkillsSettingsPanel({
         </header>
 
         {visibleErrorMessage ? (
-          <AppNoticeSurface title="Could not load skills" message={visibleErrorMessage} fallbackMessage="The skills could not be updated. Try again." />
+          <AppNoticeSurface operation="skill.load" title="Could not load skills" message={visibleErrorMessage} />
         ) : null}
 
         {state ? (

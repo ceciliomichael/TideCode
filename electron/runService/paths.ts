@@ -4,11 +4,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { RUN_SERVICE_PROTOCOL_VERSION } from './protocol'
 import { resolveRunServiceNamespace } from './namespace'
+import { getWindowsIntegrityLevel } from './windowsIntegrity'
 
 export interface RunServicePathOptions {
   environment?: NodeJS.ProcessEnv
   homeDirectory?: string
   platform?: NodeJS.Platform
+  windowsIntegrityLevel?: number
 }
 
 function resolvePathContext(options: RunServicePathOptions = {}) {
@@ -33,7 +35,15 @@ export function getRunServiceEndpoint(options: RunServicePathOptions = {}) {
   const context = resolvePathContext(options)
   if (context.platform === 'win32') {
     const namespaceSuffix = context.namespace ? `-${context.namespace}` : ''
-    return `\\\\.\\pipe\\tidecode-run-service-v${RUN_SERVICE_PROTOCOL_VERSION}-${getStableUserKey(context.homeDirectory)}${namespaceSuffix}`
+    let integritySuffix = ''
+    if (context.namespace?.startsWith('dev-')) {
+      const integrityLevel = options.windowsIntegrityLevel ?? getWindowsIntegrityLevel()
+      if (!Number.isSafeInteger(integrityLevel) || integrityLevel < 0) {
+        throw new Error('The Windows security level for the TideCode run service is invalid.')
+      }
+      integritySuffix = `-il-${integrityLevel}`
+    }
+    return `\\\\.\\pipe\\tidecode-run-service-v${RUN_SERVICE_PROTOCOL_VERSION}-${getStableUserKey(context.homeDirectory)}${namespaceSuffix}${integritySuffix}`
   }
   return path.join(context.directory, `service-v${RUN_SERVICE_PROTOCOL_VERSION}.sock`)
 }

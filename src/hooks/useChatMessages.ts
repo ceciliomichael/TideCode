@@ -3,6 +3,7 @@ import { buildRevertSessionKey, mergeConversationEditSessions } from './chatEdit
 import type { ChatRuntimeSelection } from './chatMessageRuntime'
 import { useChatComposerState, type EditComposerDraftSession } from './useChatComposerState'
 import { useChatConversationActions } from './useChatConversationActions'
+import { resolveAppError } from '../lib/errors/resolveAppError'
 import { useChatSendActions } from './useChatSendActions'
 import { useChatSessionState } from './useChatSessionState'
 import { useChatStreamingState } from './useChatStreamingState'
@@ -110,6 +111,14 @@ export function useChatMessages(input: UseChatMessagesInput) {
     draftAgentContextPath
   const composerState = useChatComposerState(displayMessages, activeConversationId)
   const setSessionError = sessionState.setError
+  const setAppError = sessionState.setAppError
+  const setSendError = useCallback((message: string | null) => {
+    if (message === null) {
+      setSessionError(null)
+      return
+    }
+    setAppError(resolveAppError(message, 'conversation.send'))
+  }, [setAppError, setSessionError])
   const captureComposerEditingSession = composerState.captureEditingSession
   const editingMessageId = composerState.editingMessageId
   const restoreComposerEditingSession = composerState.restoreEditingSession
@@ -273,7 +282,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     openEmptyConversationOnLaunch,
     preferredDraftFolderId,
     preferredConversationId,
-    setError: sessionState.setError,
+    setAppError: sessionState.setAppError,
     setIsLoading: sessionState.setIsLoading,
   })
 
@@ -304,7 +313,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     discardComposerDraft: composerState.discardComposerDraft,
     selectedFolderId: sessionState.selectedFolderId,
     resolveFolderIdForWorkspacePath: sessionState.resolveFolderIdForWorkspacePath,
-    setError: sessionState.setError,
+    setAppError: sessionState.setAppError,
     upsertConversation: sessionState.upsertConversation,
   })
 
@@ -540,11 +549,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
       await redoRevertSession(activeConversationId, revertSession, 'Unable to redo reverted workspace changes.')
       return true
     } catch (caughtError) {
-      setSessionError(
-        caughtError instanceof Error && caughtError.message.trim().length > 0
-          ? caughtError.message
-          : 'Unable to redo reverted workspace changes.',
-      )
+      setAppError(resolveAppError(caughtError, 'conversation.edit'))
       return false
     }
   }, [
@@ -558,7 +563,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     editingMessageId,
     hasAppliedRevertSession,
     redoRevertSession,
-    setSessionError,
+    setAppError,
   ])
 
   useEffect(() => {
@@ -602,7 +607,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
       if (activeRevertSession?.messageId === activeEditSession.messageId) {
         clearRevertEditSession(activeConversationId)
       }
-      setSessionError('Unable to resume edit mode for this thread.')
+      setAppError(resolveAppError('Unable to resume edit mode for this thread.', 'conversation.edit'))
     }
   }, [
     clearDraftEditSession,
@@ -613,7 +618,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     editingMessageId,
     markRevertSessionApplied,
     restoreComposerEditingSession,
-    setSessionError,
+    setAppError,
   ])
 
   const startEditingMessage = useCallback(
@@ -629,11 +634,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
             )
           } catch (caughtError) {
             clearRevertEditSession(activeConversationId)
-            setSessionError(
-              caughtError instanceof Error && caughtError.message.trim().length > 0
-                ? caughtError.message
-                : 'Unable to redo reverted workspace changes before editing that message.',
-            )
+            setAppError(resolveAppError(caughtError, 'conversation.edit'))
             return false
           }
 
@@ -659,7 +660,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
       conversationActions,
       hasAppliedRevertSession,
       redoRevertSession,
-      setSessionError,
+      setAppError,
       upsertEditSession,
     ],
   )
@@ -724,7 +725,8 @@ export function useChatMessages(input: UseChatMessagesInput) {
     replaceLocalMessages: sessionState.replaceLocalMessages,
     selectedFolderId: sessionState.selectedFolderId,
     selectedFolderIdRef: streamingState.selectedFolderIdRef,
-    setError: sessionState.setError,
+    setError: setSendError,
+    setAppError: sessionState.setAppError,
     setMainComposerAttachments: composerState.setMainComposerAttachments,
     setMainComposerMentionPathMap: composerState.setMainComposerMentionPathMap,
     setMainComposerValue: composerState.setMainComposerValue,
@@ -837,8 +839,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
         await conversationActions.selectConversation(branchedConversation.id)
       } catch (caughtError) {
         console.error(caughtError)
-      const detail = caughtError instanceof Error ? caughtError.message.trim() : ''
-      sessionState.setError(detail ? `Unable to branch this chat: ${detail}` : 'Unable to branch this chat.')
+        sessionState.setAppError(resolveAppError(caughtError, 'conversation.branch'))
       }
     },
     [
@@ -974,6 +975,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     editComposerValue: composerState.editComposerValue,
     editingMessageId: renderedEditingMessageId,
     error: sessionState.error,
+    errorFeedback: sessionState.errorFeedback,
     isEditingMessage: renderedEditingMessageId !== null,
     isEditComposerDirty: composerState.isEditComposerDirty,
     isLoading: sessionState.isLoading,

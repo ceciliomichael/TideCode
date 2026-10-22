@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { ApplicationRunLifecycle } from './applicationRunLifecycle'
 import net from 'node:net'
 import type { Socket } from 'node:net'
 import type {
@@ -133,6 +134,7 @@ export class TideCodeRunServiceServer {
   private readonly browserBroker = new RunServiceBrowserBroker()
   private readonly server = net.createServer((socket) => this.acceptClient(socket))
   private readonly clients = new Set<Socket>()
+  private readonly applicationRuns = new ApplicationRunLifecycle()
   private readonly terminalClientIdsBySocket = new Map<Socket, Set<string>>()
   private readonly registry = new SharedRunRegistry()
   private readonly followUps = new SharedFollowUpStore()
@@ -208,6 +210,9 @@ export class TideCodeRunServiceServer {
       }
     })
     socket.on('close', () => {
+      void this.applicationRuns.stop(socket, true).catch((error) => {
+        console.error('[run-service] Failed to stop disconnected desktop AI work:', error)
+      })
       this.browserBroker.disconnect(socket)
       buffered = ''
       this.clients.delete(socket)
@@ -253,6 +258,7 @@ export class TideCodeRunServiceServer {
     try {
       switch (parsed.method) {
         case 'registerBrowserHost':
+          this.applicationRuns.register(socket)
           this.browserBroker.register(socket)
           this.sendResponse(socket, { id: parsed.id, ok: true, result: null })
           return
@@ -325,8 +331,12 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
           this.sendResponse(socket, { id: parsed.id, ok: true, result })
           return
         }
+        case 'stopApplicationRuns':
+          await this.applicationRuns.stop(socket)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: null })
+          return
         case 'startStream': {
-          const result = await this.startSharedStream(parsed.params)
+          const result = await this.startSharedStream(parsed.params, socket)
           this.sendResponse(socket, { id: parsed.id, ok: true, result })
           return
         }
@@ -648,13 +658,20 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
     }
   }
 
-  private async startSharedStream(input: StartChatStreamInput) {
+  private async startSharedStream(input: StartChatStreamInput, owner: Socket) {
     const conversationId = input.conversationId?.trim()
     if (!conversationId) {
       throw new Error('A saved conversation is required before starting a shared Tidecode run.')
     }
     const sharedInput: StartChatStreamInput & { conversationId: string } = { ...input, conversationId }
     const createdRun = this.registry.create(sharedInput)
+    let ownedRun: ReturnType<ApplicationRunLifecycle['begin']>
+    try {
+      ownedRun = this.applicationRuns.begin(owner, createdRun.runId)
+    } catch (error) {
+      this.registry.remove(createdRun.runId)
+      throw error
+    }
     this.emitRunState(createdRun.runId)
     const existingConversation = await getStoredConversation(conversationId).catch(() => null)
     if (existingConversation) {
@@ -832,6 +849,7 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
     }
 
     const settleRun = async () => {
+      ownedRun?.finish()
       const finalizedMessages = collector.finalize()
       projection.messages = [...finalizedMessages]
       projection.isStreamingTextActive = false
@@ -864,11 +882,25 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
         : await startApiKeyChatStream(target, sharedInput, () => { void settleRun() })
 
       this.registry.attachStream(createdRun.runId, result.streamId)
+      ownedRun?.attach(async () => {
+        const cancellation = {
+          policy: 'terminate' as const,
+          reason: 'surface_shutdown' as const,
+          requestedAt: Date.now(),
+          surface: 'desktop' as const,
+        }
+        if (input.providerId === 'codex') {
+          await cancelCodexChatStream(result.streamId, cancellation)
+        } else {
+          await cancelApiKeyChatStream(result.streamId, cancellation)
+        }
+      })
       const followUpSnapshot = this.followUps.register(createdRun.runId, result.streamId, conversationId)
       this.emitRunState(createdRun.runId)
       this.emitFollowUps(followUpSnapshot)
       return result
     } catch (error) {
+      ownedRun?.finish()
       if (projectionEmitTimer) clearTimeout(projectionEmitTimer)
       projectionEmitTimer = null
       const textIdleTimer = this.projectionTextIdleTimers.get(createdRun.runId)

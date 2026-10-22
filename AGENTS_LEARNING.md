@@ -1,5 +1,11 @@
 # Durable project knowledge
 
+- Browser zoom controls should remain in the Browser menu and also appear in a floating panel when zoom changes. The user requested a faster auto-dismiss; the panel uses 1.5 seconds and pauses during hover/focus. Browser and New tab menus should dismiss when clicking outside, including into the embedded webpage.
+
+- On 2026-10-22 the user explicitly required AI-started terminal commands, including long-running servers and their child processes, to terminate when their chat turn ends and when the app closes. Do not treat those commands as persistent background work across turns or desktop closure.
+
+- The user wants all user-visible errors to explain the actual known cause in plain language, with titles tied to the operation. Centralize editable error copy in one catalog. Do not replace known duplicate-folder causes with generic errors. Transient error toasts disappear after three seconds; persistent in-panel errors remain until resolved or dismissed.
+
 - On 2026-10-21 the user confirmed that shared workspace MEMORY.md remains instruction-driven through ordinary file tools. Inject only instructions to read the index and relevant details, never index contents; disabled memory injects nothing. Details use name/description frontmatter followed by expanded knowledge. Descriptions must be short, specific, and useful for selecting what to read. TideCode generates the index and updates it immediately after normal AI file-tool changes. The user also requires efficient realtime indexing: avoid full detail-body reads and unrelated scans, keep caches bounded, and measure performance without weakening immediate consistency.
 
 - On 2026-10-21 the user confirmed that edit and patch must continue to run through exec and approved deterministic recovery of misplaced string payloads, exact bare bindings, and unique case/underscore/hyphen naming mismatches. Preserve source validation and reject conflicting or ambiguous interpretations rather than guessing unrelated names.
@@ -75,4 +81,8 @@
 
 - Generated UI action buttons should keep their labels unchanged and omit routine progress/success messages after clicks. Retain pending/duplicate-send protection and show actionable failures only.
 
-- For generated-source readability, the user wants language-agnostic AI instructions without code examples. They explicitly declined a TideCode-managed formatter and prefer improving the AI's adherence and source review; readable output must not depend on a project formatter being installed.
+- On 2026-10-22 the user requested a concise write tool contract with specific, firm requirements for human-readable source: consistent indentation, expanded blocks, separate statements and structural elements, and the same readability for embedded languages. Keep its basic operation, exact-content transport and read-back verification. Do not restore the lengthy formatting checklist or examples without a new request. They declined a TideCode-managed formatter; readable output must not depend on a project formatter being installed.
+- Keep source-formatting guidance in the relevant tool contracts rather than reintroducing a global formatting prompt.
+- The user explicitly requires retrieved tool instructions to be authoritative for using their tools. Do not classify those contracts as ordinary untrusted tool output; their usage requirements apply within higher-priority instructions and current permissions.
+
+- Browser automation must open/select a tab once and use its tab_id for screenshots, reads and non-navigation interactions. The user expects current live tab state to persist, without repeated URL input, reloads or replacement tabs. Browser reliability work must distinguish reproduced causes from hypotheses about historical timeouts.

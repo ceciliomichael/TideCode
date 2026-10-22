@@ -150,7 +150,7 @@ export function McpServerCard({
       </div>
 
       {statusErrorMessage ? (
-        <AppNoticeSurface title="Could not connect to server" message={statusErrorMessage} fallbackMessage="Check the server connection and try again." />
+        <AppNoticeSurface operation="mcp.connect" title="Could not connect to server" message={statusErrorMessage} />
       ) : null}
 
       <div className="flex items-end justify-between gap-3">

@@ -32,6 +32,7 @@ test('Electron Browser keeps native focus through page load and accepts intentio
             onShortcut: () => () => {},
           }
           window.tidecodeBrowserPageActions = {
+            onZoomRequest: () => () => {},
             getZoom: async () => 100, setZoom: async (input) => input.percent,
             clearCookies: async () => {}, clearCache: async () => {},
           }

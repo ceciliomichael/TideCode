@@ -909,7 +909,7 @@ export function ChatInput({
           />
         </div>
 
-        {attachmentError ? <AppNoticeSurface className="mt-2" title="Attachment unavailable" message={attachmentError} fallbackMessage="The attachment could not be added. Try again." onDismiss={() => setAttachmentError(null)} /> : null}
+        {attachmentError ? <AppNoticeSurface className="mt-2" operation="attachment.add" title="Attachment unavailable" message={attachmentError} onDismiss={() => setAttachmentError(null)} /> : null}
 
         <div
           className={isMobileViewport

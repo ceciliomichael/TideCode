@@ -37,6 +37,11 @@ test(
         },
       }
       window.tidecodeBrowserPageActions = {
+        onZoomRequest: listener => {
+          const wrapped = (_event, id, direction) => listener(id, direction)
+          ipcRenderer.on('browser:zoomRequested', wrapped)
+          return () => ipcRenderer.off('browser:zoomRequested', wrapped)
+        },
         captureScreenshot: input => ipcRenderer.invoke('browser:captureScreenshot', input),
         screenshotAction: input => ipcRenderer.invoke('browser:screenshotAction', input),
         getZoom: input => ipcRenderer.invoke('browser:getZoom', input),
@@ -170,7 +175,12 @@ test(
         clipboard.writeImage = image => { copiedScreenshot = image.toPNG() }
         let guest
         let guestDomReady = false
-        window.webContents.on('did-attach-webview', (_event, attached) => { guest = attached; browserActions.trackPrivateBrowserGuest(attached); attached.on('dom-ready', () => { guestDomReady = true }) })
+        window.webContents.on('did-attach-webview', (_event, attached) => {
+          guest = attached
+          browserActions.trackPrivateBrowserGuest(attached)
+          floatingModule.exports.registerBrowserGuestZoom(attached, window)
+          attached.on('dom-ready', () => { guestDomReady = true })
+        })
         ipcMain.handle('open-devtools', async (event, input) => {
           assert.equal(event.sender, window.webContents)
           assert.equal(input.webContentsId, guest.id)
@@ -245,7 +255,50 @@ test(
           assert.equal(window.webContents.getZoomFactor(), 1)
           await click('[aria-label="Reset page zoom"]')
           await wait(() => guest.getZoomFactor() === 1, 'zoom reset')
+          // Offscreen guests do not generate browser zoom requests from synthetic
+          // wheel input. Inject Electron's native request at the main-process
+          // boundary, exercising the real relay, guest zoom and menu state.
+          guest.emit('zoom-changed', {}, 'in')
+          await wait(() => Math.abs(guest.getZoomFactor() - 1.1) < .001, 'native wheel zoom-in request reaches the webpage')
+          await wait(() => run('document.querySelector(' + JSON.stringify('[aria-label="Page zoom"]') + ').textContent.includes("110%")'), 'wheel zoom updates menu percentage')
+          guest.emit('zoom-changed', {}, 'out')
+          await wait(() => guest.getZoomFactor() === 1, 'native wheel zoom-out request reaches the webpage')
+          window.webContents.send('browser:zoomRequested', guest.id + 100000, 'in')
+          await pause()
+          assert.equal(guest.getZoomFactor(), 1, 'requests for another guest are ignored')
+          for (let step = 0; step < 25; step += 1) {
+            guest.emit('zoom-changed', {}, 'in')
+          }
+          await wait(() => Math.abs(guest.getZoomFactor() - 5) < .001, 'rapid wheel zoom stops at 500%')
+          for (let step = 0; step < 25; step += 1) {
+            guest.emit('zoom-changed', {}, 'out')
+          }
+          await wait(() => Math.abs(guest.getZoomFactor() - .25) < .001, 'rapid wheel zoom stops at 25%')
+          await click('[aria-label="Reset page zoom"]')
+          await wait(() => guest.getZoomFactor() === 1, 'menu reset works after wheel zoom')
+          assert.equal(window.webContents.getZoomFactor(), 1, 'wheel zoom leaves the application scale unchanged')
+          await run('document.querySelector("webview").focus()')
+          await wait(() => run('!document.querySelector(' + JSON.stringify('[aria-label="Browser actions"]') + ')'), 'focusing the webpage dismisses the Browser menu')
+          await click('[aria-label="New browser tab"]')
+          await run('document.querySelector("webview").focus()')
+          await wait(() => run('!document.querySelector(' + JSON.stringify('[aria-label="New browser tab options"]') + ')'), 'focusing the webpage dismisses the New tab menu')
           await run('document.body.dispatchEvent(new MouseEvent("mousedown", {bubbles:true}))')
+          guest.emit('zoom-changed', {}, 'in')
+          await wait(() => run('!!document.querySelector(' + JSON.stringify('[aria-label="Floating page zoom"]') + ')'), 'wheel zoom displays the floating controls')
+          await run('document.querySelector(' + JSON.stringify('[aria-label="Floating page zoom"]') + ').parentElement.dispatchEvent(new MouseEvent("mouseover", {bubbles:true}))')
+          await new Promise(resolve => setTimeout(resolve, 1700))
+          assert(await run('!!document.querySelector(' + JSON.stringify('[aria-label="Floating page zoom"]') + ')'), 'hover pauses the faster dismiss timer')
+          await click('[aria-label="Floating zoom in"]')
+          await wait(() => Math.abs(guest.getZoomFactor() - 1.25) < .001, 'floating plus changes page zoom')
+          await click('[aria-label="Reset floating page zoom"]')
+          await wait(() => guest.getZoomFactor() === 1, 'floating reset returns to 100%')
+          writeFileSync(path.join(require('node:os').tmpdir(), 'codex-browser-zoom-preview.png'), (await window.webContents.capturePage()).toPNG())
+          await run('document.querySelector(' + JSON.stringify('[aria-label="Floating page zoom"]') + ').parentElement.dispatchEvent(new MouseEvent("mouseout", {bubbles:true,relatedTarget:document.body}))')
+          await run('document.activeElement.blur()')
+          const dismissStarted = Date.now()
+          await wait(() => run('!document.querySelector(' + JSON.stringify('[aria-label="Floating page zoom"]') + ')'), 'floating controls automatically dismiss')
+          assert(Date.now() - dismissStarted < 2500, 'zoom feedback closes faster than the original three-second delay')
+          const screenshotViewportSize = await guest.executeJavaScript('({width:innerWidth,height:innerHeight})')
           await click('[aria-label="Screenshot"]')
           await wait(() => run('!!document.querySelector(' + JSON.stringify('[aria-label="Browser screenshot notification"]') + ')'), 'saved screenshot toast')
           await run('(() => {const button=document.querySelector(' + JSON.stringify('[aria-label="Browser screenshot notification"] button') + '); button.matches=()=>true; button.dispatchEvent(new FocusEvent("focusin", {bubbles:true}))})()')
@@ -284,8 +337,7 @@ test(
           assert.equal(screenshotBytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a')
           const screenshotSize = nativeImage.createFromBuffer(screenshotBytes).getSize()
           await pause()
-          const guestSize = await guest.executeJavaScript('({width:innerWidth,height:innerHeight})')
-          assert.deepEqual(screenshotSize, guestSize, 'screenshot contains the webpage viewport only')
+          assert.deepEqual(screenshotSize, screenshotViewportSize, 'screenshot contains the webpage viewport at capture time only')
           window.setSize(240, 800)
           await pause()
           assert(await run('(() => { const toast=document.querySelector(' + JSON.stringify('[aria-label="Browser screenshot notification"]') + '); const rect=toast.getBoundingClientRect(); return rect.left>=0 && rect.right<=innerWidth && Array.from(toast.querySelectorAll("button")).every(button=>{ const bounds=button.getBoundingClientRect(); return bounds.left>=rect.left && bounds.right<=rect.right }) })()'), 'compact toast and actions fit a very narrow browser: ' + await run('(() => {const toast=document.querySelector(' + JSON.stringify('[aria-label="Browser screenshot notification"]') + '); return JSON.stringify({width:innerWidth,toast:toast.getBoundingClientRect().toJSON(),buttons:Array.from(toast.querySelectorAll("button")).map(button=>button.getBoundingClientRect().toJSON())})})()'))
@@ -441,6 +493,8 @@ test(
     `,
       )
       const environment = { ...process.env }
+      environment.USERPROFILE = directory
+      environment.HOME = directory
       delete environment.ELECTRON_RUN_AS_NODE
       const child = spawn(
         require('electron'),

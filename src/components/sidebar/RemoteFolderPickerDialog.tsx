@@ -731,7 +731,7 @@ export function RemoteFolderPickerDialog({
 
           <div className="flex min-w-0 flex-1 flex-col">
             {error ? (
-              <div className="mx-3 mt-3"><AppNoticeSurface title="Folder action failed" message={error} fallbackMessage="The folder action could not be completed. Try again." onDismiss={() => setError(null)} /></div>
+              <div className="mx-3 mt-3"><AppNoticeSurface operation="folder.create" title="Folder action failed" message={error} onDismiss={() => setError(null)} /></div>
             ) : null}
 
             <div

@@ -37,7 +37,7 @@ import type {
 } from '../../src/types/chat'
 import type { BrowserHostRequest, BrowserHostResponse } from './browserService'
 
-export const RUN_SERVICE_PROTOCOL_VERSION = 15
+export const RUN_SERVICE_PROTOCOL_VERSION = 16
 
 export interface RunServiceHello {
   buildId: string
@@ -46,6 +46,7 @@ export interface RunServiceHello {
 }
 
 export type RunServiceRequest =
+  | { id: string; token: string; method: 'stopApplicationRuns'; params?: undefined }
   | { id: string; token: string; method: 'registerBrowserHost'; params?: undefined }
   | { id: string; token: string; method: 'browserHostReply'; params: {
       requestId: string
@@ -133,6 +134,7 @@ export type RunServiceWireMessage =
 export function isRunServiceRequest(value: unknown): value is RunServiceRequest {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Record<string, unknown>
+  if (candidate.method === 'stopApplicationRuns' && candidate.params !== undefined) return false
   return typeof candidate.id === 'string'
     && typeof candidate.token === 'string'
     && typeof candidate.method === 'string'

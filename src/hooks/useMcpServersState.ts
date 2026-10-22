@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { toUserFacingErrorMessage } from '../lib/userFacingError'
+import { resolveAppError } from '../lib/errors/resolveAppError'
+import type { AppErrorId } from '../lib/errors/errorCatalog'
 import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
 import type { McpAddServerInput, McpState } from '../types/mcp'
 
@@ -26,8 +27,8 @@ function getMcpApi() {
   return typeof window !== 'undefined' ? window.tidecodeMcp : null
 }
 
-function getErrorMessage(error: unknown, fallbackMessage: string) {
-  return toUserFacingErrorMessage(error, fallbackMessage)
+function getErrorMessage(error: unknown, operation: AppErrorId) {
+  return resolveAppError(error, operation).message
 }
 
 export function useMcpServersState(workspacePath?: string | null): UseMcpServersStateResult {
@@ -66,7 +67,7 @@ export function useMcpServersState(workspacePath?: string | null): UseMcpServers
         setState(nextState)
         setErrorMessage(
           nextState.errorMessage
-            ? toUserFacingErrorMessage(nextState.errorMessage, 'Unable to update MCP servers.')
+            ? getErrorMessage(nextState.errorMessage, 'mcp.load')
             : null,
         )
       })
@@ -75,7 +76,7 @@ export function useMcpServersState(workspacePath?: string | null): UseMcpServers
           return
         }
 
-        setErrorMessage(getErrorMessage(error, 'Unable to load MCP servers.'))
+        setErrorMessage(getErrorMessage(error, 'mcp.load'))
       })
       .finally(() => {
         if (isActive) {
@@ -110,7 +111,7 @@ export function useMcpServersState(workspacePath?: string | null): UseMcpServers
       setState(payload.state)
       setErrorMessage(
         payload.state.errorMessage
-          ? toUserFacingErrorMessage(payload.state.errorMessage, 'Unable to update MCP servers.')
+          ? getErrorMessage(payload.state.errorMessage, 'mcp.load')
           : null,
       )
       setIsLoading(false)
@@ -133,12 +134,12 @@ export function useMcpServersState(workspacePath?: string | null): UseMcpServers
         setState(nextState)
         setErrorMessage(
           nextState.errorMessage
-            ? toUserFacingErrorMessage(nextState.errorMessage, 'Unable to update MCP servers.')
+            ? getErrorMessage(nextState.errorMessage, operationName.startsWith('connect:') ? 'mcp.connect' : 'mcp.save')
             : null,
         )
         return true
       } catch (error) {
-        setErrorMessage(getErrorMessage(error, 'Unable to update MCP servers.'))
+        setErrorMessage(getErrorMessage(error, operationName.startsWith('connect:') ? 'mcp.connect' : 'mcp.save'))
         return false
       } finally {
         setActiveOperation((currentOperation) => (currentOperation === operationName ? null : currentOperation))

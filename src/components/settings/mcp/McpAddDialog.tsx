@@ -374,7 +374,7 @@ export function McpServerDialog({
             </p>
 
             {localError || errorMessage ? (
-              <AppNoticeSurface className="mt-4" title="Could not save server" message={errorMessage ?? localError} fallbackMessage="Check the server details and try again." />
+              <AppNoticeSurface className="mt-4" operation="mcp.save" title="Could not save server" message={errorMessage ?? localError} />
             ) : null}
           </div>
 

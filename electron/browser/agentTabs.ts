@@ -4,9 +4,8 @@ import path from 'node:path'
 import { BROWSER_SESSION_PARTITION } from '../../src/types/browser'
 import { clearBrowserStructure } from './agentPageStructure'
 import { requireBrowserElectronRuntime } from './agentElectronRuntime'
+import { AgentBrowserOperation } from './agentBrowserOperation'
 
-export const AGENT_BROWSER_WIDTH = 1280
-export const AGENT_BROWSER_HEIGHT = 720
 const MAX_AGENT_TABS_PER_PROJECT = 12
 
 export interface AgentBrowserTab {
@@ -128,8 +127,13 @@ export async function withAgentBrowserTab<T>(
   const next = new Promise<void>((resolve) => { release = resolve })
   const queued = previous.catch(() => undefined).then(() => next)
   operations.set(id, queued)
-  await previous.catch(() => undefined)
   try {
+    await new AgentBrowserOperation(10_000).run(
+      'waiting for the previous operation on tab ' + id,
+      () => previous.catch(() => undefined),
+      () => undefined,
+      10_000,
+    )
     return await operation(resolveAgentBrowserTab(projectPath, id, allowUnsupportedUrl))
   } finally {
     release()

@@ -298,7 +298,7 @@ export const VirtualizedSourceControlHistoryList = memo(function VirtualizedSour
         })
       )}
 
-      {historyError ? <div className="px-3 py-2"><AppNoticeSurface title="Could not load history" message={historyError} fallbackMessage="Git history could not be loaded. Try again." /></div> : null}
+      {historyError ? <div className="px-3 py-2"><AppNoticeSurface operation="git.history" title="Could not load history" message={historyError} /></div> : null}
 
       {hasMoreHistory ? (
         <div className="px-4 py-3">

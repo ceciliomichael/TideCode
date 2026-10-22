@@ -24,11 +24,10 @@ export interface TideCodeBrowserDevToolsApi {
 }
 
 export interface TideCodeBrowserPageActionsApi {
+  onZoomRequest: (listener: (webContentsId: number, direction: 'in' | 'out') => void) => () => void
   onAgentTabOpen: (listener: (input: { tabId: string; projectPath: string; url: string }) => void) => () => void
   registerAgentTab: (input: { tabId: string; projectPath: string; webContentsId: number }) => Promise<void>
   onAgentTabTermination: (listener: (input: { tabId: string; projectPath: string }) => void) => () => void
-  getDeveloperMode: (projectPath: string) => Promise<boolean>
-  setDeveloperMode: (input: { projectPath: string; enabled: boolean }) => Promise<boolean>
   listAnnotations: (input: { conversationId: string; projectPath: string }) => Promise<BrowserElementAnnotation[]>
   saveAnnotation: (input: BrowserElementAnnotationDraft & { webContentsId: number }) => Promise<BrowserElementAnnotation>
   removeAnnotation: (input: { id: string; conversationId: string; projectPath: string }) => Promise<boolean>

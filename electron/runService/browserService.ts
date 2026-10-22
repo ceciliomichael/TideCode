@@ -6,7 +6,7 @@ export type BrowserHostRequest =
       action: string
       [key: string]: unknown
     } }
-  | { operation: 'read'; projectPath: string; tabId: string; view: 'combined' | 'visual' | 'structure' | 'annotations'; offset: number; limit: number; conversationId: string | null; includeAnnotations: boolean }
+  | { operation: 'read'; projectPath: string; tabId: string; width?: number; height?: number; view: 'combined' | 'visual' | 'structure' | 'annotations'; offset: number; limit: number; conversationId: string | null; includeAnnotations: boolean }
   | { operation: 'devtools'; projectPath: string; tabId: string; input: {
       action: string
       [key: string]: unknown

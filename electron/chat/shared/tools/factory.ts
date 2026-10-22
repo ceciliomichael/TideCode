@@ -88,6 +88,7 @@ export async function createAgentToolBundle(
     const terminal = createTerminalToolSet({
       ...context,
       conversationId: input.conversationId,
+      turnId: input.turnId,
       webContents: input.webContents,
     })
     register('terminal.execute', createTerminalExecuteApi(terminal))

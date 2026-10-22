@@ -8,10 +8,8 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron'
 import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import { registerVisibleBrowserTab, isNormalAgentBrowserSession } from './agentTabs'
 import { resolveAgentBrowserTab } from './agentTabs'
-import { isBrowserDeveloperModeEnabled, setBrowserDeveloperMode } from './agentPageDiagnostics'
 import { listBrowserAnnotations, saveBrowserAnnotation, removeBrowserAnnotation } from '../history/browserAnnotations'
 import { resolveBrowserScreenshot, saveBrowserScreenshot } from './screenshots'
 import {
@@ -72,16 +70,6 @@ export function registerBrowserPageActions(
       contents: guest,
       ownerId: event.sender.id,
     })
-  })
-  ipcMain.handle('browser:getDeveloperMode', (event, projectPath: string) => {
-    requireOwner(event)
-    return isBrowserDeveloperModeEnabled(path.resolve(projectPath))
-  })
-  ipcMain.handle('browser:setDeveloperMode', (event, input) => {
-    requireOwner(event)
-    if (typeof input?.projectPath !== 'string' || !input.projectPath || input.projectPath === '__no-workspace__'
-      || typeof input?.enabled !== 'boolean') throw new Error('Invalid developer mode request.')
-    return setBrowserDeveloperMode(path.resolve(input.projectPath), input.enabled)
   })
   ipcMain.handle('browser:listAnnotations', (event, input) => {
     requireOwner(event)

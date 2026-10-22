@@ -421,13 +421,16 @@ const browserDevToolsApi: TideCodeBrowserDevToolsApi = {
 }
 
 const browserPageActionsApi: TideCodeBrowserPageActionsApi = {
+  onZoomRequest: (listener) => {
+    const wrapped = (_event: unknown, webContentsId: number, direction: 'in' | 'out') => listener(webContentsId, direction)
+    ipcRenderer.on('browser:zoomRequested', wrapped)
+    return () => ipcRenderer.off('browser:zoomRequested', wrapped)
+  },
   onAgentTabOpen: (listener) => {
     const wrapped = (_event: unknown, input: { tabId: string; projectPath: string; url: string }) => listener(input)
     ipcRenderer.on('browser:openAgentTab', wrapped)
     return () => ipcRenderer.off('browser:openAgentTab', wrapped)
   },
-  getDeveloperMode: (projectPath) => ipcRenderer.invoke('browser:getDeveloperMode', projectPath),
-  setDeveloperMode: (input) => ipcRenderer.invoke('browser:setDeveloperMode', input),
   listAnnotations: (input) => ipcRenderer.invoke('browser:listAnnotations', input),
   saveAnnotation: (input) => ipcRenderer.invoke('browser:saveAnnotation', input),
   removeAnnotation: (input) => ipcRenderer.invoke('browser:removeAnnotation', input),

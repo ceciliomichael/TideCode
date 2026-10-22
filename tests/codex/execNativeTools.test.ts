@@ -292,6 +292,18 @@ test('native list is paged, names-only and mode-aware', async () => withWorkspac
   await plan.codeModeExecutor.dispose()
 }))
 
+test('retrieving write instructions delivers the complete self-contained Markdown contract', async () => withWorkspace(async (workspaceRootPath) => {
+  const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
+  try {
+    const result = await execute(bundle, 'return await tools.available.get({ name: "tools.write" });')
+    assert.equal(result.status, 'success', result.body)
+    assert.ok((result.body ?? '').includes(getApiInstructions('write')), 'retrieval must include the complete write contract')
+    assert.match(result.body ?? '', /await tools\.write\(input:/u)
+  } finally {
+    await bundle.codeModeExecutor.dispose()
+  }
+}))
+
 test('search returns names only; exact get exposes documentation and schema', async () => withWorkspace(async (workspaceRootPath) => {
   const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
   const result = await execute(bundle, [

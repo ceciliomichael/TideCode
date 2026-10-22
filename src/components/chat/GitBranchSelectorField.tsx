@@ -325,7 +325,7 @@ export function GitBranchSelectorField({
               </button>
 
               {errorMessage ? (
-                <div className="border-t border-border p-2"><AppNoticeSurface title="Branch action failed" message={errorMessage} fallbackMessage="The branch action could not be completed. Try again." /></div>
+                <div className="border-t border-border p-2"><AppNoticeSurface operation="git.branch" title="Branch action failed" message={errorMessage} /></div>
               ) : null}
             </div>,
             document.body,
@@ -385,7 +385,7 @@ export function GitBranchSelectorField({
                   </div>
 
                   {errorMessage ? (
-                    <AppNoticeSurface title="Could not create branch" message={errorMessage} fallbackMessage="Check the branch name and try again." />
+                    <AppNoticeSurface operation="git.branchCreate" title="Could not create branch" message={errorMessage} />
                   ) : null}
 
                   <div className="flex items-center justify-end gap-2">

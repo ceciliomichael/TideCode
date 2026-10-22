@@ -198,7 +198,14 @@ export function ChatConversationSurface({
     >
       <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
         {chatMessages.error ? (
-          <div className="chat-input-shell mx-auto py-2"><AppNoticeSurface title="Conversation unavailable" message={chatMessages.error} fallbackMessage="Could not load the conversation. Try again." /></div>
+          <div className="chat-input-shell mx-auto py-2">
+            <AppNoticeSurface
+              feedback={chatMessages.errorFeedback ?? undefined}
+              title={chatMessages.errorFeedback?.title ?? 'Conversation unavailable'}
+              message={chatMessages.errorFeedback ? undefined : chatMessages.error}
+              fallbackMessage="Could not load the conversation. Try again."
+            />
+          </div>
         ) : null}
         {chatMessages.isLoading && !chatMessages.isOpeningEmptyConversation ? (
           <div className="flex flex-1 items-center justify-center px-4 text-sm text-subtle-foreground">

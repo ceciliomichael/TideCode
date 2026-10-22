@@ -301,7 +301,7 @@ export function CommitModal({
 
           {/* Error */}
           {errorMessage || localError ? (
-            <div className="mx-6 mt-2"><AppNoticeSurface title="Could not commit changes" message={errorMessage || localError} fallbackMessage="The changes could not be committed. Try again." /></div>
+            <div className="mx-6 mt-2"><AppNoticeSurface operation="git.commit" title="Could not commit changes" message={errorMessage || localError} /></div>
           ) : null}
 
           {/* Submit */}

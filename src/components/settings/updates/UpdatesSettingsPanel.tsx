@@ -254,7 +254,12 @@ export function UpdatesSettingsPanel({
           </div>
 
           {errorMessage ? (
-            <AppNoticeSurface className="mt-4" title="Update action failed" message={errorMessage} fallbackMessage="TideCode could not check for updates. Try again." />
+            <AppNoticeSurface
+              className="mt-4"
+              operation={session.downloadState === 'error' ? 'updates.download' : 'updates.check'}
+              title="Update action failed"
+              message={errorMessage}
+            />
           ) : null}
         </div>
       </SettingsSection>

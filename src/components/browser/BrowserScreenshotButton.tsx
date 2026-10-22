@@ -33,7 +33,7 @@ export function BrowserScreenshotButton({
     try {
       setScreenshot(await onCapture())
     } catch (cause) {
-      showAppError(cause, 'The screenshot could not be saved. Try again.', { title: 'Could not save screenshot' })
+      showAppError(cause, 'The screenshot could not be saved. Try again.', { operation: 'browser.screenshot' })
     } finally {
       capturingRef.current = false
       setCapturing(false)

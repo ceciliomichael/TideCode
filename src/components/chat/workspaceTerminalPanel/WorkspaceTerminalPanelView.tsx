@@ -194,6 +194,7 @@ export function WorkspaceTerminalPanelView({
       activeTerminalTab.errorMessage ? (
         <div className="border-t border-border p-2">
           <AppNoticeSurface
+            operation="terminal.start"
             title="Terminal unavailable"
             message={activeTerminalTab.errorMessage}
             fallbackMessage="The terminal session could not be started. Restart it to try again."
