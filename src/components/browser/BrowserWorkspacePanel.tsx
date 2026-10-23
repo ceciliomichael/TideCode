@@ -148,7 +148,7 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, conversatio
     <div
       ref={panelRef}
       className={isFullscreen && active
-        ? 'absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-background'
+        ? 'absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col overflow-hidden bg-background'
         : 'relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-background max-md:hidden'}
       style={isFullscreen && active
         ? undefined
