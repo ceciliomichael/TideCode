@@ -24,6 +24,7 @@ import type { GitCommitController } from '../../hooks/useGitCommit'
 import type { GitDiffSnapshotController } from '../../hooks/useGitDiffSnapshot'
 import { useWorkspaceRefactorCandidates } from '../../hooks/useWorkspaceRefactorCandidates'
 import { useIsMobileViewport } from '../../hooks/useIsMobileViewport'
+import { useBrowserUrlRequests } from './useBrowserUrlRequests'
 import { useChatMessageQueue } from './useChatMessageQueue'
 import { createQueuedComposerMessage } from './chatComposerQueue'
 import type { QueuedMessageAutoSendReason } from './chatQueueAutoSend'
@@ -312,6 +313,8 @@ synchronizeDraftFolder,
   const isBrowserOpen = !isRemoteBrowser && !isMobileViewport && workspaceViewMode === 'browser'
   const isMobileTerminalOpen = isMobileViewport && mobileSurface === 'terminal'
   const isMobileExplorerOpen = isMobileViewport && mobileSurface === 'explorer'
+  const { terminalPanelPosition, handleTerminalOpenChange } = workspaceState
+  const isRightTerminalOpen = !isMobileViewport && workspaceState.isTerminalOpen && terminalPanelPosition === 'right' && !workspaceState.isTerminalFullScreen
   const isTerminalSurfaceOpen = isMobileTerminalOpen || (
     !isMobileViewport && workspaceState.isTerminalOpen && workspaceState.isTerminalFullScreen
   )
@@ -325,6 +328,15 @@ synchronizeDraftFolder,
     })
   }, [activeWorkspacePath, isRemoteBrowser])
 
+  const { requests: browserUrlRequests, consumeRequests: consumeBrowserUrlRequests } = useBrowserUrlRequests(() => {
+    handleCloseSidePanels()
+    workspaceState.handleTerminalFullScreenChange(false)
+    if (terminalPanelPosition === 'right') {
+      handleTerminalOpenChange(false)
+    }
+    setWorkspaceViewMode('browser')
+  })
+
   const handleCloseBrowser = useCallback(() => {
     setWorkspaceViewMode('chat')
   }, [])
@@ -333,8 +345,17 @@ synchronizeDraftFolder,
   useEffect(() => {
     if (workspaceState.isExplorerOpen || interfaceController.isDiffPanelOpen || interfaceController.isSourceControlPanelOpen) {
       setWorkspaceViewMode('chat')
+      if (terminalPanelPosition === 'right') {
+        handleTerminalOpenChange(false)
+      }
     }
-  }, [workspaceState.isExplorerOpen, interfaceController.isDiffPanelOpen, interfaceController.isSourceControlPanelOpen])
+  }, [workspaceState.isExplorerOpen, interfaceController.isDiffPanelOpen, interfaceController.isSourceControlPanelOpen, terminalPanelPosition, handleTerminalOpenChange])
+
+  useEffect(() => {
+    if (workspaceState.isTerminalOpen && terminalPanelPosition === 'right') {
+      setWorkspaceViewMode('chat')
+    }
+  }, [workspaceState.isTerminalOpen, terminalPanelPosition])
 
   useEffect(() => {
     if (!isMobileViewport) return
@@ -350,11 +371,16 @@ synchronizeDraftFolder,
       return
     }
     handleCloseSidePanels()
+    if (terminalPanelPosition === 'right') {
+      handleTerminalOpenChange(false)
+    }
     setWorkspaceViewMode('browser')
   }, [
     isBrowserOpen,
     isRemoteBrowser,
     handleCloseSidePanels,
+    terminalPanelPosition,
+    handleTerminalOpenChange,
   ])
   const isQueueAutoSendBlocked =
     chatMessages.isAbortInProgress ||
@@ -476,7 +502,7 @@ synchronizeDraftFolder,
     chatPanelRef,
     chatPanelWidth,
     handleChatResizePointerDown,
-  } = useResizableChatPanel()
+  } = useResizableChatPanel(isRightTerminalOpen ? workspaceState.conversationDiffPanelWidth : 0)
 
   const {
     handleCreateConversation,
@@ -680,7 +706,12 @@ synchronizeDraftFolder,
                   workspaceState.handleToggleExplorerPanel()
                 }}
                 onToggleWorkspaceBrowser={handleToggleWorkspaceBrowser}
-                onToggleTerminalPanel={() => workspaceState.handleTerminalOpenChange(!workspaceState.isTerminalOpen)}
+                onToggleTerminalPanel={() => {
+                  if (terminalPanelPosition === 'right') {
+                    handleCloseBrowser()
+                  }
+                  handleTerminalOpenChange(!workspaceState.isTerminalOpen)
+                }}
                 removedLineCount={gitRemovedLineCount}
               />
             }
@@ -698,15 +729,21 @@ synchronizeDraftFolder,
           {/* Chat panel — fixed width when file editor is open, flex-1 when alone */}
           <div
             ref={chatPanelRef}
+            data-terminal-dock-container
             data-chat-panel
             data-fixed-width={isDesktopWorkspaceTabsPanelOpen ? 'true' : 'false'}
             className={[
-              'relative flex min-h-0 min-w-0 flex-col overflow-hidden',
+              'relative flex min-h-0 min-w-0 overflow-hidden',
+              isRightTerminalOpen ? 'flex-row' : 'flex-col',
               isDesktopWorkspaceTabsPanelOpen ? 'shrink-0' : 'flex-1',
             ].join(' ')}
             style={
               isDesktopWorkspaceTabsPanelOpen
-                ? { width: `${chatPanelWidth}px`, minWidth: `${chatPanelMinWidth}px` }
+                ? {
+                    width: `${chatPanelWidth + (isRightTerminalOpen ? workspaceState.conversationDiffPanelWidth : 0)}px`,
+                    maxWidth: isRightTerminalOpen ? `calc(100% - ${MIN_WORKSPACE_EDITOR_WIDTH}px)` : undefined,
+                    minWidth: `${chatPanelMinWidth}px`,
+                  }
                 : { minWidth: isMobileViewport ? 0 : MIN_CHAT_PANEL_WIDTH }
             }
           >
@@ -720,48 +757,65 @@ synchronizeDraftFolder,
                 className="absolute inset-y-0 right-0 z-30 w-2 translate-x-1/2 cursor-col-resize"
               />
             ) : null}
-            <ChatConversationSurface
-              activeWorkspacePath={activeWorkspacePath}
-              chatMessages={chatMessages}
-              chatModeOptions={chatModeOptions}
-              chatRuntimeConfig={chatRuntimeConfig}
-              codexUsage={codexUsage}
-              compactDisabled={isCompactionUnavailable}
-              compactionMarkers={compactionMarkers}
-              liveCompaction={liveCompaction}
-              contextUsage={contextUsage}
-              gitBranchState={gitBranchState}
-              emptyStateFolderName={emptyStateFolderName}
-              followUpBehavior={settings.followUpBehavior}
-              handleCancelEditingMessage={handleCancelEditingMessage}
-              handleCompressChat={handleCompressChat}
-              handleEditUserMessage={handleEditUserMessage}
-              handleImplementPlan={handleImplementPlan}
-              handleRevertUserMessage={handleRevertUserMessage}
-              handleSendEditedMessage={handleSendEditedMessage}
-              handleSendMainMessage={handleSendMainMessage}
-              handleTideUISend={handleTideUISend}
-              handleToolDecisionSubmit={handleToolDecisionSubmit}
-              isCompressingChat={isCompressingChat}
-              isTerminalSurfaceOpen={isTerminalSurfaceOpen}
-              messageListBoundaryRef={messageListBoundaryRef}
-              onQueueMessage={enqueueMessage}
-              onAlternateFollowUpMessage={enqueueAlternateFollowUpMessage}
-              onTerminalExecutionModeChange={interfaceController.handleTerminalExecutionModeChange}
-              queuedMessages={queuedMessages}
-              refactorCandidates={refactorCandidates}
-              refactorCandidatesLoading={refactorCandidatesLoading}
-              removeQueuedMessage={removeQueuedMessage}
-              reorderQueuedMessages={reorderQueuedMessages}
-              selectorOptions={selectorOptions}
-              sendMessageOnEnter={sendMessageOnEnter}
-              showImplementPlanButton={showImplementPlanButton}
-              showQueueBlock={showQueueBlock}
-              terminalExecutionMode={settings.terminalExecutionMode}
-              updateQueuedMessage={updateQueuedMessage}
-              workspaceState={workspaceState}
-            />
+            <div
+              data-chat-panel
+              className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+              style={{
+                display: isTerminalSurfaceOpen ? 'none' : undefined,
+                minWidth: isRightTerminalOpen ? MIN_CHAT_PANEL_WIDTH : undefined,
+              }}
+            >
+              <ChatConversationSurface
+                activeWorkspacePath={activeWorkspacePath}
+                chatMessages={chatMessages}
+                chatModeOptions={chatModeOptions}
+                chatRuntimeConfig={chatRuntimeConfig}
+                codexUsage={codexUsage}
+                compactDisabled={isCompactionUnavailable}
+                compactionMarkers={compactionMarkers}
+                liveCompaction={liveCompaction}
+                contextUsage={contextUsage}
+                gitBranchState={gitBranchState}
+                emptyStateFolderName={emptyStateFolderName}
+                followUpBehavior={settings.followUpBehavior}
+                handleCancelEditingMessage={handleCancelEditingMessage}
+                handleCompressChat={handleCompressChat}
+                handleEditUserMessage={handleEditUserMessage}
+                handleImplementPlan={handleImplementPlan}
+                handleRevertUserMessage={handleRevertUserMessage}
+                handleSendEditedMessage={handleSendEditedMessage}
+                handleSendMainMessage={handleSendMainMessage}
+                handleTideUISend={handleTideUISend}
+                handleToolDecisionSubmit={handleToolDecisionSubmit}
+                isCompressingChat={isCompressingChat}
+                isTerminalSurfaceOpen={isTerminalSurfaceOpen}
+                messageListBoundaryRef={messageListBoundaryRef}
+                onQueueMessage={enqueueMessage}
+                onAlternateFollowUpMessage={enqueueAlternateFollowUpMessage}
+                onTerminalExecutionModeChange={interfaceController.handleTerminalExecutionModeChange}
+                queuedMessages={queuedMessages}
+                refactorCandidates={refactorCandidates}
+                refactorCandidatesLoading={refactorCandidatesLoading}
+                removeQueuedMessage={removeQueuedMessage}
+                reorderQueuedMessages={reorderQueuedMessages}
+                selectorOptions={selectorOptions}
+                sendMessageOnEnter={sendMessageOnEnter}
+                showImplementPlanButton={showImplementPlanButton}
+                showQueueBlock={showQueueBlock}
+                terminalExecutionMode={settings.terminalExecutionMode}
+                updateQueuedMessage={updateQueuedMessage}
+                workspaceState={workspaceState}
+              />
+            </div>
             <WorkspaceTerminalPanel
+              position={isMobileViewport ? 'bottom' : terminalPanelPosition}
+              onPositionChange={isMobileViewport ? undefined : (position) => {
+                handleCloseBrowser()
+                workspaceState.handleTerminalPanelPositionChange(position)
+              }}
+              panelWidth={workspaceState.conversationDiffPanelWidth}
+              onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
+              onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
               autoCreateTabOnOpen={!isMobileViewport}
               isOpen={isMobileViewport ? isMobileTerminalOpen : workspaceState.isTerminalOpen}
               onClose={() => {
@@ -769,7 +823,7 @@ synchronizeDraftFolder,
                   setMobileSurface('chat')
                   return
                 }
-                workspaceState.handleTerminalOpenChange(false)
+                handleTerminalOpenChange(false)
               }}
               onHeightCommit={interfaceController.handleTerminalPanelHeightCommit}
               resolvedTheme={resolvedTheme}
@@ -795,6 +849,8 @@ synchronizeDraftFolder,
           </div>
           {!isMobileViewport ? (
             <ChatWorkspaceSidePanels
+              urlRequests={browserUrlRequests}
+              onUrlRequestsConsumed={consumeBrowserUrlRequests}
               agentTab={agentBrowserTab}
               conversationId={chatMessages.activeConversationId}
               isBrowserOpen={isBrowserOpen}

@@ -1,3 +1,4 @@
+import type { BrowserUrlRequest } from '../../types/browser'
 import { useCallback, useState } from 'react'
 import { BrowserWorkspacePanel } from '../../components/browser/BrowserWorkspacePanel'
 import { ConversationDiffPanel, type DiffPanelScope } from '../../components/chat/ConversationDiffPanel'
@@ -14,6 +15,8 @@ import type { PlanReviewComment } from '../../lib/planContracts'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 
 interface ChatWorkspaceSidePanelsProps {
+  urlRequests?: readonly BrowserUrlRequest[]
+  onUrlRequestsConsumed?: (ids: readonly string[]) => void
   agentTab?: { tabId: string; projectPath: string; url: string } | null
   conversationId: string | null
   isBrowserOpen: boolean
@@ -33,6 +36,8 @@ interface ChatWorkspaceSidePanelsProps {
 }
 
 export function ChatWorkspaceSidePanels({
+  urlRequests,
+  onUrlRequestsConsumed,
   agentTab,
   conversationId,
   isBrowserOpen,
@@ -106,6 +111,8 @@ export function ChatWorkspaceSidePanels({
         workspaceRootPath={workspaceState.activeWorkspacePath}
       />
       <BrowserWorkspacePanel
+        urlRequests={urlRequests}
+        onUrlRequestsConsumed={onUrlRequestsConsumed}
         agentTab={agentTab}
         conversationId={conversationId}
         active={isBrowserOpen}

@@ -1,3 +1,4 @@
+import { handleWorkspaceTabStripWheel } from '../ui/workspaceTabStrip'
 import { ChevronRight, ClipboardCheck, Eye, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import {
   useCallback,
@@ -6,7 +7,6 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
-  type WheelEvent as ReactWheelEvent,
 } from 'react'
 import { isMarkdownPreviewablePath } from '../../lib/markdown-preview'
 import { isDocxPreviewablePath } from '../../lib/docx-preview'
@@ -207,21 +207,6 @@ export function WorkspaceFileTabsPanel({
     event.currentTarget.setPointerCapture(pointerId)
   }
 
-  function handleTabsWheel(event: ReactWheelEvent<HTMLDivElement>) {
-    const viewport = tabsViewportRef.current
-    if (!viewport || !tabsScrollMetrics.canScroll) {
-      return
-    }
-
-    const dominantDelta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX
-    if (dominantDelta === 0) {
-      return
-    }
-
-    event.preventDefault()
-    viewport.scrollLeft += dominantDelta
-  }
-
   const openMarkdownPreviewForActiveFile =
     activeTab.kind === 'file' && isMarkdownPreviewablePath(activeTab.relativePath)
       ? () => onOpenMarkdownPreview(activeTab.relativePath)
@@ -236,8 +221,12 @@ export function WorkspaceFileTabsPanel({
       <div className="non-selectable-ui group relative h-10 border-b border-border bg-background">
         <div
           ref={tabsViewportRef}
-          onWheel={handleTabsWheel}
+          onWheel={handleWorkspaceTabStripWheel}
           className="workspace-tabs-scroll-viewport flex h-full items-stretch gap-0 overflow-x-auto overflow-y-hidden"
+          style={{
+            // Preserve the full active indicator while clipping edge separators below it.
+            clipPath: 'polygon(0 0, 100% 0, 100% 2px, calc(100% - 1px) 2px, calc(100% - 1px) 100%, 1px 100%, 1px 2px, 0 2px)',
+          }}
         >
           {tabs.map((tab) => {
             const isActive = tab.tabKey === activeTab.tabKey
@@ -255,6 +244,7 @@ export function WorkspaceFileTabsPanel({
 
             return (
               <div key={tab.tabKey} className="group relative inline-flex h-full shrink-0 items-stretch border-r border-border">
+                {isActive ? <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 bg-brand" style={{ right: -1 }} /> : null}
                 <button
                   type="button"
                   data-workspace-tab-switch="true"

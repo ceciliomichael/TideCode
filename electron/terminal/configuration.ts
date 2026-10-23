@@ -19,7 +19,6 @@ const TERMINAL_MAX_COLS = 400;
 const TERMINAL_MIN_ROWS = 6;
 const TERMINAL_MAX_ROWS = 200;
 export const MAX_TERMINAL_POLLING_MS = 5 * 60 * 1000;
-const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
 
 export interface TerminalShellSpec {
   args: string[];
@@ -260,21 +259,6 @@ export function createTerminalEnvironment(cwd: string, workspaceRootPath: string
   delete environment.ELECTRON_RUN_AS_NODE;
   const venvPath = findVenvPath(cwd, workspaceRootPath);
   return venvPath ? activateVenvInEnvironment(environment, venvPath) : environment;
-}
-
-export function parseExternalTerminalLink(rawUrl: string) {
-  const normalizedUrl = rawUrl.trim();
-  if (normalizedUrl.length === 0) throw new Error("A URL is required.");
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(normalizedUrl);
-  } catch {
-    throw new Error("Only absolute URLs are supported.");
-  }
-  if (!ALLOWED_EXTERNAL_PROTOCOLS.has(parsedUrl.protocol)) {
-    throw new Error(`Unsupported URL protocol: ${parsedUrl.protocol}`);
-  }
-  return parsedUrl.toString();
 }
 
 export function spawnResolvedTerminalShell(input: {

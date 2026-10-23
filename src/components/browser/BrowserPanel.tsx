@@ -1,3 +1,4 @@
+import type { BrowserUrlRequest } from '../../types/browser'
 import { BrowserScreenshotButton } from './BrowserScreenshotButton'
 import { BrowserZoomPopover } from './BrowserZoomPopover'
 import { AppNoticeSurface } from '../ui/AppNoticeSurface'
@@ -39,6 +40,8 @@ interface BrowserLoadFailure {
 }
 
 interface BrowserPanelProps {
+  urlRequests?: readonly BrowserUrlRequest[]
+  onUrlRequestsConsumed?: (ids: readonly string[]) => void
   agentTab?: { tabId: string; projectPath: string; url: string } | null
   conversationId: string | null
   active: boolean
@@ -590,7 +593,7 @@ function BrowserTabSession({
   )
 }
 
-export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose, projectKey, conversationId, agentTab }: BrowserPanelProps) {
+export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose, projectKey, conversationId, agentTab, urlRequests, onUrlRequestsConsumed }: BrowserPanelProps) {
   const initialTabRef = useRef<BrowserTab | null>(null)
   if (!initialTabRef.current) {
     initialTabRef.current = createBrowserTab()
@@ -626,6 +629,34 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
       privateTabIds.clear()
     }
   }, [])
+  const processingUrlRequestsRef = useRef(new Set<string>())
+  useEffect(() => {
+    for (const request of urlRequests ?? []) {
+      if (processingUrlRequestsRef.current.has(request.id)) {
+        continue
+      }
+      processingUrlRequestsRef.current.add(request.id)
+      void (async () => {
+        let tab = createBrowserTab()
+        if (request.incognito) {
+          const privateTab = await window.tidecodeBrowserPageActions.createIncognitoTab({ projectKey })
+          if (!mountedRef.current) {
+            await window.tidecodeBrowserPageActions.releaseIncognitoTab({ tabId: privateTab.tabId })
+            return
+          }
+          privateTabIdsRef.current.add(privateTab.tabId)
+          tab = createBrowserTab(privateTab)
+        }
+        tab.initialUrl = request.url
+        tab.title = new URL(request.url).hostname
+        setTabs((current) => [...current, tab])
+        setActiveTabId(tab.id)
+      })().catch(console.error).finally(() => {
+        onUrlRequestsConsumed?.([request.id])
+        processingUrlRequestsRef.current.delete(request.id)
+      })
+    }
+  }, [urlRequests, onUrlRequestsConsumed, projectKey])
   const [pageState, setPageState] = useState<BrowserPageState>({ isWebsite: false, canUsePage: false, zoomPercent: 100 })
   const { visitedSites, recordVisit, cacheFavicon } = useBrowserHistory(projectKey)
 

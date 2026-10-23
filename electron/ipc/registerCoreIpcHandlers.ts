@@ -1,3 +1,4 @@
+import { openBrowserUrl } from '../browser/openBrowserUrl'
 import { BrowserWindow, dialog, ipcMain, shell, webContents, type OpenDialogOptions } from 'electron'
 import type {
   ApiKeyProviderId,
@@ -326,8 +327,8 @@ onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>, surface
     ) => updateSkill(location, input, workspacePath),
   )
   ipcMain.handle('providers:state', async (_event, hydrate?: boolean) => getProvidersState(hydrate === true))
-  ipcMain.handle('providers:codex:addAccountOauth', async () => addCodexAccountWithOAuth((url) => shell.openExternal(url)))
-  ipcMain.handle('providers:codex:connectOauth', async () => connectCodexWithOAuth((url) => shell.openExternal(url)))
+  ipcMain.handle('providers:codex:addAccountOauth', async (event) => addCodexAccountWithOAuth(async (url) => openBrowserUrl(event.sender, url)))
+  ipcMain.handle('providers:codex:connectOauth', async (event) => connectCodexWithOAuth(async (url) => openBrowserUrl(event.sender, url)))
   ipcMain.handle('providers:codex:disconnect', async () => disconnectCodex())
   ipcMain.handle('providers:codex:removeAccount', async (_event, accountKey: string) => removeCodexAccount(accountKey))
   ipcMain.handle('providers:codex:switchAccount', async (_event, accountKey: string) => switchCodexAccount(accountKey))

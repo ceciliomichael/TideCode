@@ -3,6 +3,12 @@ export const BROWSER_ZOOM_LEVELS = [
   25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500,
 ] as const
 
+export interface BrowserUrlRequest {
+  id: string
+  url: string
+  incognito: boolean
+}
+
 export interface BrowserDevToolsTargetInput {
   webContentsId: number
 }
@@ -24,6 +30,7 @@ export interface TideCodeBrowserDevToolsApi {
 }
 
 export interface TideCodeBrowserPageActionsApi {
+  onUrlOpen: (listener: (request: BrowserUrlRequest) => void) => () => void
   onZoomRequest: (listener: (webContentsId: number, direction: 'in' | 'out') => void) => () => void
   onAgentTabOpen: (listener: (input: { tabId: string; projectPath: string; url: string }) => void) => () => void
   registerAgentTab: (input: { tabId: string; projectPath: string; webContentsId: number }) => Promise<void>

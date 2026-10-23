@@ -4,202 +4,175 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type RefObject,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import {
-  MAX_TERMINAL_PANEL_HEIGHT,
-  clampStoredTerminalPanelHeight,
-} from "../../../lib/terminalPanelSizing";
+import { MAX_TERMINAL_PANEL_HEIGHT, clampStoredTerminalPanelHeight } from "../../../lib/terminalPanelSizing";
+import { MIN_CHAT_PANEL_WIDTH } from "../../../lib/chatPanelSizing";
+import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from "../../../lib/diffPanelSizing";
+import { clampWorkspacePanelWidth } from "../../../lib/workspacePanelSizing";
 import { clampPanelHeight } from "./workspaceTerminalPanelUtils";
+import type { TerminalPanelPosition } from "./workspaceTerminalPanelTypes";
 
 interface UseWorkspaceTerminalPanelSizingArgs {
   isOpen: boolean;
-  onHeightCommit: (nextHeight: number) => void;
+  isFullScreen?: boolean;
+  position: TerminalPanelPosition;
+  onHeightCommit: (height: number) => void;
   storedHeight: number;
+  panelWidth: number;
+  onWidthChange?: (width: number) => void;
+  onWidthCommit?: (width: number) => void;
 }
 
-interface WorkspaceTerminalPanelSizingState {
-  handleResizePointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  isOpen: boolean;
-  isResizing: boolean;
-  panelHeight: number;
-  panelRef: RefObject<HTMLElement | null>;
-}
-
-export function useWorkspaceTerminalPanelSizing({
-  isOpen,
-  onHeightCommit,
-  storedHeight,
-}: UseWorkspaceTerminalPanelSizingArgs): WorkspaceTerminalPanelSizingState {
+export function useWorkspaceTerminalPanelSizing(args: UseWorkspaceTerminalPanelSizingArgs) {
+  const { isOpen, isFullScreen, position, storedHeight, panelWidth: storedWidth } = args;
   const panelRef = useRef<HTMLElement | null>(null);
-  const resizeStateRef = useRef<{
-    pointerId: number;
-    startHeight: number;
-    startY: number;
-  } | null>(null);
-  const resizeAnimationFrameRef = useRef<number | null>(null);
-  const pendingResizeHeightRef = useRef<number | null>(null);
-  const onHeightCommitRef = useRef(onHeightCommit);
-  const panelHeightRef = useRef(clampStoredTerminalPanelHeight(storedHeight));
-  const isResizingRef = useRef(false);
-  const [panelHeight, setPanelHeight] = useState(panelHeightRef.current);
+  const argsRef = useRef(args);
+  argsRef.current = args;
+  const [panelHeight, setPanelHeight] = useState(clampStoredTerminalPanelHeight(storedHeight));
+  const [panelWidth, setPanelWidth] = useState(storedWidth);
   const [isResizing, setIsResizing] = useState(false);
+  const dragRef = useRef<{
+    pointerId: number;
+    position: TerminalPanelPosition;
+    startCoordinate: number;
+    startSize: number;
+    size: number;
+  } | null>(null);
+  const frameRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    onHeightCommitRef.current = onHeightCommit;
-  }, [onHeightCommit]);
-
-  useEffect(() => {
-    panelHeightRef.current = panelHeight;
-  }, [panelHeight]);
-
-  const getMaxPanelHeight = useCallback(() => {
-    const parentHeight = panelRef.current?.parentElement?.clientHeight;
-    if (!parentHeight) {
-      return MAX_TERMINAL_PANEL_HEIGHT;
+  const clampSize = useCallback((size: number, dock: TerminalPanelPosition) => {
+    const panel = panelRef.current;
+    const parent = panel?.parentElement;
+    if (dock === "right" && panel && parent) {
+      if (parent.hasAttribute("data-terminal-dock-container") && parent.dataset.fixedWidth === "true") {
+        const chat = parent.querySelector<HTMLElement>("[data-chat-panel]");
+        const chatWidth = chat?.getBoundingClientRect().width ?? MIN_CHAT_PANEL_WIDTH;
+        const workspaceWidth = parent.parentElement?.clientWidth ?? parent.clientWidth;
+        const totalWidth = clampWorkspacePanelWidth(
+          parent,
+          size + chatWidth,
+          chatWidth + getMinDiffPanelWidth(workspaceWidth),
+          chatWidth + getMaxDiffPanelWidth(workspaceWidth),
+        );
+        return Math.max(0, totalWidth - chatWidth);
+      }
+      return clampWorkspacePanelWidth(panel, size, getMinDiffPanelWidth(parent.clientWidth), getMaxDiffPanelWidth(parent.clientWidth));
     }
-
-    return Math.min(MAX_TERMINAL_PANEL_HEIGHT, Math.floor(parentHeight * 0.78));
+    let maxHeight = MAX_TERMINAL_PANEL_HEIGHT;
+    if (parent?.clientHeight) {
+      maxHeight = Math.min(maxHeight, Math.floor(parent.clientHeight * 0.78));
+    }
+    return clampPanelHeight(size, maxHeight);
   }, []);
 
-  useEffect(() => {
-    isResizingRef.current = isResizing;
-  }, [isResizing]);
+  const applySize = useCallback((size: number, dock: TerminalPanelPosition) => {
+    if (dock === "right") {
+      setPanelWidth(size);
+      argsRef.current.onWidthChange?.(size);
+    } else {
+      setPanelHeight(size);
+    }
+  }, []);
 
   useLayoutEffect(() => {
-    if (!isOpen) {
+    const panel = panelRef.current;
+    const parent = panel?.parentElement;
+    if (!isOpen || isFullScreen || !panel || !parent) {
       return;
     }
-
-    const maxHeightLimit = getMaxPanelHeight();
-    setPanelHeight((currentValue) =>
-      clampPanelHeight(currentValue, maxHeightLimit),
-    );
-  }, [getMaxPanelHeight, isOpen]);
-
-  useLayoutEffect(() => {
-    if (isResizing) {
-      return;
+    function updateBounds() {
+      if (dragRef.current) {
+        return;
+      }
+      const current = argsRef.current;
+      const size = current.position === "right" ? current.panelWidth : current.storedHeight;
+      applySize(clampSize(size, current.position), current.position);
     }
-
-    const maxHeightLimit = getMaxPanelHeight();
-    const nextHeight = clampPanelHeight(storedHeight, maxHeightLimit);
-    panelHeightRef.current = nextHeight;
-    setPanelHeight(nextHeight);
-  }, [getMaxPanelHeight, isResizing, storedHeight]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const handleWindowResize = () => {
-      const maxHeightLimit = getMaxPanelHeight();
-      setPanelHeight((currentValue) =>
-        clampPanelHeight(currentValue, maxHeightLimit),
-      );
-    };
-
-    window.addEventListener("resize", handleWindowResize);
+    updateBounds();
+    const observer = new ResizeObserver(updateBounds);
+    observer.observe(parent);
+    window.addEventListener("resize", updateBounds);
     return () => {
-      window.removeEventListener("resize", handleWindowResize);
+      observer.disconnect();
+      window.removeEventListener("resize", updateBounds);
     };
-  }, [getMaxPanelHeight, isOpen]);
+  }, [isOpen, isFullScreen, position, storedHeight, storedWidth, applySize, clampSize]);
 
   useEffect(() => {
-    const handlePointerMove = (event: PointerEvent) => {
-      const resizeState = resizeStateRef.current;
-      if (!resizeState) {
+    function cancelFrame() {
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    }
+    function handleMove(event: PointerEvent) {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) {
         return;
       }
-
-      const maxHeightLimit = getMaxPanelHeight();
-      const nextHeight = clampPanelHeight(
-        resizeState.startHeight + (resizeState.startY - event.clientY),
-        maxHeightLimit,
-      );
-      pendingResizeHeightRef.current = nextHeight;
-      if (resizeAnimationFrameRef.current !== null) {
+      const coordinate = drag.position === "right" ? event.clientX : event.clientY;
+      drag.size = clampSize(drag.startSize + drag.startCoordinate - coordinate, drag.position);
+      if (frameRef.current !== null) {
         return;
       }
-
-      resizeAnimationFrameRef.current = window.requestAnimationFrame(() => {
-        resizeAnimationFrameRef.current = null;
-        const pendingHeight = pendingResizeHeightRef.current;
-        if (pendingHeight === null) {
-          return;
-        }
-
-        setPanelHeight(pendingHeight);
+      frameRef.current = window.requestAnimationFrame(() => {
+        frameRef.current = null;
+        applySize(drag.size, drag.position);
       });
-    };
-
-    const handlePointerUp = (event: PointerEvent) => {
-      if (resizeStateRef.current?.pointerId !== event.pointerId) {
+    }
+    function handleEnd(event: PointerEvent) {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) {
         return;
       }
-
-      let committedHeight = panelHeightRef.current;
-      if (resizeAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(resizeAnimationFrameRef.current);
-        resizeAnimationFrameRef.current = null;
-      }
-      if (pendingResizeHeightRef.current !== null) {
-        committedHeight = pendingResizeHeightRef.current;
-        setPanelHeight(committedHeight);
-      }
-      pendingResizeHeightRef.current = null;
-
-      resizeStateRef.current = null;
-      isResizingRef.current = false;
+      cancelFrame();
+      applySize(drag.size, drag.position);
+      dragRef.current = null;
       setIsResizing(false);
-      onHeightCommitRef.current(committedHeight);
+      if (drag.position === "right") {
+        argsRef.current.onWidthCommit?.(drag.size);
+      } else {
+        argsRef.current.onHeightCommit(drag.size);
+      }
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-    };
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
+    }
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
     return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-      if (resizeAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(resizeAnimationFrameRef.current);
-        resizeAnimationFrameRef.current = null;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
+      cancelFrame();
+      if (dragRef.current) {
+        dragRef.current = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
       }
-      pendingResizeHeightRef.current = null;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
     };
-  }, [getMaxPanelHeight]);
+  }, [applySize, clampSize]);
 
-  const handleResizePointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!isOpen || event.button !== 0) {
-        return;
-      }
+  function handleResizePointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!isOpen || isFullScreen || event.button !== 0) {
+      return;
+    }
+    const size = position === "right" ? panelWidth : panelHeight;
+    dragRef.current = {
+      pointerId: event.pointerId,
+      position,
+      startCoordinate: position === "right" ? event.clientX : event.clientY,
+      startSize: size,
+      size,
+    };
+    setIsResizing(true);
+    document.body.style.cursor = position === "right" ? "col-resize" : "row-resize";
+    document.body.style.userSelect = "none";
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+  }
 
-      resizeStateRef.current = {
-        pointerId: event.pointerId,
-        startHeight: panelHeight,
-        startY: event.clientY,
-      };
-      setIsResizing(true);
-      document.body.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
-      event.currentTarget.setPointerCapture(event.pointerId);
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [isOpen, panelHeight],
-  );
-
-  return {
-    handleResizePointerDown,
-    isOpen,
-    isResizing,
-    panelHeight,
-    panelRef,
-  };
+  return { handleResizePointerDown, isOpen, isResizing, panelHeight, panelWidth, panelRef };
 }

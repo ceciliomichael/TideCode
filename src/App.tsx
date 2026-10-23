@@ -19,6 +19,7 @@ const SettingsScreen = lazy(() => import('./pages/SettingsScreen'))
 export default function App() {
   const [initialLaunchRequest] = useState<TideCodeLaunchRequest | null>(() => window.tidecodeApp.getInitialLaunchRequest())
   const [activeScreen, setActiveScreen] = useState<AppScreen>(initialLaunchRequest ? 'settings' : 'chat')
+  useEffect(() => window.tidecodeBrowserPageActions?.onUrlOpen?.(() => setActiveScreen('chat')), [])
   const [settingsInitialItemId, setSettingsInitialItemId] = useState<SettingsItemId | null>(null)
   const [pendingLaunchRequest, setPendingLaunchRequest] = useState<TideCodeLaunchRequest | null>(initialLaunchRequest)
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false)

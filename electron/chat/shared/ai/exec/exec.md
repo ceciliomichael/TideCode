@@ -2,6 +2,8 @@
 
 Execute JavaScript in a fresh, isolated V8 environment. Native JavaScript functions, classes, collections, regular expressions, built-ins, async/await, and Promise chaining are supported. The only injected host authority is the documented `tools.*` registry. The environment has no Node.js globals, module loader, raw filesystem, or network APIs.
 
+The `code` field must parse as JavaScript after the outer JSON arguments are decoded. Any non-JavaScript syntax in the executable program will fail to parse before any tools run; exec does not translate other languages into JavaScript. Text passed as string data, including `payloads` values, can contain any language. Keep the distinction clear: `code` is executable JavaScript; file contents and replacement text are data.
+
 When supplying literal multiline file contents, replacement text, patches, or documents, put the exact text in the outer `exec.payloads` object and reference `payloads.<key>` from `code`. Keep the executable program focused on orchestration and pass authored source as data. Do not wrap raw multiline source in JavaScript template literals or String.raw: backticks in the source can terminate the wrapper, and `${...}` expressions can interpolate at the wrong layer. Preserve the intended file text, including its own templates, quotes, backslashes, newlines, and indentation. This does not restrict generating or transforming content programmatically.
 
 If a source-writing exec fails to parse, move its literal source into `exec.payloads` before retrying. Do not resubmit the same malformed wrapper or remove valid syntax from the destination file to make the wrapper parse.

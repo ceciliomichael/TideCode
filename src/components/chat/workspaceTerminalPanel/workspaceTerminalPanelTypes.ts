@@ -4,9 +4,16 @@ import type {
 } from "react";
 import type { ResolvedTheme } from "../../../lib/theme";
 
+export type TerminalPanelPosition = "bottom" | "right";
+
 export type TerminalTabStatus = "connecting" | "ready" | "error" | "exited";
 
 export interface WorkspaceTerminalPanelProps {
+  position?: TerminalPanelPosition;
+  onPositionChange?: (position: TerminalPanelPosition) => void;
+  panelWidth?: number;
+  onWidthChange?: (width: number) => void;
+  onWidthCommit?: (width: number) => void;
   autoCreateTabOnOpen?: boolean;
   isOpen: boolean;
   onClose: () => void;
@@ -32,6 +39,9 @@ export interface TerminalTabState {
 }
 
 export interface WorkspaceTerminalPanelState {
+  position?: TerminalPanelPosition;
+  onPositionChange?: (position: TerminalPanelPosition) => void;
+  panelWidth?: number;
   activeTerminalTab: TerminalTabState | null;
   autoCreateTabOnOpen: boolean;
   activeTerminalTabKey: string | null;

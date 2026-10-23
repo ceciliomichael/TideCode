@@ -1,5 +1,6 @@
+import { handleWorkspaceTabStripWheel, WORKSPACE_TAB_ACTIONS_CLASS_NAME } from '../../ui/workspaceTabStrip';
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { LoaderCircle, Plus, X, Maximize, Minimize, RotateCw } from "lucide-react";
+import { LoaderCircle, Plus, X, Maximize, Minimize, RotateCw, PanelRight, PanelBottom } from "lucide-react";
 import { Tooltip } from "../../Tooltip";
 import { AppNoticeSurface } from "../../ui/AppNoticeSurface";
 import type { WorkspaceTerminalPanelState } from "./workspaceTerminalPanelTypes";
@@ -12,6 +13,14 @@ interface WorkspaceTerminalPanelViewProps {
 export function WorkspaceTerminalPanelView({
   panelState,
 }: WorkspaceTerminalPanelViewProps) {
+  const isRight = panelState.position === "right";
+  const moveLabel = isRight ? "Move panel bottom" : "Move panel right";
+  let panelBorderClass = "border-t border-border";
+  if (panelState.isFullScreen) {
+    panelBorderClass = "border-0";
+  } else if (isRight) {
+    panelBorderClass = "border-l border-border";
+  }
   const activeTerminalTab = panelState.activeTerminalTab;
   const { draggedTabKey, dragOverTabKey, dropPosition, getTabDragHandlers } =
     useWorkspaceTerminalTabDragDrop({
@@ -42,13 +51,14 @@ export function WorkspaceTerminalPanelView({
     <section
       ref={panelState.panelRef}
       className={[
-        "non-selectable-ui relative flex min-h-0 w-full shrink-0 self-stretch flex-col overflow-hidden bg-[var(--workspace-panel-surface)]",
-        panelState.isFullScreen ? "border-t-0" : "border-t border-border",
+        "non-selectable-ui relative flex min-h-0 min-w-0 shrink-0 self-stretch flex-col overflow-hidden bg-[var(--workspace-panel-surface)]",
+        panelBorderClass,
       ].join(" ")}
       style={{
-        borderTopColor: panelState.isOpen && !panelState.isFullScreen ? "var(--color-border)" : "transparent",
-        height: panelState.isOpen ? (panelState.isFullScreen ? "100%" : panelState.panelHeight) : 0,
-        flex: panelState.isOpen && panelState.isFullScreen ? 1 : "none",
+        display: panelState.isOpen ? undefined : "none",
+        width: isRight && !panelState.isFullScreen ? panelState.panelWidth : "100%",
+        height: isRight || panelState.isFullScreen ? "100%" : panelState.panelHeight,
+        flex: panelState.isFullScreen ? 1 : "none",
       }}
     >
       {!panelState.isFullScreen ? (
@@ -57,19 +67,14 @@ export function WorkspaceTerminalPanelView({
           aria-label="Resize terminal panel"
           onPointerDown={panelState.handleResizePointerDown}
           className={[
-            "absolute left-0 right-0 top-0 z-20 h-2",
-            panelState.isOpen ? "cursor-row-resize" : "cursor-default",
+            "absolute left-0 top-0 z-20",
+            isRight ? "bottom-0 w-2 cursor-col-resize" : "right-0 h-2 cursor-row-resize",
           ].join(" ")}
         />
       ) : null}
-      <div
-        className={[
-          "flex h-10 shrink-0 items-stretch border-border bg-background",
-          panelState.isFullScreen ? "border-b" : "border-y",
-        ].join(" ")}
-      >
+      <div className="flex h-10 shrink-0 items-stretch border-b border-border bg-background">
         <div className="flex min-w-0 flex-1 items-stretch overflow-hidden">
-          <div className="workspace-tabs-scroll-viewport flex min-w-0 flex-1 items-stretch gap-0 overflow-x-auto overflow-y-hidden">
+          <div onWheel={handleWorkspaceTabStripWheel} className="workspace-tabs-scroll-viewport flex min-w-0 flex-1 items-stretch gap-0 overflow-x-auto overflow-y-hidden">
             {panelState.terminalTabs.map((tab) => {
               const isActive = tab.key === panelState.activeTerminalTabKey;
               const isDragging = draggedTabKey === tab.key;
@@ -126,7 +131,7 @@ export function WorkspaceTerminalPanelView({
             })}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1 border-l border-border px-2">
+        <div data-terminal-tab-actions className={WORKSPACE_TAB_ACTIONS_CLASS_NAME}>
           <Tooltip content="Restart active terminal" side="bottom" noWrap>
             <button
               type="button"
@@ -163,6 +168,18 @@ export function WorkspaceTerminalPanelView({
                 aria-label={panelState.isFullScreen ? "Exit full screen" : "Full screen"}
               >
                 {panelState.isFullScreen ? <Minimize size={14} /> : <Maximize size={14} />}
+              </button>
+            </Tooltip>
+          ) : null}
+          {panelState.onPositionChange ? (
+            <Tooltip content={moveLabel} side="bottom" noWrap>
+              <button
+                type="button"
+                aria-label={moveLabel}
+                onClick={() => panelState.onPositionChange?.(isRight ? "bottom" : "right")}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:rounded-xl hover:bg-surface-muted hover:text-foreground"
+              >
+                {isRight ? <PanelBottom size={14} /> : <PanelRight size={14} />}
               </button>
             </Tooltip>
           ) : null}

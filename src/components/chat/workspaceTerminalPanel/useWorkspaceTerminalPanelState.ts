@@ -6,6 +6,11 @@ import { useWorkspaceTerminalPanelSizing } from "./useWorkspaceTerminalPanelSizi
 import { useWorkspaceTerminalSessionState } from "./useWorkspaceTerminalSessionState";
 
 export function useWorkspaceTerminalPanelState({
+  position = "bottom",
+  onPositionChange,
+  panelWidth = 448,
+  onWidthChange,
+  onWidthCommit,
   autoCreateTabOnOpen = false,
   isOpen,
   onClose,
@@ -18,6 +23,11 @@ export function useWorkspaceTerminalPanelState({
   onFullScreenChange,
 }: WorkspaceTerminalPanelProps): WorkspaceTerminalPanelState {
   const sizingState = useWorkspaceTerminalPanelSizing({
+    position,
+    panelWidth,
+    onWidthChange,
+    onWidthCommit,
+    isFullScreen,
     isOpen,
     onHeightCommit,
     storedHeight,
@@ -33,6 +43,9 @@ export function useWorkspaceTerminalPanelState({
   });
 
   return {
+    position,
+    onPositionChange,
+    panelWidth: sizingState.panelWidth,
     activeTerminalTab: sessionState.activeTerminalTab,
     autoCreateTabOnOpen,
     activeTerminalTabKey: sessionState.activeTerminalTabKey,

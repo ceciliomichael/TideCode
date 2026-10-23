@@ -69,6 +69,7 @@ export function useChatWorkspaceUiState({
   );
   const [conversationDiffPanelWidth, setConversationDiffPanelWidth] =
     useState(diffPanelWidth);
+  const [terminalPanelPosition, setTerminalPanelPosition] = useState<'bottom' | 'right'>('bottom');
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isTerminalFullScreen, setIsTerminalFullScreen] = useState(false);
   const workspaceUiSessionsRef = useRef<Record<string, WorkspaceUiSession>>({});
@@ -283,6 +284,7 @@ export function useChatWorkspaceUiState({
     setIsSidebarOpen,
     setIsTerminalFullScreen,
     setIsTerminalOpen,
+    terminalPanelPosition,
     setIsWorkspaceTabsPanelVisible,
     setWorkspaceExplorerWidth,
     settings,
@@ -368,7 +370,17 @@ export function useChatWorkspaceUiState({
     }
   }, [isSidebarOpen, onRightPanelOpenChange]);
 
+  const handleTerminalPanelPositionChange = useCallback((position: 'bottom' | 'right') => {
+    setTerminalPanelPosition(position);
+    setIsTerminalFullScreen(false);
+    if (position === 'right') {
+      handleCloseSidePanels();
+    }
+  }, [handleCloseSidePanels]);
+
   return {
+    terminalPanelPosition,
+    handleTerminalPanelPositionChange,
     handleCloseSidePanels,
     activeWorkspaceFilePath,
     activeTerminalWorkspaceKey,

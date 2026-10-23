@@ -1,7 +1,7 @@
 import { BrowserNewTabMenu } from './BrowserNewTabMenu'
 import { Bot, Globe2, Maximize, Minimize, VenetianMask, X } from 'lucide-react'
 import { useState } from 'react'
-import type { WheelEvent as ReactWheelEvent } from 'react'
+import { handleWorkspaceTabStripWheel, WORKSPACE_TAB_ACTIONS_CLASS_NAME } from '../ui/workspaceTabStrip'
 import { Tooltip } from '../Tooltip'
 import { BrowserMenu } from './BrowserMenu'
 import type {
@@ -56,24 +56,10 @@ export function BrowserTabsBar({
   onOpenDevTools,
   onChangeZoom,
 }: BrowserTabsBarProps) {
-  function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
-    const target = event.currentTarget
-    if (target.scrollWidth <= target.clientWidth) return
-
-    const delta =
-      Math.abs(event.deltaY) > Math.abs(event.deltaX)
-        ? event.deltaY
-        : event.deltaX
-    if (delta === 0) return
-
-    event.preventDefault()
-    target.scrollLeft += delta
-  }
-
   return (
     <div className="non-selectable-ui flex h-10 shrink-0 border-b border-border bg-background">
       <div
-        onWheel={handleWheel}
+        onWheel={handleWorkspaceTabStripWheel}
         className="workspace-tabs-scroll-viewport flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden"
       >
         {tabs.map((tab) => {
@@ -132,7 +118,7 @@ export function BrowserTabsBar({
 
       <div
         data-browser-tab-actions
-        className="relative z-10 -ml-px flex shrink-0 items-center gap-1 border-l border-border bg-background px-2"
+        className={WORKSPACE_TAB_ACTIONS_CLASS_NAME}
       >
         <BrowserNewTabMenu onCreateTab={onCreateTab} />
         <Tooltip

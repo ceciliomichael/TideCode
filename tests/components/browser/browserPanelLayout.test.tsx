@@ -31,6 +31,10 @@ test('Browser retains sessions, restores its sidebar, and respects chat-safe pan
         onClosed: () => () => {}, onShortcut: () => () => {},
         close: async () => true, setVisible: async () => true,
       }
+      window.tidecodeBrowserPageActions = {
+        onZoomRequest: () => () => {}, registerAgentTab: async () => {},
+        onAgentTabTermination: () => () => {},
+      }
       function OtherPanel({ mode, width, setWidth }) {
         const explorer = useWorkspaceExplorerResize({ isOpen: mode === 'explorer', presentation: 'desktop', width, onWidthChange: setWidth, onWidthCommit: setWidth })
         const source = useSourceControlPanelSizing({ isOpen: mode === 'source', width, onWidthChange: setWidth, onWidthCommit: setWidth, isHistorySectionOpen: false, shouldUseSplitLayout: false })
@@ -159,6 +163,7 @@ test('Browser retains sessions, restores its sidebar, and respects chat-safe pan
           assert.equal(newTab.height, 28)
           assert.equal(newTab.y, fullscreen.y, 'header actions are aligned')
           await click('[aria-label="New browser tab"]')
+          assert.equal((await box('[aria-label="New browser tab options"]')).width, 176, 'new-tab dropdown uses the compact width')
           await click('[aria-label="New browser tab options"] button')
           assert.equal(await count('[aria-label="Close New Tab"]'), 2)
           await click('[aria-label="Fullscreen browser"]')

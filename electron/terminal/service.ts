@@ -1,13 +1,11 @@
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 import { normalizeWorkspacePath } from "../workspace/paths";
 import { detectVenvInfo } from "../python/venv";
-import { openExternalWithElectronShell } from "../runtime/electronShell";
 import type {
   CloseTerminalSessionInput,
   CreateTerminalSessionInput,
   CreateTerminalSessionResult,
   TerminalSessionOutputInput,
-  OpenExternalTerminalLinkInput,
   ResizeTerminalSessionInput,
   TerminalDataEvent,
   TerminalExitEvent,
@@ -19,7 +17,6 @@ import {
   clampTerminalPollingMs,
   clampTerminalRows,
   createTerminalEnvironment,
-  parseExternalTerminalLink,
   resolveTerminalCwd,
   resolveTerminalWorkspaceRootPath,
   spawnResolvedTerminalShell,
@@ -455,13 +452,6 @@ export async function terminateAiSessionsForTurnForWebContents(
   workspaceRootPath: string,
 ) {
   await terminateAiSessionsForTurn(sender.id, aiTurnId, workspaceRootPath);
-}
-
-export async function openExternalTerminalLink(
-  input: OpenExternalTerminalLinkInput,
-) {
-  const safeUrl = parseExternalTerminalLink(input.url);
-  await openExternalWithElectronShell(safeUrl);
 }
 
 export async function closeAllTerminalSessionsForWebContents(sender: WebContents) {

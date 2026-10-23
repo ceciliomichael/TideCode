@@ -265,3 +265,56 @@ test('the history hook saves a decoded PNG and reopens it without loading the we
     }
   }
 })
+
+
+test('URL requests create ordinary and private tabs once without replacing existing tabs', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const consumed: string[] = []
+  let privateRequests = 0
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      localStorage: { getItem: () => null },
+      tidecodeBrowserPageActions: {
+        createIncognitoTab: async () => {
+          privateRequests += 1
+          return { tabId: 'private-tab', partition: 'private-partition' }
+        },
+        releaseIncognitoTab: async () => {},
+      },
+    },
+  })
+  try {
+    const harness = createHookHarness()
+    const requests = [
+      { id: 'normal', url: 'https://example.com/path', incognito: false },
+      { id: 'private', url: 'http://localhost:3000/', incognito: true },
+    ]
+    const renderPanel = () => harness.render(() => harness.components.BrowserPanel({
+      active: true, onClose: () => {}, projectKey: 'url-test',
+      urlRequests: requests, onUrlRequestsConsumed: (ids) => consumed.push(...ids),
+    }))
+    renderPanel()
+    harness.flushEffects()
+    // A second effect pass while private-tab creation is pending must not duplicate it.
+    renderPanel()
+    harness.flushEffects()
+    await new Promise((resolve) => setImmediate(resolve))
+    const bar = renderPanel().props.children[0].props
+    assert.equal(bar.tabs.length, 3)
+    assert.equal(bar.tabs[1].initialUrl, requests[0].url)
+    assert.equal(bar.tabs[1].aiOwned, undefined)
+    assert.equal(bar.tabs[2].initialUrl, requests[1].url)
+    assert.equal(bar.tabs[2].incognito, true)
+    assert.equal(bar.tabs[2].partition, 'private-partition')
+    assert.equal(bar.activeTabId, 'private-tab')
+    assert.equal(privateRequests, 1)
+    assert.deepEqual(consumed.sort(), ['normal', 'private'])
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(globalThis, 'window', descriptor)
+    } else {
+      Reflect.deleteProperty(globalThis, 'window')
+    }
+  }
+})

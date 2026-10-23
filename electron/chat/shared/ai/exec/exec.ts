@@ -11,7 +11,7 @@ const EXEC_INPUT_SCHEMA = {
     code: {
       type: 'string',
       minLength: 1,
-      description: 'A JavaScript program executed in an isolated V8 runtime, with host access through documented tools.* APIs.',
+      description: 'Must be valid JavaScript after JSON decoding. Any non-JavaScript syntax in the executable program will fail to parse before any tools run. Executed in an isolated V8 runtime, with host access through documented tools.* APIs. Pass literal multiline source and replacement text as payloads; string data can contain any language.',
     },
     payloads: {
       type: 'object',

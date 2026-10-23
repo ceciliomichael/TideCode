@@ -1,9 +1,12 @@
+import type { BrowserUrlRequest } from '../../types/browser'
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { BrowserPanel } from './BrowserPanel'
 import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from '../../lib/diffPanelSizing'
 import { clampWorkspacePanelWidth } from '../../lib/workspacePanelSizing'
 
 interface BrowserWorkspacePanelProps {
+  urlRequests?: readonly BrowserUrlRequest[]
+  onUrlRequestsConsumed?: (ids: readonly string[]) => void
   agentTab?: { tabId: string; projectPath: string; url: string } | null
   conversationId: string | null
   active: boolean
@@ -16,7 +19,7 @@ interface BrowserWorkspacePanelProps {
 
 const MAX_RETAINED_SESSIONS = 2
 
-export function BrowserWorkspacePanel({ active, onClose, projectKey, conversationId, width, onWidthChange, onWidthCommit, agentTab }: BrowserWorkspacePanelProps) {
+export function BrowserWorkspacePanel({ active, onClose, projectKey, conversationId, width, onWidthChange, onWidthCommit, agentTab, urlRequests, onUrlRequestsConsumed }: BrowserWorkspacePanelProps) {
   const [projects, setProjects] = useState<string[]>([])
   const [isFullscreen, setIsFullscreen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -175,6 +178,8 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, conversatio
           aria-hidden={!(active && key === projectKey)}
         >
           <BrowserPanel
+            urlRequests={key === projectKey ? urlRequests : undefined}
+            onUrlRequestsConsumed={onUrlRequestsConsumed}
             agentTab={agentTab?.projectPath.toLowerCase() === key.toLowerCase() ? agentTab : null}
             conversationId={conversationId}
             active={active && key === projectKey}

@@ -1,4 +1,5 @@
-import { app, ipcMain, shell } from 'electron'
+import { openBrowserUrl } from '../browser/openBrowserUrl'
+import { app, ipcMain } from 'electron'
 import { getStoredSettings } from '../settings/store'
 import {
   checkForUpdates,
@@ -77,6 +78,6 @@ export function registerUpdatesIpcHandlers(getWindow: () => Electron.BrowserWind
 
     return downloadLatestUpdate(version)
   })
-  ipcMain.handle('updates:openLatestRelease', () => shell.openExternal(TIDECODE_LATEST_RELEASE_URL))
+  ipcMain.handle('updates:openLatestRelease', (event) => openBrowserUrl(event.sender, TIDECODE_LATEST_RELEASE_URL))
   ipcMain.handle('updates:restartToUpdate', () => restartToInstallUpdate())
 }

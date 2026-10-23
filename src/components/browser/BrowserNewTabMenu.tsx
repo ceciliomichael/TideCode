@@ -103,7 +103,7 @@ export function BrowserNewTabMenu({ onCreateTab }: BrowserNewTabMenuProps) {
         isOpen={open}
         onClose={close}
         matchAnchorWidth={false}
-        className="w-52 p-1"
+        className="w-44 p-1"
         onKeyDown={handleKeyDown}
       >
         <button

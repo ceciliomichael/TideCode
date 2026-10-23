@@ -421,6 +421,11 @@ const browserDevToolsApi: TideCodeBrowserDevToolsApi = {
 }
 
 const browserPageActionsApi: TideCodeBrowserPageActionsApi = {
+  onUrlOpen: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, request: Parameters<typeof listener>[0]) => listener(request)
+    ipcRenderer.on('browser:openUrl', wrapped)
+    return () => ipcRenderer.off('browser:openUrl', wrapped)
+  },
   onZoomRequest: (listener) => {
     const wrapped = (_event: unknown, webContentsId: number, direction: 'in' | 'out') => listener(webContentsId, direction)
     ipcRenderer.on('browser:zoomRequested', wrapped)

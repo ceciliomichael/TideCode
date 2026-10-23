@@ -1,10 +1,10 @@
 import {
   BrowserWindow,
   screen,
-  shell,
   type WebContents,
   type BrowserWindowConstructorOptions,
 } from 'electron'
+import { openBrowserUrl } from '../browser/openBrowserUrl'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { getStoredSettings } from '../settings/store'
@@ -250,6 +250,14 @@ export async function createApplicationWindow(input: {
     }
   })
   win.webContents.on('did-attach-webview', (_event, guestWebContents) => {
+    guestWebContents.setWindowOpenHandler(({ url }) => {
+      try {
+        openBrowserUrl(win.webContents, url, !isNormalBrowserSession(guestWebContents.session))
+      } catch {
+        // Unsupported protocols must not launch another application.
+      }
+      return { action: 'deny' }
+    })
     registerBrowserGuestZoom(guestWebContents, win)
     trackPrivateBrowserGuest(guestWebContents)
     if (isNormalBrowserSession(guestWebContents.session)) {
@@ -314,9 +322,13 @@ export async function createApplicationWindow(input: {
     win.show()
   })
 
-  // Handle external links: open in system browser instead of Electron popup
+  // Keep application links inside the workspace browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    try {
+      openBrowserUrl(win.webContents, url)
+    } catch {
+      // Keep unsupported protocols from navigating the application shell.
+    }
     return { action: 'deny' }
   })
 
@@ -326,10 +338,14 @@ export async function createApplicationWindow(input: {
       return
     }
 
-    // Prevent in-app navigation to external URLs
+    // Protect the application shell while opening web links in browser tabs.
     if (url !== activeWindow.webContents.getURL()) {
       event.preventDefault()
-      void shell.openExternal(url)
+      try {
+        openBrowserUrl(win.webContents, url)
+      } catch {
+        // Keep unsupported protocols from navigating the application shell.
+      }
     }
   })
 

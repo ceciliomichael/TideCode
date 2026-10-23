@@ -80,7 +80,7 @@ export async function getGitHubAuthStatus(): Promise<GitHubAuthStatus> {
   }
 }
 
-export async function connectGitHub(): Promise<GitHubDeviceLoginResult> {
+export async function connectGitHub(openUrl: (url: string) => Promise<void>): Promise<GitHubDeviceLoginResult> {
   if (pendingDeviceCodeRequest) {
     return pendingDeviceCodeRequest
   }
@@ -88,9 +88,9 @@ export async function connectGitHub(): Promise<GitHubDeviceLoginResult> {
   pendingDeviceCodeRequest = (async () => {
     const deviceCode = await requestGitHubDeviceCode(getGitHubAppClientId())
     pendingDeviceCode = deviceCode
-    const { clipboard, shell } = await import('electron')
+    const { clipboard } = await import('electron')
     clipboard.writeText(deviceCode.userCode)
-    await shell.openExternal(deviceCode.verificationUri)
+    await openUrl(deviceCode.verificationUri)
 
     return {
       expiresAt: deviceCode.expiresAt.toISOString(),

@@ -28,6 +28,7 @@ interface UseChatWorkspacePanelActionsInput {
   setIsSidebarOpen: UseChatWorkspaceUiStateInput["setIsSidebarOpen"];
   setIsTerminalFullScreen: Dispatch<SetStateAction<boolean>>;
   setIsTerminalOpen: Dispatch<SetStateAction<boolean>>;
+  terminalPanelPosition: 'bottom' | 'right';
   setIsWorkspaceTabsPanelVisible: Dispatch<SetStateAction<boolean>>;
   setWorkspaceExplorerWidth: Dispatch<SetStateAction<number>>;
   settings: UseChatWorkspaceUiStateInput["settings"];
@@ -51,6 +52,7 @@ export function useChatWorkspacePanelActions({
   setIsSidebarOpen,
   setIsTerminalFullScreen,
   setIsTerminalOpen,
+  terminalPanelPosition,
   setIsWorkspaceTabsPanelVisible,
   setWorkspaceExplorerWidth,
   settings,
@@ -91,8 +93,12 @@ export function useChatWorkspacePanelActions({
     );
   
     const handleTerminalOpenChange = useCallback((nextOpen: boolean) => {
+      if (nextOpen && terminalPanelPosition === 'right') {
+        setIsExplorerOpen(false);
+        onRightPanelOpenChange(false);
+      }
       setIsTerminalOpen(nextOpen);
-    }, [setIsTerminalOpen]);
+    }, [setIsTerminalOpen, terminalPanelPosition, setIsExplorerOpen, onRightPanelOpenChange]);
   
     const handleTerminalFullScreenChange = useCallback((nextFullScreen: boolean) => {
       setIsTerminalFullScreen(nextFullScreen);
@@ -149,40 +155,41 @@ export function useChatWorkspacePanelActions({
     ]);
   
     const handleToggleExplorerPanel = useCallback(() => {
-      setIsExplorerOpen((currentValue) => {
-        const nextValue = !currentValue;
-        if (!nextValue) {
-          sidebarPanelRestoreRef.current = null;
-          setIsSidebarOpen(true);
-          setIsWorkspaceTabsPanelVisible(false);
-          return nextValue;
-        }
-  
-        if (nextValue) {
-          if (isSidebarOpen) {
-            sidebarPanelRestoreRef.current = null;
-            setIsSidebarOpen(false);
-            if (workspaceFileTabCount > 0) {
-              setIsWorkspaceTabsPanelVisible(true);
-            }
-          } else if (workspaceFileTabCount > 0) {
-            setIsWorkspaceTabsPanelVisible(true);
-          }
-  
-          onRightPanelOpenChange(false);
-        }
-        return nextValue;
-      });
+      const nextOpen = !isExplorerOpen;
+      if (!nextOpen) {
+        sidebarPanelRestoreRef.current = null;
+        setIsSidebarOpen(true);
+        setIsWorkspaceTabsPanelVisible(false);
+        setIsExplorerOpen(false);
+        return;
+      }
+
+      // Replace the right terminal in this event, before Explorer can affect layout.
+      if (terminalPanelPosition === 'right') {
+        setIsTerminalOpen(false);
+      }
+      if (isSidebarOpen) {
+        sidebarPanelRestoreRef.current = null;
+        setIsSidebarOpen(false);
+      }
+      if (workspaceFileTabCount > 0) {
+        setIsWorkspaceTabsPanelVisible(true);
+      }
+      onRightPanelOpenChange(false);
+      setIsExplorerOpen(true);
     }, [
+      isExplorerOpen,
       isSidebarOpen,
       onRightPanelOpenChange,
       sidebarPanelRestoreRef,
       setIsExplorerOpen,
       setIsSidebarOpen,
+      setIsTerminalOpen,
       setIsWorkspaceTabsPanelVisible,
+      terminalPanelPosition,
       workspaceFileTabCount,
     ]);
-  
+
     const handleSidebarOpenChange = useCallback(
       (nextSidebarOpen: boolean) => {
         if (nextSidebarOpen) {

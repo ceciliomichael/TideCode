@@ -40,3 +40,36 @@ test('terminal restart keeps its header slot when connecting or empty and is ena
     assert.equal(restartButton.includes('disabled=""'), status === null || status === 'connecting')
   }
 })
+
+
+test('terminal docking changes the action and resize axis while preserving tab content', () => {
+  const noop = () => {}
+  const tab: TerminalTabState = {
+    brokerSessionId: 'running-shell', key: 'terminal-1', label: 'Running server', status: 'ready',
+    errorMessage: null, exitCode: null, sessionId: 1, workspaceRootPath: null,
+  }
+  const state: WorkspaceTerminalPanelState = {
+    activeTerminalTab: tab, activeTerminalTabKey: tab.key, terminalTabs: [tab],
+    autoCreateTabOnOpen: false, isOpen: true, isResizing: false, panelHeight: 240, panelWidth: 448,
+    panelRef: { current: null }, terminalHostRef: { current: null }, closeTerminalTab: noop,
+    clearTerminalTab: noop, restartTerminalTab: noop, handleResizePointerDown: noop, openTerminalTab: noop,
+    onClose: noop, reorderTerminalTabs: noop, selectTerminalTab: noop, onPositionChange: noop, onFullScreenChange: noop,
+  }
+  for (const position of ['bottom', 'right'] as const) {
+    const markup = renderToStaticMarkup(createElement(WorkspaceTerminalPanelView, { panelState: { ...state, position } }))
+    assert.match(markup, /Running server/u)
+    const dockingAction = markup.indexOf(`aria-label="Move panel ${position === 'right' ? 'bottom' : 'right'}"`)
+    assert(dockingAction > markup.indexOf('aria-label="New terminal tab"'), 'docking action follows the new-terminal action')
+    assert(dockingAction > markup.indexOf('aria-label="Full screen"'), 'docking action follows fullscreen at the right end')
+    assert.match(markup, /data-terminal-tab-actions="true" class="relative z-10 -ml-px[^"]*border-l/u)
+    if (position === 'right') {
+      assert.match(markup, /aria-label="Move panel bottom"/u)
+      assert.match(markup, /cursor-col-resize/u)
+      assert.match(markup, /width:448px;height:100%/u)
+    } else {
+      assert.match(markup, /aria-label="Move panel right"/u)
+      assert.match(markup, /cursor-row-resize/u)
+      assert.match(markup, /width:100%;height:240px/u)
+    }
+  }
+})

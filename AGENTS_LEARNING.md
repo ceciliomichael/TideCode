@@ -1,5 +1,7 @@
 # Durable project knowledge
 
+- On 2026-10-23 the user reverted the independent right-docked Terminal request: it should replace Browser, Diff, Source Control and Explorer in the shared right-panel area and use their shared width. Keep the Move panel right/bottom action at the far right of the terminal header.
+
 - Browser zoom controls should remain in the Browser menu and also appear in a floating panel when zoom changes. The user requested a faster auto-dismiss; the panel uses 1.5 seconds and pauses during hover/focus. Browser and New tab menus should dismiss when clicking outside, including into the embedded webpage.
 
 - On 2026-10-22 the user explicitly required AI-started terminal commands, including long-running servers and their child processes, to terminate when their chat turn ends and when the app closes. Do not treat those commands as persistent background work across turns or desktop closure.

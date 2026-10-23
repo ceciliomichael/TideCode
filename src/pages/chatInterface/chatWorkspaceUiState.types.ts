@@ -84,6 +84,8 @@ export interface ChatWorkspaceUiState {
   ) => Promise<void>;
   handleSelectWorkspaceTab: (relativePath: string) => void;
   handleSidebarOpenChange: (nextSidebarOpen: boolean) => void;
+  terminalPanelPosition: 'bottom' | 'right';
+  handleTerminalPanelPositionChange: (position: 'bottom' | 'right') => void;
   handleTerminalFullScreenChange: (nextFullScreen: boolean) => void;
   handleTerminalOpenChange: (nextOpen: boolean) => void;
   handleToggleExplorerPanel: () => void;

@@ -1,3 +1,4 @@
+import { openBrowserUrl } from '../browser/openBrowserUrl'
 
 import { BrowserWindow, ipcMain } from 'electron'
 import type {
@@ -58,9 +59,6 @@ import {
   subscribeSourceControlChanges,
   unsubscribeSourceControlChanges,
 } from '../git/sourceControlWatch'
-import {
-  openExternalTerminalLink,
-} from '../terminal/service'
 
 function getSourceControlWorkspacePath(input: GitSourceControlWatchChangesInput) {
   if (!input || typeof input.workspacePath !== 'string') {
@@ -295,8 +293,8 @@ export function registerChatGitTerminalIpcHandlers(
       workspaceRootPath: input.workspaceRootPath,
     })
   })
-  ipcMain.handle('terminal:openExternalLink', async (_event, input: OpenExternalTerminalLinkInput) =>
-    openExternalTerminalLink(input),
+  ipcMain.handle('terminal:openExternalLink', async (event, input: OpenExternalTerminalLinkInput) =>
+    openBrowserUrl(event.sender, input.url),
   )
   ipcMain.handle('git:getBranches', async (_event, workspacePath: string) => getGitBranchState(workspacePath))
   ipcMain.handle('git:sourceControl:watch', async (event, input: GitSourceControlWatchChangesInput) =>
@@ -318,7 +316,7 @@ export function registerChatGitTerminalIpcHandlers(
   )
   ipcMain.handle('git:getHistoryPage', async (_event, input: GitHistoryPageInput) => getGitHistoryPage(input))
   ipcMain.handle('git:getGitHubAuthStatus', async () => getGitHubAuthStatus())
-  ipcMain.handle('git:connectGitHub', async () => connectGitHub())
+  ipcMain.handle('git:connectGitHub', async (event) => connectGitHub(async (url) => openBrowserUrl(event.sender, url)))
   ipcMain.handle('git:completeGitHubDeviceLogin', async () => completeGitHubDeviceLogin())
   ipcMain.handle('git:discardFileChanges', async (_event, input: GitFileStageInput) => discardGitFileChanges(input))
   ipcMain.handle('git:checkoutBranch', async (_event, input: CheckoutGitBranchInput) => checkoutGitBranch(input))

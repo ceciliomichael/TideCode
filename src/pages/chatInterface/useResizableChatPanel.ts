@@ -11,7 +11,9 @@ import {
 } from "../../lib/chatPanelSizing";
 import { clampWorkspacePanelWidth } from "../../lib/workspacePanelSizing";
 
-export function useResizableChatPanel() {
+export function useResizableChatPanel(dockedPanelWidth = 0) {
+  const dockedPanelWidthRef = useRef(dockedPanelWidth);
+  dockedPanelWidthRef.current = dockedPanelWidth;
   const [chatPanelBounds, setChatPanelBounds] = useState<ChatPanelBounds>(() =>
     getChatPanelBounds(window.innerWidth),
   );
@@ -35,7 +37,9 @@ export function useResizableChatPanel() {
       return Math.min(bounds.maxWidth, Math.max(bounds.minWidth, width));
     }
     // Never compress the composer, even when a window is narrower than all panels.
-    return Math.max(bounds.minWidth, clampWorkspacePanelWidth(panel, width, bounds.minWidth, bounds.maxWidth));
+    const dockWidth = dockedPanelWidthRef.current;
+    const totalWidth = clampWorkspacePanelWidth(panel, width + dockWidth, bounds.minWidth + dockWidth, bounds.maxWidth + dockWidth);
+    return Math.max(bounds.minWidth, totalWidth - dockWidth);
   }
 
   useLayoutEffect(() => {
@@ -72,7 +76,7 @@ export function useResizableChatPanel() {
       chatResizeRafRef.current = window.requestAnimationFrame(() => {
         chatResizeRafRef.current = null;
         if (chatPanelRef.current) {
-          chatPanelRef.current.style.width = `${chatPanelWidthRef.current}px`;
+          chatPanelRef.current.style.width = `${chatPanelWidthRef.current + dockedPanelWidthRef.current}px`;
         }
       });
     }
@@ -90,7 +94,7 @@ export function useResizableChatPanel() {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       if (chatPanelRef.current) {
-        chatPanelRef.current.style.width = `${chatPanelWidthRef.current}px`;
+        chatPanelRef.current.style.width = `${chatPanelWidthRef.current + dockedPanelWidthRef.current}px`;
       }
       setChatPanelWidth(chatPanelWidthRef.current);
     }
@@ -119,7 +123,7 @@ export function useResizableChatPanel() {
     if (event.button !== 0) return;
 
     chatPanelWidthRef.current =
-      chatPanelRef.current?.offsetWidth ?? chatPanelWidth;
+      (chatPanelRef.current?.offsetWidth ?? chatPanelWidth + dockedPanelWidthRef.current) - dockedPanelWidthRef.current;
     chatResizeDragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
