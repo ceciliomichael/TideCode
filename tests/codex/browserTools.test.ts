@@ -222,3 +222,109 @@ test('diagnostic output redacts URL parameters and common secrets', () => {
   assert.doesNotMatch(text, /token=secret/)
   assert.match(text, /redacted/)
 })
+
+test('browser.interact sequences make one host call and deliver each labeled image even after a later failure', async () => {
+  const requests: unknown[] = []
+  const outputs: import('@ai-sdk/provider-utils').ToolResultOutput[] = []
+  setRunServiceBrowserHandler(async (request) => {
+    requests.push(request)
+    assert.equal(request.operation, 'sequence')
+    return {
+      data: { completed_steps: 3, failed_step: 4, error: 'Target detached', elapsed_ms: 120 },
+      captures: [
+        { step: 1, label: 'Before', started_ms: 0, completed_ms: 12, body: 'Starting state', imageBase64: Buffer.from('before-png').toString('base64') },
+        { step: 3, label: 'During', started_ms: 100, completed_ms: 115, body: 'Airborne', imageBase64: Buffer.from('during-png').toString('base64') },
+      ],
+    }
+  })
+  try {
+    const interact = createBrowserToolSet({
+      workspaceRootPath: 'C:/sequence-test', captureModelOutput: (output) => outputs.push(output),
+    })['browser.interact']
+    const steps = [
+      { action: 'read', view: 'visual', label: 'Before' },
+      { action: 'key', key: 'Space' },
+      { action: 'read', view: 'visual', label: 'During' },
+      { action: 'click', element_ref: 'el-detached' },
+    ]
+    const result = await interact.execute!({ tab_id: 'game', steps }, {} as never)
+    assert.equal(requests.length, 1)
+    assert.equal(result.status, 'error')
+    assert.match(result.body!, /Completed steps: 3\/4/)
+    assert.match(result.body!, /Stopped at step 4: Target detached/)
+    assert.match(result.body!, /Airborne/)
+    assert.equal(outputs.length, 1)
+    const output = outputs[0]
+    assert.equal(output.type, 'content')
+    if (output.type !== 'content') {
+      throw new Error('Expected image content')
+    }
+    const files = output.value.filter((item) => item.type === 'file')
+    assert.equal(files.length, 2)
+    assert.equal(files[0].filename, 'browser-game-step-1.png')
+    assert.equal(files[1].filename, 'browser-game-step-3.png')
+    assert.deepEqual(files[1].data, { type: 'data', data: Buffer.from('during-png') })
+    const labels = output.value.filter((item) => item.type === 'text').map((item) => item.text).join('\n')
+    assert.match(labels, /Before \(step 1, 0–12ms\)/)
+    assert.match(labels, /During \(step 3, 100–115ms\)/)
+    for (const invalid of [
+      { tab_id: 'game', action: 'key', key: 'Space', steps },
+      { tab_id: 'game', steps: [{ action: 'key', key: 'Space' }, { action: 'click' }] },
+    ]) {
+      const rejected = await interact.execute!(invalid, {} as never)
+      assert.equal(rejected.status, 'error')
+    }
+    assert.equal(requests.length, 1, 'invalid chains never reach the browser host')
+  } finally {
+    setRunServiceBrowserHandler(null)
+  }
+})
+
+test('Code Mode discovers and validates the sequence contract and executes it through the registered browser tool', async () => {
+  const workspaceRootPath = await mkdtemp(path.join(tmpdir(), 'tidecode-browser-sequence-'))
+  let requests = 0
+  const outputs: import('@ai-sdk/provider-utils').ToolResultOutput[] = []
+  setRunServiceBrowserHandler(async (request) => {
+    requests += 1
+    assert.equal(request.operation, 'sequence')
+    assert.equal(request.projectPath, workspaceRootPath)
+    return {
+      data: { completed_steps: 2, elapsed_ms: 30 },
+      captures: [{ step: 2, label: 'Jump', started_ms: 2, completed_ms: 30,
+        body: 'Character is airborne', imageBase64: Buffer.from('jump-png').toString('base64') }],
+    }
+  })
+  try {
+    const bundle = await createAgentToolBundle({
+      workspaceRootPath, captureModelOutput: (output) => outputs.push(output),
+    }, { chatMode: 'agent' })
+    try {
+      const outcome = await bundle.codeModeExecutor.run([
+        'await tools.available.get({ name: "tools.browser.interact" });',
+        'return await tools.browser.interact({ tab_id: "game", steps: [',
+        '  { action: "key", key: "Space" },',
+        '  { action: "read", view: "visual", label: "Jump" }',
+        '] });',
+      ].join('\n'))
+      assert.equal(outcome.status, 'success', outcome.error)
+      assert.equal(outcome.toolCalls.at(-1)?.name, 'browser.interact')
+      assert.match(outcome.toolCalls.at(-1)?.body ?? '', /Character is airborne/)
+      assert.equal(requests, 1)
+      assert.equal(outputs.length, 1)
+      for (const input of [
+        { tab_id: 'game', steps: [] },
+        { tab_id: 'game', action: 'key', key: 'Space', steps: [{ action: 'read' }] },
+        { tab_id: 'game', steps: [{ action: 'wait', duration_ms: '100' }] },
+      ]) {
+        const invalid = await bundle.codeModeExecutor.run('return await tools.browser.interact(' + JSON.stringify(input) + ');')
+        assert.equal(invalid.status, 'error')
+      }
+      assert.equal(requests, 1, 'invalid sequence contracts never dispatch a host request')
+    } finally {
+      await bundle.codeModeExecutor.dispose()
+    }
+  } finally {
+    setRunServiceBrowserHandler(null)
+    await rm(workspaceRootPath, { recursive: true, force: true })
+  }
+})

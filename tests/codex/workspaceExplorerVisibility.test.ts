@@ -5,6 +5,42 @@ import path from 'node:path'
 import test from 'node:test'
 import { listWorkspaceDirectory } from '../../electron/workspace/explorer'
 
+for (const scenario of [
+  { kind: 'directories', count: 1_001 },
+  { kind: 'files', count: 10_001 },
+] as const) {
+  test(`recursive mention listings include later folders and contents after ${scenario.count} ${scenario.kind}`, async (t) => {
+    const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-mention-listing-'))
+    t.after(async () => {
+      await fs.rm(workspaceRootPath, { force: true, recursive: true })
+    })
+
+    const earlierProjectPath = path.join(workspaceRootPath, 'a-project')
+    await fs.mkdir(earlierProjectPath)
+    await fs.mkdir(path.join(workspaceRootPath, 'learn-to-rust'))
+    await fs.writeFile(path.join(workspaceRootPath, 'learn-to-rust', 'README.md'), '# Rust\n')
+
+    for (let offset = 0; offset < scenario.count; offset += 100) {
+      const batchSize = Math.min(100, scenario.count - offset)
+      await Promise.all(Array.from({ length: batchSize }, async (_, index) => {
+        const entryPath = path.join(earlierProjectPath, `entry-${offset + index}`)
+        if (scenario.kind === 'directories') {
+          await fs.mkdir(entryPath)
+        } else {
+          await fs.writeFile(entryPath, '')
+        }
+      }))
+    }
+
+    const entries = await listWorkspaceDirectory({ workspaceRootPath, recursive: true })
+    const relativePaths = new Set(entries.map((entry) => entry.relativePath.replace(/\\/g, '/')))
+
+    assert.ok(relativePaths.has('learn-to-rust'), 'later project folder must be discoverable')
+    assert.ok(relativePaths.has('learn-to-rust/README.md'), 'later project contents must be discoverable')
+    assert.equal(entries.length, scenario.count + 3)
+  })
+}
+
 async function createWorkspaceFixture() {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-explorer-'))
 

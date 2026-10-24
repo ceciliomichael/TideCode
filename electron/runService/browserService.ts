@@ -1,7 +1,10 @@
+import type { AgentBrowserStep, BrowserSequenceCapture } from '../browser/agentPageSequence'
+
 export type BrowserHostRequest =
   | { operation: 'open'; projectPath: string; url: string; newTab?: boolean }
   | { operation: 'tabs'; projectPath: string; page: number }
   | { operation: 'terminate'; projectPath: string; tabId: string }
+  | { operation: 'sequence'; projectPath: string; tabId: string; steps: AgentBrowserStep[] }
   | { operation: 'interact'; projectPath: string; tabId: string; action: {
       action: string
       [key: string]: unknown
@@ -15,6 +18,7 @@ export type BrowserHostRequest =
 export interface BrowserHostResponse {
   data: Record<string, unknown>
   imageBase64?: string
+  captures?: BrowserSequenceCapture[]
 }
 
 type BrowserHostHandler = (request: BrowserHostRequest) => Promise<BrowserHostResponse>

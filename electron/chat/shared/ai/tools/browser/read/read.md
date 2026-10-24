@@ -24,3 +24,6 @@ Use the element_ref strings returned by this read in browser.interact. They expi
 Reported positions are viewport CSS coordinates adjusted for page scrolling and display scaling. Click and fill require element_ref. Off-screen elements retain references for automatic scrolling into view before interaction.
 
 The browser result includes the image when the selected view captures one, together with Markdown details. If a conversation is active, screenshot bytes are persisted for historical preview.
+
+
+For temporary changes such as a character jumping or a toast disappearing, use `browser.interact({ tab_id, steps: [...] })` to interleave inputs, short waits, and reads in one local call. A separate interact followed by read includes tool round-trip and viewport setup delay, so it can miss an animation. Sequence visual reads capture with the same active viewport, return labeled intermediate images, and report actual request intervals. Use this standalone read to select dimensions, obtain initial element references, or inspect stable page state.

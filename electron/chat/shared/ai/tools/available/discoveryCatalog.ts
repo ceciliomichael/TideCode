@@ -30,7 +30,7 @@ const NATIVE_SUMMARIES: Record<string, string> = {
   'tools.skill.load': 'Load skill instructions.',
   'tools.browser.open': 'Create a visible browser tab once and return its reusable tab_id.',
   'tools.browser.read': 'Inspect screenshots, DOM structure, and annotations.',
-  'tools.browser.interact': 'Click, type, fill, scroll, and navigate browser pages.',
+  'tools.browser.interact': 'Control browser pages; chain inputs, timed waits, and screenshots in one local sequence.',
   'tools.browser.tabs': 'List the project’s browser tabs.',
   'tools.browser.terminate': 'Close a browser tab.',
   'tools.browser.devtools': 'Inspect browser console, network, and performance diagnostics.',

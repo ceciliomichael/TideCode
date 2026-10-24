@@ -9,6 +9,7 @@ import { captureAgentPageInViewport, withAgentViewport } from './agentPageCaptur
 import { rememberAgentViewport, resolveAgentViewport } from './agentViewport'
 import { formatBrowserElements, readBrowserStructureInViewport } from './agentPageStructure'
 import { interactWithAgentPage, type AgentBrowserInteraction } from './agentPageInput'
+import { executeAgentBrowserSequence } from './agentPageSequence'
 import { readBrowserDiagnostics, type BrowserDiagnosticRequest } from './agentPageDiagnostics'
 import { resolveBrowserAnnotationTargets } from './agentAnnotations'
 import { formatBrowserAnnotations, listBrowserAnnotations } from '../history/browserAnnotations'
@@ -42,6 +43,11 @@ export async function executeDesktopBrowserRequest(
     const data = await withAgentBrowserTab(workspace, request.tabId, (tab) =>
       interactWithAgentPage(tab.contents, action))
     return { data }
+  }
+  if (request.operation === 'sequence') {
+    const { captures, ...data } = await withAgentBrowserTab(workspace, request.tabId, (tab) =>
+      executeAgentBrowserSequence(tab.contents, request.steps))
+    return { data, captures }
   }
   if (request.operation === 'devtools') {
     const input = request.input as BrowserDiagnosticRequest

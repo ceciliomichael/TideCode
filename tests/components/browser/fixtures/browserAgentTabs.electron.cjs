@@ -132,6 +132,64 @@ async function main() {
     const identity = await tab.contents.executeJavaScript('window.documentIdentity')
     const originalWidth = await tab.contents.executeJavaScript('innerWidth')
     assert.equal(originalWidth, 440, 'viewport override is cleared')
+    // A real transient animation must be captured before it returns to its starting position.
+    await tab.contents.executeJavaScript(`(() => {
+      const character = document.createElement('div');
+      character.id = 'jump-character';
+      character.style.cssText = 'position:fixed;left:30px;top:200px;width:40px;height:40px;background:rgb(0,255,0);z-index:1000';
+      const jump = document.createElement('button');
+      jump.textContent = 'Jump character';
+      jump.style.cssText = 'position:fixed;left:100px;top:200px;z-index:1000';
+      jump.onclick = () => character.animate([
+        {transform:'translateY(0)'},
+        {transform:'translateY(-100px)',offset:0.2},
+        {transform:'translateY(-100px)',offset:0.7},
+        {transform:'translateY(0)'}
+      ], {duration:900});
+      document.body.append(character, jump);
+    })()`)
+    const jumpStructure = await browser.readBrowserStructure(tab.contents)
+    const jumpButton = jumpStructure.elements.find((entry) => entry.name === 'Jump character')
+    assert.ok(jumpButton)
+    const sequence = await browser.executeDesktopBrowserRequest({
+      operation: 'sequence', projectPath: project, tabId: opened.tab_id,
+      steps: [
+        { action: 'read', view: 'visual', label: 'Before jump' },
+        { action: 'click', element_ref: jumpButton.ref },
+        { action: 'wait', duration_ms: 150 },
+        { action: 'read', view: 'visual', label: 'Airborne' },
+        { action: 'wait', duration_ms: 1000 },
+        { action: 'read', view: 'combined', label: 'Landed' },
+      ],
+    }, owner.webContents)
+    assert.equal(sequence.data.error, undefined, JSON.stringify(sequence.data))
+    assert.equal(sequence.data.completed_steps, 6)
+    assert.equal(sequence.captures.length, 3)
+    const characterCenters = sequence.captures.map((capture) => {
+      const png = Buffer.from(capture.imageBase64, 'base64')
+      assert.equal(png.readUInt32BE(16), 1280)
+      assert.equal(png.readUInt32BE(20), 720)
+      const pixels = nativeImage.createFromBuffer(png).toBitmap()
+      const greenRows = []
+      for (let y = 50; y < 260; y += 1) {
+        const offset = (y * 1280 + 50) * 4
+        if (pixels[offset + 1] > 190 && pixels[offset + 1] > pixels[offset] * 2 && pixels[offset + 1] > pixels[offset + 2] * 2) {
+          greenRows.push(y)
+        }
+      }
+      assert.ok(greenRows.length > 20, 'character is visible in each captured frame')
+      assert.ok(capture.completed_ms >= capture.started_ms)
+      return greenRows.reduce((sum, y) => sum + y, 0) / greenRows.length
+    })
+    assert.ok(characterCenters[0] > 200)
+    assert.ok(characterCenters[1] < 160, 'intermediate screenshot shows the character airborne')
+    assert.equal(characterCenters[2], characterCenters[0], 'final screenshot shows landing at the starting position')
+    assert.match(sequence.captures[2].body, /Jump character/)
+    assert.equal(await restoredPageWidth(owner, tab.contents), originalWidth)
+    assert.equal(await owner.webContents.executeJavaScript('document.querySelector("webview").style.cssText'), styleBefore)
+    assert.equal(await tab.contents.executeJavaScript('window.documentIdentity'), identity)
+    process.stdout.write('BROWSER_SEQUENCE_JUMP_PASS ' + JSON.stringify({ centers: characterCenters, elapsed_ms: sequence.data.elapsed_ms }) + '\n')
+    await tab.contents.executeJavaScript('document.querySelector("#jump-character").remove();Array.from(document.querySelectorAll("button")).find(node => node.textContent === "Jump character").remove()')
     process.stdout.write('BROWSER_AGENT_SCREENSHOT\n')
     assert.equal(image.readUInt32BE(16), 1280)
     assert.equal(image.readUInt32BE(20), 720)

@@ -45,7 +45,8 @@ test('real Electron browser preserves tab state and handles hidden reads, smooth
     }).finally(() => clearTimeout(timeout))
     assert.equal(exitCode, 0, 'Electron output: ' + output)
     assert.match(output, /BROWSER_AGENT_PASS/)
-    process.stdout.write(output.split('\n').filter((line) => /FIRST_HIDDEN_COMBINED_MS|ORIGINAL_PAGE_|PROTOCOL_RECOVERY_MS/.test(line)).join('\n') + '\n')
+    assert.match(output, /BROWSER_SEQUENCE_JUMP_PASS/)
+    process.stdout.write(output.split('\n').filter((line) => /FIRST_HIDDEN_COMBINED_MS|ORIGINAL_PAGE_|PROTOCOL_RECOVERY_MS|BROWSER_SEQUENCE_JUMP_PASS/.test(line)).join('\n') + '\n')
   } finally {
     await rm(directory, { force: true, recursive: true })
   }

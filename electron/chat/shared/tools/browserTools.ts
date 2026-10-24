@@ -1,5 +1,8 @@
 import { jsonSchema, tool } from 'ai'
 import type { ToolSet } from 'ai'
+import type { ToolResultOutput } from '@ai-sdk/provider-utils'
+import { validateBrowserSequence, type AgentBrowserStep, type BrowserSequenceCapture } from '../../../browser/agentPageSequence'
+import { validateBrowserInteraction, type AgentBrowserInteraction } from '../../../browser/agentPageInput'
 import type { JSONSchema7 } from '@ai-sdk/provider'
 import { storeChatImageAttachment } from '../../../history/chatAttachments'
 import { requestTideCodeBrowser } from '../../../runService/browserService'
@@ -11,8 +14,22 @@ const STRING = { type: 'string' } as const
 const TAB_ID = { type: 'string', minLength: 1 } as const
 const ACTIONS = ['click', 'fill', 'type', 'key', 'scroll', 'navigate', 'back', 'forward', 'reload'] as const
 
+const INTERACTION_PROPERTIES: Record<string, JSONSchema7> = {
+  action: { type: 'string', enum: [...ACTIONS] },
+  element_ref: { ...STRING, description: 'Required target reference for click and fill, from browser.read.' },
+  x: { type: 'number', description: 'Scroll anchor only, in viewport CSS pixels.' },
+  y: { type: 'number', description: 'Scroll anchor only, in viewport CSS pixels.' },
+  button: { type: 'string', enum: ['left', 'right', 'middle'] },
+  text: STRING,
+  key: STRING,
+  delta_x: { type: 'number' },
+  delta_y: { type: 'number' },
+  url: STRING,
+}
+
 interface BrowserToolInput {
   url: string
+  steps?: AgentBrowserStep[]
   new_tab?: boolean
   tab_id: string
   action: string
@@ -40,10 +57,11 @@ function makeTool(
   properties: Record<string, JSONSchema7>,
   required: string[],
   execute: (input: BrowserToolInput) => Promise<AgentToolExecutionResult>,
+  constraints: Pick<JSONSchema7, 'oneOf'> = {},
 ) {
   return tool({
     description: 'TideCode native browser automation.',
-    inputSchema: jsonSchema({ type: 'object', additionalProperties: false, properties, required }),
+    inputSchema: jsonSchema({ type: 'object', additionalProperties: false, properties, required, ...constraints }),
     execute: async (input) => {
       try {
         return await execute(input as BrowserToolInput)
@@ -126,27 +144,50 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
     }),
     'browser.interact': makeTool({
       tab_id: TAB_ID,
-      action: { type: 'string', enum: [...ACTIONS] },
-      element_ref: { ...STRING, description: 'Required target reference for click and fill, from browser.read.' },
-      x: { type: 'number', description: 'Scroll anchor only, in viewport CSS pixels.' },
-      y: { type: 'number', description: 'Scroll anchor only, in viewport CSS pixels.' },
-      button: { type: 'string', enum: ['left', 'right', 'middle'] },
-      text: STRING,
-      key: STRING,
-      delta_x: { type: 'number' },
-      delta_y: { type: 'number' },
-      url: STRING,
-    }, ['tab_id', 'action'], async ({ tab_id, ...action }) => {
-      if (action.action === 'click'
-        && (typeof action.element_ref !== 'string' || !action.element_ref.trim() || 'x' in action || 'y' in action)) {
-        throw new Error('Browser clicks require an element_ref and do not accept x or y.')
+      ...INTERACTION_PROPERTIES,
+      steps: {
+        type: 'array', minItems: 1, maxItems: 32,
+        description: 'Execute input, wait, and read steps locally in order, using one viewport. Use instead of action.',
+        items: {
+          type: 'object', additionalProperties: false, required: ['action'],
+          properties: {
+            ...INTERACTION_PROPERTIES,
+            action: { type: 'string', enum: [...ACTIONS, 'wait', 'read'] },
+            label: { type: 'string', maxLength: 120 },
+            duration_ms: { type: 'integer', minimum: 0, maximum: 5000 },
+            view: { type: 'string', enum: ['combined', 'visual', 'structure'] },
+            offset: { type: 'integer', minimum: 0 },
+            limit: { type: 'integer', minimum: 1, maximum: 200 },
+          },
+        },
+      },
+    }, ['tab_id'], async ({ tab_id, steps, ...action }) => {
+      if (steps !== undefined) {
+        if (Object.keys(action).length) {
+          throw new Error('Pass steps or a single action, without mixing them.')
+        }
+        validateBrowserSequence(steps)
+        const { data, captures = [] } = await requestTideCodeBrowser({
+          operation: 'sequence', projectPath: workspace, tabId: tab_id, steps,
+        })
+        const body = [
+          'Tab: ' + tab_id,
+          'Completed steps: ' + data.completed_steps + '/' + steps.length,
+          'Elapsed: ' + data.elapsed_ms + 'ms',
+          ...(data.error ? ['Stopped at step ' + data.failed_step + ': ' + data.error
+            + '\nEarlier actions were not rolled back. No actions were retried.'] : []),
+          ...captures.map((capture) => capture.label + ' (step ' + capture.step + ', '
+            + capture.started_ms + '–' + capture.completed_ms + 'ms)\n' + capture.body),
+        ].join('\n\n')
+        const presented = await presentSequenceCaptures(context, tab_id, captures, body)
+        return {
+          status: data.error ? 'error' : 'success',
+          summary: data.error ? 'Browser sequence stopped at step ' + data.failed_step : 'Executed browser sequence',
+          ...presented,
+          semantics: { tab_id, ...data },
+        }
       }
-      if ((action.action === 'fill' && (!action.element_ref || typeof action.text !== 'string'))
-        || (action.action === 'type' && typeof action.text !== 'string')
-        || (action.action === 'key' && typeof action.key !== 'string')
-        || (action.action === 'navigate' && typeof action.url !== 'string')) {
-        throw new Error('The browser interaction is missing required action parameters.')
-      }
+      validateBrowserInteraction(action as AgentBrowserInteraction)
       const { data } = await requestTideCodeBrowser({
         operation: 'interact', projectPath: workspace, tabId: tab_id, action,
       })
@@ -157,7 +198,10 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
           + '\nTitle: ' + (data.title || 'Untitled')
           + '\nLoading: ' + data.loading,
       }
-    }),
+    }, { oneOf: [
+      { required: ['action'], not: { required: ['steps'] } },
+      { required: ['steps'], not: { required: ['action'] } },
+    ] }),
     'browser.read': makeTool({
       tab_id: TAB_ID,
       width: { type: 'integer', minimum: 1, maximum: 4096, default: 1280, description: 'Viewport width in CSS pixels. Defaults to 1280.' },
@@ -235,5 +279,44 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
         semantics: { tab_id, action: action.action },
       }
     }),
+  }
+}
+
+/** Preserve every capture for model comparison; the existing disclosure previews the last image. */
+async function presentSequenceCaptures(
+  context: AgentToolContext,
+  tabId: string,
+  captures: BrowserSequenceCapture[],
+  body: string,
+): Promise<Pick<AgentToolExecutionResult, 'body' | 'resultPresentation'>> {
+  const content: Extract<ToolResultOutput, { type: 'content' }>['value'] = [{ type: 'text', text: body }]
+  let resultPresentation: AgentToolExecutionResult['resultPresentation']
+  const savedImages: string[] = []
+  for (const capture of captures) {
+    if (!capture.imageBase64) {
+      continue
+    }
+    const filename = 'browser-' + tabId + '-step-' + capture.step + '.png'
+    content.push(
+      { type: 'text', text: capture.label + ' (step ' + capture.step + ', '
+        + capture.started_ms + '–' + capture.completed_ms + 'ms)\n' + capture.body },
+      { type: 'file', data: { type: 'data', data: Buffer.from(capture.imageBase64, 'base64') }, filename, mediaType: 'image/png' },
+    )
+    if (context.conversationId) {
+      const saved = await storeChatImageAttachment({
+        conversationId: context.conversationId,
+        dataUrl: 'data:image/png;base64,' + capture.imageBase64,
+        fileName: filename,
+      })
+      savedImages.push(capture.label + ': ' + saved.path)
+      resultPresentation = { kind: 'image', fileName: saved.fileName, mediaType: 'image/png', relativePath: saved.path }
+    }
+  }
+  if (captures.some((capture) => capture.imageBase64)) {
+    context.captureModelOutput?.({ type: 'content', value: content })
+  }
+  return {
+    body: body + (savedImages.length ? '\n\nSaved captures:\n' + savedImages.join('\n') : ''),
+    ...(resultPresentation ? { resultPresentation } : {}),
   }
 }
