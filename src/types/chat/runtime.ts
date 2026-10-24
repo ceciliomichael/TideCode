@@ -1,6 +1,7 @@
 import type { ContextCompactionSettings } from '../../lib/contextCompactionSettings'
 import type {
   ChatMode,
+  GenerationMetrics,
   Message,
   QueuedMessage,
   ToolDecisionKind,
@@ -143,6 +144,7 @@ export interface ChatCompactionDetailSection {
 }
 
 export type ChatStreamEvent =
+  | { metrics: GenerationMetrics; streamId: string; type: 'generation_metrics_updated' }
   | { streamId: string; type: 'started' }
   | {
       conversationId: string

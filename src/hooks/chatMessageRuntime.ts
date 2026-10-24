@@ -2,6 +2,7 @@ import type {
   AppTerminalExecutionMode,
   ChatMode,
   ChatProviderId,
+  GenerationMetrics,
   Message,
   ReasoningEffort,
   ToolDecisionRequest,
@@ -35,6 +36,7 @@ interface StreamAssistantResponseInput {
   modelId: string
   processStreamEvents?: boolean
   onContentDelta: (delta: string) => void
+  onGenerationMetrics?: (metrics: GenerationMetrics) => void
   onReasoningCompleted: () => void
   onReasoningDelta: (delta: string) => void
   onCompactionCommitted: () => void
@@ -143,6 +145,12 @@ export async function streamAssistantResponse(
     }
 
     const handleStreamEvent = (event: Parameters<Parameters<typeof window.tidecodeChat.onStreamEvent>[0]>[0]) => {
+      if (event.type === 'generation_metrics_updated') {
+        if (input.processStreamEvents !== false) {
+          input.onGenerationMetrics?.(event.metrics)
+        }
+        return
+      }
       if (event.type === 'content_delta') {
         hadMeaningfulOutput ||= event.delta.trim().length > 0
         if (input.processStreamEvents === false) return

@@ -1,6 +1,4 @@
-import type { BrowserUrlRequest } from '../../types/browser'
 import { useCallback, useState } from 'react'
-import { BrowserWorkspacePanel } from '../../components/browser/BrowserWorkspacePanel'
 import { ConversationDiffPanel, type DiffPanelScope } from '../../components/chat/ConversationDiffPanel'
 import { DiscardChangesDialog } from '../../components/git/DiscardChangesDialog'
 import { SourceControlPanel } from '../../components/sourceControl/SourceControlPanel'
@@ -15,12 +13,7 @@ import type { PlanReviewComment } from '../../lib/planContracts'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 
 interface ChatWorkspaceSidePanelsProps {
-  urlRequests?: readonly BrowserUrlRequest[]
-  onUrlRequestsConsumed?: (ids: readonly string[]) => void
-  agentTab?: { tabId: string; projectPath: string; url: string } | null
-  conversationId: string | null
   isBrowserOpen: boolean
-  onCloseBrowser: () => void
   diffPanelExpandedFilePaths: readonly string[]
   gitCommitModelSelection: GitCommitModelSelection
   diffPanelSelectedScope: DiffPanelScope
@@ -36,12 +29,7 @@ interface ChatWorkspaceSidePanelsProps {
 }
 
 export function ChatWorkspaceSidePanels({
-  urlRequests,
-  onUrlRequestsConsumed,
-  agentTab,
-  conversationId,
   isBrowserOpen,
-  onCloseBrowser,
   diffPanelExpandedFilePaths,
   gitCommitModelSelection,
   diffPanelSelectedScope,
@@ -109,18 +97,6 @@ export function ChatWorkspaceSidePanels({
         onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
         width={workspaceState.conversationDiffPanelWidth}
         workspaceRootPath={workspaceState.activeWorkspacePath}
-      />
-      <BrowserWorkspacePanel
-        urlRequests={urlRequests}
-        onUrlRequestsConsumed={onUrlRequestsConsumed}
-        agentTab={agentTab}
-        conversationId={conversationId}
-        active={isBrowserOpen}
-        onClose={onCloseBrowser}
-        projectKey={workspaceState.activeWorkspacePath ?? '__no-workspace__'}
-        width={workspaceState.conversationDiffPanelWidth}
-        onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
-        onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
       />
       {!isBrowserOpen && interfaceController.isDiffPanelOpen ? (
         <ConversationDiffPanel

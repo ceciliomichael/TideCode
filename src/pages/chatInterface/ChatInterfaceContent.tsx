@@ -43,6 +43,7 @@ import { resolveTaskModelSelection } from '../../lib/taskModelSelection'
 import { resolveFollowUpBehaviorForAction } from '../../lib/appSettings'
 import { ChatWorkspaceHeaderControls } from './ChatWorkspaceHeaderControls'
 import { ChatWorkspaceSidePanels } from './ChatWorkspaceSidePanels'
+import { BrowserWorkspacePanel } from '../../components/browser/BrowserWorkspacePanel'
 import { useResizableChatPanel } from './useResizableChatPanel'
 import { ChatConversationSurface } from './ChatConversationSurface'
 import { useChatMessageActions } from './useChatMessageActions'
@@ -307,10 +308,13 @@ synchronizeDraftFolder,
   const [isCompressingChat, setIsCompressingChat] = useState(false)
   const isMobileViewport = useIsMobileViewport()
   const [workspaceViewMode, setWorkspaceViewMode] = useState<ChatWorkspaceViewMode>('chat')
+  const [browserPlacement, setBrowserPlacement] = useState<'main' | 'side'>('side')
   const [agentBrowserTab, setAgentBrowserTab] = useState<{ tabId: string; projectPath: string; url: string } | null>(null)
   const [mobileSurface, setMobileSurface] = useState<MobileWorkspaceSurface>('chat')
   const isRemoteBrowser = isRemoteBrowserRuntime()
   const isBrowserOpen = !isRemoteBrowser && !isMobileViewport && workspaceViewMode === 'browser'
+  const isBrowserInMainPanel = isBrowserOpen && browserPlacement === 'main'
+  const isBrowserInSidePanel = isBrowserOpen && browserPlacement === 'side'
   const isMobileTerminalOpen = isMobileViewport && mobileSurface === 'terminal'
   const isMobileExplorerOpen = isMobileViewport && mobileSurface === 'explorer'
   const { terminalPanelPosition, handleTerminalOpenChange } = workspaceState
@@ -329,9 +333,11 @@ synchronizeDraftFolder,
   }, [activeWorkspacePath, isRemoteBrowser])
 
   const { requests: browserUrlRequests, consumeRequests: consumeBrowserUrlRequests } = useBrowserUrlRequests(() => {
-    handleCloseSidePanels()
+    if (browserPlacement === 'side') {
+      handleCloseSidePanels()
+    }
     workspaceState.handleTerminalFullScreenChange(false)
-    if (terminalPanelPosition === 'right') {
+    if (browserPlacement === 'side' && terminalPanelPosition === 'right') {
       handleTerminalOpenChange(false)
     }
     setWorkspaceViewMode('browser')
@@ -341,21 +347,39 @@ synchronizeDraftFolder,
     setWorkspaceViewMode('chat')
   }, [])
 
+  const handleCloseSideBrowser = useCallback(() => {
+    if (browserPlacement === 'side') {
+      setWorkspaceViewMode('chat')
+    }
+  }, [browserPlacement])
+
+  const handleToggleBrowserPlacement = useCallback(() => {
+    if (browserPlacement === 'main') {
+      handleCloseSidePanels()
+      if (terminalPanelPosition === 'right') {
+        handleTerminalOpenChange(false)
+      }
+      setBrowserPlacement('side')
+      return
+    }
+    setBrowserPlacement('main')
+  }, [browserPlacement, handleCloseSidePanels, terminalPanelPosition, handleTerminalOpenChange])
+
   // Panel actions also originate from keyboard shortcuts and file navigation.
   useEffect(() => {
     if (workspaceState.isExplorerOpen || interfaceController.isDiffPanelOpen || interfaceController.isSourceControlPanelOpen) {
-      setWorkspaceViewMode('chat')
+      handleCloseSideBrowser()
       if (terminalPanelPosition === 'right') {
         handleTerminalOpenChange(false)
       }
     }
-  }, [workspaceState.isExplorerOpen, interfaceController.isDiffPanelOpen, interfaceController.isSourceControlPanelOpen, terminalPanelPosition, handleTerminalOpenChange])
+  }, [workspaceState.isExplorerOpen, interfaceController.isDiffPanelOpen, interfaceController.isSourceControlPanelOpen, terminalPanelPosition, handleTerminalOpenChange, handleCloseSideBrowser])
 
   useEffect(() => {
     if (workspaceState.isTerminalOpen && terminalPanelPosition === 'right') {
-      setWorkspaceViewMode('chat')
+      handleCloseSideBrowser()
     }
-  }, [workspaceState.isTerminalOpen, terminalPanelPosition])
+  }, [workspaceState.isTerminalOpen, terminalPanelPosition, handleCloseSideBrowser])
 
   useEffect(() => {
     if (!isMobileViewport) return
@@ -370,13 +394,16 @@ synchronizeDraftFolder,
       setWorkspaceViewMode('chat')
       return
     }
-    handleCloseSidePanels()
-    if (terminalPanelPosition === 'right') {
+    if (browserPlacement === 'side') {
+      handleCloseSidePanels()
+    }
+    if (browserPlacement === 'side' && terminalPanelPosition === 'right') {
       handleTerminalOpenChange(false)
     }
     setWorkspaceViewMode('browser')
   }, [
     isBrowserOpen,
+    browserPlacement,
     isRemoteBrowser,
     handleCloseSidePanels,
     terminalPanelPosition,
@@ -502,7 +529,7 @@ synchronizeDraftFolder,
     chatPanelRef,
     chatPanelWidth,
     handleChatResizePointerDown,
-  } = useResizableChatPanel(isRightTerminalOpen ? workspaceState.conversationDiffPanelWidth : 0)
+  } = useResizableChatPanel(isRightTerminalOpen || isBrowserInSidePanel ? workspaceState.conversationDiffPanelWidth : 0)
 
   const {
     handleCreateConversation,
@@ -685,30 +712,30 @@ synchronizeDraftFolder,
               <ChatWorkspaceHeaderControls
                 addedLineCount={gitAddedLineCount}
                 hasRepository={hasRepository}
-                isDiffPanelOpen={!isBrowserOpen && interfaceController.isDiffPanelOpen}
-                isExplorerOpen={!isBrowserOpen && workspaceState.isExplorerOpen}
+                isDiffPanelOpen={!isBrowserInSidePanel && interfaceController.isDiffPanelOpen}
+                isExplorerOpen={!isBrowserInSidePanel && workspaceState.isExplorerOpen}
                 isBrowserOpen={isBrowserOpen}
-                isSourceControlPanelOpen={!isBrowserOpen && interfaceController.isSourceControlPanelOpen}
+                isSourceControlPanelOpen={!isBrowserInSidePanel && interfaceController.isSourceControlPanelOpen}
                 isSourceControlButtonDisabled={isSourceControlButtonDisabled}
                 isTerminalOpen={workspaceState.isTerminalOpen}
                 isWorkspaceRepoHeaderControlDisabled={isWorkspaceRepoHeaderControlDisabled}
                 onOpenCommitModal={interfaceController.handleOpenCommitModal}
                 onOpenDiffPanel={() => {
-                  handleCloseBrowser()
+                  handleCloseSideBrowser()
                   workspaceState.handleOpenDiffPanel()
                 }}
                 onOpenSourceControlPanel={() => {
-                  handleCloseBrowser()
+                  handleCloseSideBrowser()
                   workspaceState.handleOpenSourceControlPanel()
                 }}
                 onToggleExplorerPanel={() => {
-                  handleCloseBrowser()
+                  handleCloseSideBrowser()
                   workspaceState.handleToggleExplorerPanel()
                 }}
                 onToggleWorkspaceBrowser={handleToggleWorkspaceBrowser}
                 onToggleTerminalPanel={() => {
                   if (terminalPanelPosition === 'right') {
-                    handleCloseBrowser()
+                    handleCloseSideBrowser()
                   }
                   handleTerminalOpenChange(!workspaceState.isTerminalOpen)
                 }}
@@ -733,15 +760,15 @@ synchronizeDraftFolder,
             data-chat-panel
             data-fixed-width={isDesktopWorkspaceTabsPanelOpen ? 'true' : 'false'}
             className={[
-              'relative flex min-h-0 min-w-0 overflow-hidden',
+              'relative flex min-h-0 min-w-0 overflow-hidden has-[[data-browser-fullscreen=true]]:static',
               isRightTerminalOpen ? 'flex-row' : 'flex-col',
               isDesktopWorkspaceTabsPanelOpen ? 'shrink-0' : 'flex-1',
             ].join(' ')}
             style={
               isDesktopWorkspaceTabsPanelOpen
                 ? {
-                    width: `${chatPanelWidth + (isRightTerminalOpen ? workspaceState.conversationDiffPanelWidth : 0)}px`,
-                    maxWidth: isRightTerminalOpen ? `calc(100% - ${MIN_WORKSPACE_EDITOR_WIDTH}px)` : undefined,
+                    width: `${chatPanelWidth + (isRightTerminalOpen || isBrowserInSidePanel ? workspaceState.conversationDiffPanelWidth : 0)}px`,
+                    maxWidth: isRightTerminalOpen || isBrowserInSidePanel ? `calc(100% - ${MIN_WORKSPACE_EDITOR_WIDTH}px)` : undefined,
                     minWidth: `${chatPanelMinWidth}px`,
                   }
                 : { minWidth: isMobileViewport ? 0 : MIN_CHAT_PANEL_WIDTH }
@@ -757,60 +784,78 @@ synchronizeDraftFolder,
                 className="absolute inset-y-0 right-0 z-30 w-2 translate-x-1/2 cursor-col-resize"
               />
             ) : null}
-            <div
-              data-chat-panel
-              className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-              style={{
-                display: isTerminalSurfaceOpen ? 'none' : undefined,
-                minWidth: isRightTerminalOpen ? MIN_CHAT_PANEL_WIDTH : undefined,
-              }}
-            >
-              <ChatConversationSurface
-                activeWorkspacePath={activeWorkspacePath}
-                chatMessages={chatMessages}
-                chatModeOptions={chatModeOptions}
-                chatRuntimeConfig={chatRuntimeConfig}
-                codexUsage={codexUsage}
-                compactDisabled={isCompactionUnavailable}
-                compactionMarkers={compactionMarkers}
-                liveCompaction={liveCompaction}
-                contextUsage={contextUsage}
-                gitBranchState={gitBranchState}
-                emptyStateFolderName={emptyStateFolderName}
-                followUpBehavior={settings.followUpBehavior}
-                handleCancelEditingMessage={handleCancelEditingMessage}
-                handleCompressChat={handleCompressChat}
-                handleEditUserMessage={handleEditUserMessage}
-                handleImplementPlan={handleImplementPlan}
-                handleRevertUserMessage={handleRevertUserMessage}
-                handleSendEditedMessage={handleSendEditedMessage}
-                handleSendMainMessage={handleSendMainMessage}
-                handleTideUISend={handleTideUISend}
-                handleToolDecisionSubmit={handleToolDecisionSubmit}
-                isCompressingChat={isCompressingChat}
-                isTerminalSurfaceOpen={isTerminalSurfaceOpen}
-                messageListBoundaryRef={messageListBoundaryRef}
-                onQueueMessage={enqueueMessage}
-                onAlternateFollowUpMessage={enqueueAlternateFollowUpMessage}
-                onTerminalExecutionModeChange={interfaceController.handleTerminalExecutionModeChange}
-                queuedMessages={queuedMessages}
-                refactorCandidates={refactorCandidates}
-                refactorCandidatesLoading={refactorCandidatesLoading}
-                removeQueuedMessage={removeQueuedMessage}
-                reorderQueuedMessages={reorderQueuedMessages}
-                selectorOptions={selectorOptions}
-                sendMessageOnEnter={sendMessageOnEnter}
-                showImplementPlanButton={showImplementPlanButton}
-                showQueueBlock={showQueueBlock}
-                terminalExecutionMode={settings.terminalExecutionMode}
-                updateQueuedMessage={updateQueuedMessage}
-                workspaceState={workspaceState}
-              />
+            <div data-chat-panel className="flex min-h-0 min-w-0 flex-1 overflow-hidden" style={{ display: isTerminalSurfaceOpen ? 'none' : undefined }}>
+              <div
+                data-chat-panel
+                className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+                style={{
+                  display: isBrowserInMainPanel ? 'none' : undefined,
+                  minWidth: isRightTerminalOpen || isBrowserInSidePanel ? MIN_CHAT_PANEL_WIDTH : undefined,
+                }}
+              >
+                <ChatConversationSurface
+                  activeWorkspacePath={activeWorkspacePath}
+                  chatMessages={chatMessages}
+                  chatModeOptions={chatModeOptions}
+                  chatRuntimeConfig={chatRuntimeConfig}
+                  codexUsage={codexUsage}
+                  compactDisabled={isCompactionUnavailable}
+                  compactionMarkers={compactionMarkers}
+                  liveCompaction={liveCompaction}
+                  contextUsage={contextUsage}
+                  gitBranchState={gitBranchState}
+                  emptyStateFolderName={emptyStateFolderName}
+                  followUpBehavior={settings.followUpBehavior}
+                  handleCancelEditingMessage={handleCancelEditingMessage}
+                  handleCompressChat={handleCompressChat}
+                  handleEditUserMessage={handleEditUserMessage}
+                  handleImplementPlan={handleImplementPlan}
+                  handleRevertUserMessage={handleRevertUserMessage}
+                  handleSendEditedMessage={handleSendEditedMessage}
+                  handleSendMainMessage={handleSendMainMessage}
+                  handleTideUISend={handleTideUISend}
+                  handleToolDecisionSubmit={handleToolDecisionSubmit}
+                  isCompressingChat={isCompressingChat}
+                  isTerminalSurfaceOpen={isTerminalSurfaceOpen}
+                  messageListBoundaryRef={messageListBoundaryRef}
+                  onQueueMessage={enqueueMessage}
+                  onAlternateFollowUpMessage={enqueueAlternateFollowUpMessage}
+                  onTerminalExecutionModeChange={interfaceController.handleTerminalExecutionModeChange}
+                  queuedMessages={queuedMessages}
+                  refactorCandidates={refactorCandidates}
+                  refactorCandidatesLoading={refactorCandidatesLoading}
+                  removeQueuedMessage={removeQueuedMessage}
+                  reorderQueuedMessages={reorderQueuedMessages}
+                  selectorOptions={selectorOptions}
+                  sendMessageOnEnter={sendMessageOnEnter}
+                  showImplementPlanButton={showImplementPlanButton}
+                  showQueueBlock={showQueueBlock}
+                  terminalExecutionMode={settings.terminalExecutionMode}
+                  updateQueuedMessage={updateQueuedMessage}
+                  workspaceState={workspaceState}
+                />
+              </div>
+              {!isMobileViewport ? (
+                <BrowserWorkspacePanel
+                  urlRequests={browserUrlRequests}
+                  onUrlRequestsConsumed={consumeBrowserUrlRequests}
+                  agentTab={agentBrowserTab}
+                  conversationId={chatMessages.activeConversationId}
+                  active={isBrowserOpen && !isTerminalSurfaceOpen}
+                  isInMainPanel={browserPlacement === 'main'}
+                  onTogglePlacement={handleToggleBrowserPlacement}
+                  onClose={handleCloseBrowser}
+                  projectKey={workspaceState.activeWorkspacePath ?? '__no-workspace__'}
+                  width={workspaceState.conversationDiffPanelWidth}
+                  onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
+                  onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
+                />
+              ) : null}
             </div>
             <WorkspaceTerminalPanel
               position={isMobileViewport ? 'bottom' : terminalPanelPosition}
               onPositionChange={isMobileViewport ? undefined : (position) => {
-                handleCloseBrowser()
+                handleCloseSideBrowser()
                 workspaceState.handleTerminalPanelPositionChange(position)
               }}
               panelWidth={workspaceState.conversationDiffPanelWidth}
@@ -849,12 +894,7 @@ synchronizeDraftFolder,
           </div>
           {!isMobileViewport ? (
             <ChatWorkspaceSidePanels
-              urlRequests={browserUrlRequests}
-              onUrlRequestsConsumed={consumeBrowserUrlRequests}
-              agentTab={agentBrowserTab}
-              conversationId={chatMessages.activeConversationId}
-              isBrowserOpen={isBrowserOpen}
-              onCloseBrowser={handleCloseBrowser}
+              isBrowserOpen={isBrowserInSidePanel}
               diffPanelExpandedFilePaths={diffPanelExpandedFilePaths}
               diffPanelSelectedScope={diffPanelSelectedScope}
               gitBranchState={gitBranchState}

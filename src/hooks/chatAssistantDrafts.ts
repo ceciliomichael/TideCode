@@ -7,7 +7,7 @@ import {
 } from './chatMessageRuntime'
 import { normalizeAssistantMessageContent, splitThinkingContent } from '../lib/chatMessageContent'
 import { createTerminatedToolResultContent } from '../lib/toolResultContent'
-import type { AssistantWaitingIndicatorVariant, Message, ToolInvocationTrace } from '../types/chat'
+import type { AssistantWaitingIndicatorVariant, GenerationMetrics, Message, ToolInvocationTrace } from '../types/chat'
 import type { ConversationRuntimeStatePatch } from './chatMessageSendTypes'
 import { ToolInvocationDeltaCoalescer, type ToolInvocationDeltaValue } from './toolInvocationDeltaCoalescer'
 
@@ -197,6 +197,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
   let reasoningCompletionPending = false
   let shouldStartFreshReasoningDraft = false
   let assistantDraftCount = 0
+  let generationMetrics: GenerationMetrics | undefined
 
   const notifyConversationMessagesUpdated = (options?: { immediate?: boolean; transient?: boolean }, hint?: { deltaCharCount?: number }) => {
     input.onConversationMessagesUpdated([...conversationMessagesSnapshot], options, hint)
@@ -302,6 +303,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
 
   const appendAssistantDraft = (kind: DraftAssistantMessageKind) => {
     const draftAssistantMessage: Message = {
+      generationMetrics,
       content: '',
       id: uuidv4(),
       modelId: input.runtimeSelection.modelId,
@@ -501,6 +503,15 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
   const toolInvocationDeltaCoalescer = new ToolInvocationDeltaCoalescer(applyToolInvocationDelta)
 
   return {
+    handleGenerationMetrics(metrics: GenerationMetrics) {
+      generationMetrics = metrics
+      if (activeAssistantDraftId) {
+        updateDraftAssistantMessage(activeAssistantDraftId, (message) => ({
+          ...message,
+          generationMetrics: metrics,
+        }))
+      }
+    },
     appendPlaceholderDraft() {
       appendAssistantDraft('placeholder')
     },

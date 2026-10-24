@@ -7,7 +7,6 @@ import { getDropdownOptionStateClassName } from '../ui/dropdownOptionStyles'
 import {
   ALL_PROJECTS_FILTER_ID,
   ARCHIVED_PROJECT_FILTER_ID,
-  CHATS_PROJECT_FILTER_ID,
 } from './sidebarProjectThreads'
 
 interface SidebarHistoryFilterProps {
@@ -20,10 +19,6 @@ const historyFilters = [
   {
     id: ALL_PROJECTS_FILTER_ID,
     label: 'All projects',
-  },
-  {
-    id: CHATS_PROJECT_FILTER_ID,
-    label: 'Chats',
   },
 ] as const
 

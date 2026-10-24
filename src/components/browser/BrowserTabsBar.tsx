@@ -32,6 +32,8 @@ function BrowserTabFavicon({ faviconUrl }: { faviconUrl: string }) {
 }
 
 interface BrowserTabsBarProps {
+  isInMainPanel?: boolean
+  onTogglePlacement?: () => void
   activeTabId: string
   onCloseTab: (tabId: string) => void
   onCreateTab: (incognito: boolean) => Promise<void>
@@ -45,6 +47,8 @@ interface BrowserTabsBarProps {
 }
 
 export function BrowserTabsBar({
+  isInMainPanel,
+  onTogglePlacement,
   activeTabId,
   onCloseTab,
   onCreateTab,
@@ -141,6 +145,8 @@ export function BrowserTabsBar({
         </Tooltip>
         <BrowserMenu
           key={activeTabId}
+          isInMainPanel={isInMainPanel}
+          onTogglePlacement={onTogglePlacement}
           partition={tabs.find((tab) => tab.id === activeTabId)!.partition}
           pageState={pageState}
           onOpenDevTools={onOpenDevTools}

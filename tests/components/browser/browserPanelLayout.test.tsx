@@ -46,12 +46,14 @@ test('Browser retains sessions, restores its sidebar, and respects chat-safe pan
       }
       function Fixture() {
         const [mode, setMode] = useState('browser')
+        const [mainBrowser, setMainBrowser] = useState(false)
         const [project, setProject] = useState('a')
         const [agentTab, setAgentTab] = useState(null)
         const [width, setWidth] = useState(448)
         const [editor, setEditor] = useState(false)
         const [sidebarWidth, setSidebarWidth] = useState(336)
-        const chat = useResizableChatPanel()
+        const sideBrowser = mode === 'browser' && !mainBrowser
+        const chat = useResizableChatPanel(sideBrowser ? width : 0)
         window.fixture = { setMode, setProject, setAgentTab, setEditor, getWidth: () => width }
         return <ResizableSidebarPanel isSidebarOpen sidebar={<div />} sidebarWidth={sidebarWidth} onSidebarWidthChange={setSidebarWidth}
           getMaxResizeWidth={(current) => {
@@ -59,12 +61,17 @@ test('Browser retains sessions, restores its sidebar, and respects chat-safe pan
             return getMaxSidebarWidthForContent(current, chat.chatPanelRef.current.getBoundingClientRect().width + Math.max(0, editorWidth - 200), 512)
           }}>
           <div id="workspace" className="relative flex min-w-0 flex-1 overflow-hidden">
-            <div data-chat-panel data-fixed-width={editor ? 'true' : 'false'} ref={chat.chatPanelRef}
-              className="relative flex min-h-0 flex-col overflow-hidden" style={{ minWidth: 512, flex: editor ? 'none' : '1', width: editor ? chat.chatPanelWidth : undefined }}>
+            <div data-chat-panel data-terminal-dock-container data-fixed-width={editor ? 'true' : 'false'} ref={chat.chatPanelRef}
+              className="relative flex min-h-0 min-w-0 flex-col overflow-hidden has-[[data-browser-fullscreen=true]]:static" style={{ minWidth: 512, flex: editor ? 'none' : '1', width: editor ? chat.chatPanelWidth + (sideBrowser ? width : 0) : undefined, maxWidth: editor ? 'calc(100% - 200px)' : undefined }}>
               {editor && <div role="separator" aria-label="Resize chat panel" onPointerDown={chat.handleChatResizePointerDown} className="absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize" />}
+              <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+                <div data-chat-panel className="min-w-[512px] flex-1" style={{display: mainBrowser ? 'none' : undefined}} />
+                <BrowserWorkspacePanel agentTab={agentTab} active={mode === 'browser' || mainBrowser} isInMainPanel={mainBrowser}
+                  onTogglePlacement={() => { setMainBrowser(value => !value); setMode('browser') }}
+                  onClose={() => { setMode('none'); setMainBrowser(false) }} projectKey={project} width={width} onWidthChange={setWidth} onWidthCommit={setWidth} />
+              </div>
             </div>
             {editor && <section data-workspace-editor className="min-w-[200px] flex-1" />}
-            <BrowserWorkspacePanel agentTab={agentTab} active={mode === 'browser'} onClose={() => setMode('none')} projectKey={project} width={width} onWidthChange={setWidth} onWidthCommit={setWidth} />
             {mode === 'diff' && <ConversationDiffPanel isOpen currentBranch="main" expandedFilePaths={[]} fileDiffs={[]} onDiscardFile={async () => {}} onExpandedFilePathsChange={() => {}} onStageFile={async () => {}} onUnstageFile={async () => {}} onSelectedScopeChange={() => {}} onWidthChange={setWidth} onWidthCommit={setWidth} pendingFileActionPath={null} selectedScope="unstaged" width={width} />}
             <OtherPanel mode={mode} width={width} setWidth={setWidth} />
           </div>
@@ -168,10 +175,38 @@ test('Browser retains sessions, restores its sidebar, and respects chat-safe pan
           assert.equal(await count('[aria-label="Close New Tab"]'), 2)
           await click('[aria-label="Fullscreen browser"]')
           assert.equal(await count('[aria-label="Resize browser panel"]'), 0)
-          assert.equal(await run('getComputedStyle(document.querySelector("#workspace > [aria-hidden=false]")).borderLeftWidth'), '0px', 'fullscreen browser has no left divider')
+          assert.equal(await run('getComputedStyle(document.querySelector("[data-browser-placement]")).borderLeftWidth'), '0px', 'fullscreen browser has no left divider')
           await click('[aria-label="Exit fullscreen browser"]')
           assert.equal((await box('[aria-label="Resize browser panel"]')).x, before.x)
-          assert.equal(await run('getComputedStyle(document.querySelector("#workspace > [aria-hidden=false]")).borderLeftWidth'), '1px', 'restoring browser brings back the sidebar divider')
+          assert.equal(await run('getComputedStyle(document.querySelector("[data-browser-placement]")).borderLeftWidth'), '1px', 'restoring browser brings back the sidebar divider')
+          await run('window.retainedBrowserPanel = document.querySelector(' + JSON.stringify('[aria-label="Browser menu"]') + ').parentElement.parentElement; undefined')
+          await click('[aria-label="Browser menu"]')
+          await run('Array.from(document.querySelectorAll(' + JSON.stringify('[aria-label="Browser actions"] button') + ')).find(button => button.textContent === "Open in main panel").click()')
+          await pause()
+          assert.equal(await count('[aria-label="Browser actions"]'), 0, 'moving to main panel dismisses the menu')
+          assert.equal(await count('[aria-label="Resize browser panel"]'), 0)
+          const mainPanel = await box('[data-browser-placement="main"]')
+          const mainWorkspace = await box('#workspace')
+          assert.equal(mainPanel.width, mainWorkspace.width, 'browser fills the main workspace')
+          assert.equal(mainPanel.x, mainWorkspace.x, 'browser starts at the main workspace edge')
+          assert.equal(await count('[aria-label="Close New Tab"]'), 2, 'moving retains browser tabs')
+          for (const mode of ['explorer', 'source', 'diff']) {
+            await change('window.fixture.setMode(' + JSON.stringify(mode) + ')')
+            const browser = await box('[data-browser-placement="main"]')
+            assert.equal(await run('document.querySelector("[data-browser-placement]").getAttribute("aria-hidden")'), 'false', mode + ' keeps Browser open')
+            assert(browser.width >= 512, mode + ' preserves main panel space')
+            assert(browser.right < (await box('#workspace')).right, mode + ' occupies a separate side panel')
+            assert.equal(await count('[aria-label="Close New Tab"]'), 2)
+          }
+          await click('[aria-label="Fullscreen browser"]')
+          assert.equal((await box('[data-browser-fullscreen="true"]')).width, mainWorkspace.width, 'fullscreen remains independent from placement')
+          await click('[aria-label="Exit fullscreen browser"]')
+          await click('[aria-label="Browser menu"]')
+          await run('Array.from(document.querySelectorAll(' + JSON.stringify('[aria-label="Browser actions"] button') + ')).find(button => button.textContent === "Move to side panel").click()')
+          await pause()
+          assert.equal(await count('[aria-label="Browser actions"]'), 0, 'returning to side panel dismisses the menu')
+          assert.equal((await box('[aria-label="Resize browser panel"]')).x, before.x, 'menu restores the side panel width')
+          assert(await run('window.retainedBrowserPanel === document.querySelector(' + JSON.stringify('[aria-label="Browser menu"]') + ').parentElement.parentElement'), 'moving keeps the browser mounted')
           await change('window.fixture.setMode("diff")')
           await assertSharedWidth('diff')
           assert.equal(await count('[aria-label="Resize browser panel"]'), 0)
@@ -184,6 +219,10 @@ test('Browser retains sessions, restores its sidebar, and respects chat-safe pan
           await assertSharedWidth('browser')
           await change('window.fixture.setEditor(true)')
           await drag('[aria-label="Resize chat panel"]', -400)
+          await drag('[aria-label="Resize browser panel"]', 400)
+          const smallerBrowserWidth = await run('window.fixture.getWidth()')
+          await drag('[aria-label="Resize browser panel"]', -100)
+          assert(await run('window.fixture.getWidth()') > smallerBrowserWidth, 'side Browser can grow into available editor space')
           await drag('[aria-label="Resize chat panel"]', 300)
           await drag('[aria-label="Resize browser panel"]', -400)
           await drag('[aria-label="Resize sidebar"]', 400)

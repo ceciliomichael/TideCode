@@ -17,6 +17,8 @@ import type {
 } from './useBrowserPageActions'
 
 interface BrowserMenuProps {
+  isInMainPanel?: boolean
+  onTogglePlacement?: () => void
   partition: string
   pageState: BrowserPageState
   onOpenDevTools: BrowserPageControls['openDevTools']
@@ -27,6 +29,8 @@ const itemClass =
   'flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-foreground transition-colors hover:bg-[var(--dropdown-option-hover-surface)] focus-visible:bg-[var(--dropdown-option-hover-surface)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50'
 
 export function BrowserMenu({
+  isInMainPanel = false,
+  onTogglePlacement,
   partition,
   pageState,
   onOpenDevTools,
@@ -123,6 +127,21 @@ export function BrowserMenu({
         className="w-64 p-1"
         onKeyDown={handleKeyDown}
       >
+        {onTogglePlacement ? (
+          <>
+            <button
+              type="button"
+              className={itemClass}
+              onClick={() => {
+                close()
+                onTogglePlacement()
+              }}
+            >
+              {isInMainPanel ? 'Move to side panel' : 'Open in main panel'}
+            </button>
+            <div className="my-1 h-px bg-border" />
+          </>
+        ) : null}
         {pageState.isWebsite ? (
           <>
             <button

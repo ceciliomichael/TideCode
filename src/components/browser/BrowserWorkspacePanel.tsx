@@ -1,10 +1,13 @@
 import type { BrowserUrlRequest } from '../../types/browser'
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { BrowserPanel } from './BrowserPanel'
 import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from '../../lib/diffPanelSizing'
 import { clampWorkspacePanelWidth } from '../../lib/workspacePanelSizing'
+import { MIN_CHAT_PANEL_WIDTH } from '../../lib/chatPanelSizing'
 
 interface BrowserWorkspacePanelProps {
+  isInMainPanel?: boolean
+  onTogglePlacement?: () => void
   urlRequests?: readonly BrowserUrlRequest[]
   onUrlRequestsConsumed?: (ids: readonly string[]) => void
   agentTab?: { tabId: string; projectPath: string; url: string } | null
@@ -19,7 +22,32 @@ interface BrowserWorkspacePanelProps {
 
 const MAX_RETAINED_SESSIONS = 2
 
-export function BrowserWorkspacePanel({ active, onClose, projectKey, conversationId, width, onWidthChange, onWidthCommit, agentTab, urlRequests, onUrlRequestsConsumed }: BrowserWorkspacePanelProps) {
+function clampBrowserPanelWidth(panel: HTMLDivElement, width: number) {
+  const parent = panel.parentElement
+  const dockContainer = parent?.closest<HTMLElement>('[data-terminal-dock-container]')
+  if (dockContainer?.dataset.fixedWidth === 'true') {
+    const chat = parent?.querySelector<HTMLElement>('[data-chat-panel]')
+    const chatWidth = chat?.getBoundingClientRect().width ?? MIN_CHAT_PANEL_WIDTH
+    const workspaceWidth = dockContainer.parentElement?.clientWidth ?? window.innerWidth
+    const totalWidth = clampWorkspacePanelWidth(
+      dockContainer,
+      width + chatWidth,
+      chatWidth + getMinDiffPanelWidth(workspaceWidth),
+      chatWidth + getMaxDiffPanelWidth(workspaceWidth),
+    )
+    return Math.max(0, totalWidth - chatWidth)
+  }
+
+  const parentWidth = parent?.clientWidth ?? window.innerWidth
+  return clampWorkspacePanelWidth(
+    panel,
+    width,
+    getMinDiffPanelWidth(parentWidth),
+    getMaxDiffPanelWidth(parentWidth),
+  )
+}
+
+export function BrowserWorkspacePanel({ active, isInMainPanel = false, onTogglePlacement, onClose, projectKey, conversationId, width, onWidthChange, onWidthCommit, agentTab, urlRequests, onUrlRequestsConsumed }: BrowserWorkspacePanelProps) {
   const [projects, setProjects] = useState<string[]>([])
   const [isFullscreen, setIsFullscreen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -54,17 +82,11 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, conversatio
   useLayoutEffect(() => {
     const panel = panelRef.current
     const parent = panel?.parentElement
-    if (!panel || !parent || !active || isFullscreen) {
+    if (!panel || !parent || !active || isFullscreen || isInMainPanel) {
       return
     }
     const clampWidth = () => {
-      const parentWidth = parent.clientWidth
-      const nextWidth = clampWorkspacePanelWidth(
-        panel,
-        widthRef.current,
-        getMinDiffPanelWidth(parentWidth),
-        getMaxDiffPanelWidth(parentWidth),
-      )
+      const nextWidth = clampBrowserPanelWidth(panel, widthRef.current)
       panel.style.width = `${nextWidth}px`
       if (nextWidth !== widthRef.current) {
         widthRef.current = nextWidth
@@ -79,7 +101,7 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, conversatio
       observer.observe(chat)
     }
     return () => observer.disconnect()
-  }, [active, isFullscreen, width])
+  }, [active, isFullscreen, isInMainPanel, width])
 
   useEffect(() => {
     function handleMove(event: PointerEvent) {
@@ -88,13 +110,7 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, conversatio
       if (!drag || !panel || event.pointerId !== drag.pointerId) {
         return
       }
-      const parentWidth = panel.parentElement?.clientWidth ?? window.innerWidth
-      const nextWidth = clampWorkspacePanelWidth(
-        panel,
-        drag.startWidth + drag.startX - event.clientX,
-        getMinDiffPanelWidth(parentWidth),
-        getMaxDiffPanelWidth(parentWidth),
-      )
+      const nextWidth = clampBrowserPanelWidth(panel, drag.startWidth + drag.startX - event.clientX)
       widthRef.current = nextWidth
       panel.style.width = `${nextWidth}px`
       callbacksRef.current.onWidthChange(nextWidth)
@@ -124,7 +140,7 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, conversatio
   }, [active])
 
   function startResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (isFullscreen || event.button !== 0) {
+    if (isFullscreen || isInMainPanel || event.button !== 0) {
       return
     }
     event.preventDefault()
@@ -144,29 +160,37 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, conversatio
     onClose()
   }
 
+  let panelClassName = 'relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-background max-md:hidden'
+  let panelStyle: CSSProperties | undefined = { width: `${width}px` }
+  if (!active) {
+    panelStyle = {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      width: `${width}px`,
+      borderLeftWidth: 0,
+      opacity: 0,
+      pointerEvents: 'none',
+    }
+  } else if (isFullscreen) {
+    panelClassName = 'absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col overflow-hidden bg-background'
+    panelStyle = undefined
+  } else if (isInMainPanel) {
+    panelClassName = 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background'
+    panelStyle = undefined
+  }
+
   return (
     <div
       ref={panelRef}
-      className={isFullscreen && active
-        ? 'absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col overflow-hidden bg-background'
-        : 'relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-background max-md:hidden'}
-      style={isFullscreen && active
-        ? undefined
-        : active
-          ? { width: `${width}px` }
-          : {
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              bottom: 0,
-              width: `${width}px`,
-              borderLeftWidth: 0,
-              opacity: 0,
-              pointerEvents: 'none',
-            }}
+      data-browser-fullscreen={isFullscreen && active ? 'true' : undefined}
+      data-browser-placement={isInMainPanel ? 'main' : 'side'}
+      className={panelClassName}
+      style={panelStyle}
       aria-hidden={!active}
     >
-      {active && !isFullscreen ? (
+      {active && !isFullscreen && !isInMainPanel ? (
         <div role="separator" aria-label="Resize browser panel" aria-orientation="vertical" onPointerDown={startResize} className="absolute inset-y-0 left-0 z-20 w-3 -translate-x-1/2 cursor-col-resize" />
       ) : null}
       {projects.map((key) => (
@@ -178,6 +202,11 @@ export function BrowserWorkspacePanel({ active, onClose, projectKey, conversatio
           aria-hidden={!(active && key === projectKey)}
         >
           <BrowserPanel
+            isInMainPanel={isInMainPanel}
+            onTogglePlacement={onTogglePlacement ? () => {
+              setIsFullscreen(false)
+              onTogglePlacement()
+            } : undefined}
             urlRequests={key === projectKey ? urlRequests : undefined}
             onUrlRequestsConsumed={onUrlRequestsConsumed}
             agentTab={agentTab?.projectPath.toLowerCase() === key.toLowerCase() ? agentTab : null}

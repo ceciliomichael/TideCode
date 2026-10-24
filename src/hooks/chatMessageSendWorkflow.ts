@@ -401,6 +401,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       messages: conversationForRun.messages,
       modelId: input.runtimeSelection.modelId,
       onContentDelta: draftManager?.handleContentDelta ?? handleNoop,
+      onGenerationMetrics: draftManager?.handleGenerationMetrics,
       onCompactionCommitted: draftManager?.handleCompactionCommitted ?? handleNoop,
       onReasoningCompleted: draftManager?.handleReasoningCompleted ?? handleNoop,
       onReasoningDelta: draftManager?.handleReasoningDelta ?? handleNoop,

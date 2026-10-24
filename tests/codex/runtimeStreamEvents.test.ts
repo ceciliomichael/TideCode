@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WebContents } from 'electron'
+import type { ChatStreamEvent } from '../../src/types/chat'
 import { parseStructuredToolResultContent } from '../../src/lib/toolResultContent'
 import {
   processRuntimeStream,
@@ -21,6 +22,27 @@ async function* createRuntimeStream(parts: readonly RuntimeStreamPart[]) {
     yield part
   }
 }
+
+test('generation metrics follow content events and finish with provider usage', async () => {
+  const events: ChatStreamEvent[] = []
+  await processRuntimeStream({
+    abortController: new AbortController(),
+    conversationId: null,
+    fullStream: createRuntimeStream([
+      { type: 'text-delta', text: 'A response' },
+      { type: 'finish-step', usage: { outputTokens: 9 } },
+      { type: 'finish', totalUsage: { outputTokens: 9 }, finishReason: 'stop' },
+    ]),
+    queueHistoryWrite: () => undefined,
+    streamId: 'metrics-stream',
+    webContents: createWebContentsStub(events),
+  })
+  assert.equal(events[0].type, 'content_delta')
+  const updates = events.filter((event) => event.type === 'generation_metrics_updated')
+  assert.equal(updates[0].metrics.estimated, true)
+  assert.equal(updates.at(-1)?.metrics.outputTokens, 9)
+  assert.equal(updates.at(-1)?.metrics.estimated, false)
+})
 
 test('a normally closed stream reports an abort when the signal was cancelled', async () => {
   const controller = new AbortController()
@@ -92,7 +114,7 @@ test('reasoning deltas and completion are forwarded to the renderer', async () =
     webContents: createWebContentsStub(events),
   })
 
-  assert.deepEqual(events, [
+  assert.deepEqual((events as ChatStreamEvent[]).filter((event) => event.type !== 'generation_metrics_updated'), [
     { delta: 'Inspecting the repository.', streamId: 'stream-reasoning', type: 'reasoning_delta' },
     { streamId: 'stream-reasoning', type: 'reasoning_completed' },
   ])
@@ -132,14 +154,14 @@ test('code mode source deltas stay internal until execution because the running 
     abortController: controller,
     conversationId: null,
     fullStream: createRuntimeStream([
-      { id: 'code-mode-tool', toolName: 'code_mode', type: 'tool-input-start' },
+      { id: 'code-mode-tool', toolName: 'exec', type: 'tool-input-start' },
       ...Array.from({ length: 200 }, (_value, index) => ({
         delta: source.slice(index * 1_000, (index + 1) * 1_000),
         id: 'code-mode-tool',
-        toolName: 'code_mode',
+        toolName: 'exec',
         type: 'tool-input-delta',
       })),
-      { input: source, toolCallId: 'code-mode-tool', toolName: 'code_mode', type: 'tool-call' },
+      { input: source, toolCallId: 'code-mode-tool', toolName: 'exec', type: 'tool-call' },
       { finishReason: 'tool-calls', type: 'finish' },
     ]),
     queueHistoryWrite: () => undefined,
@@ -173,7 +195,9 @@ test('an aborted stream ignores late provider events while the tool unwinds', as
   })
 
   assert.equal(hasEmittedBeforeAbort, true)
-  assert.deepEqual(events, [{ delta: 'before cancellation', streamId: 'stream-3', type: 'content_delta' }])
+  assert.deepEqual((events as ChatStreamEvent[]).filter((event) => event.type !== 'generation_metrics_updated'), [{ delta: 'before cancellation', streamId: 'stream-3', type: 'content_delta' }])
+  const finalMetrics = (events as ChatStreamEvent[]).filter((event) => event.type === 'generation_metrics_updated').at(-1)
+  assert.equal(finalMetrics?.metrics.outputTokens, 5)
   assert.equal(result.wasAborted, true)
 })
 

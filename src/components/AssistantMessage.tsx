@@ -8,6 +8,7 @@ import {
 } from "../lib/chatMessageContent";
 import type {
   AssistantWaitingIndicatorVariant,
+  GenerationMetrics,
   ToolInvocationTrace,
 } from "../types/chat";
 import { TideUIMessageBody } from "./tideui/TideUIMessageBody";
@@ -28,6 +29,7 @@ interface AssistantMessageProps {
   onTideUIDraft?: (message: string, conversationId: string | null) => void;
   onTideUISend?: (message: string, conversationId: string | null) => Promise<boolean> | boolean;
   content: string;
+  generationMetrics?: GenerationMetrics;
   finalizeToolGroups?: boolean;
   hasSubsequentAssistantText?: boolean;
   isCompactionInProgress?: boolean;
@@ -70,6 +72,21 @@ interface RenderedToolBlock {
   groupType: 'exploring'
 }
 
+export function AssistantGenerationMetadata({ metrics }: { metrics: GenerationMetrics }) {
+  const speed = metrics.generationMs >= 100
+    ? `≈ ${(metrics.outputTokens * 1000 / metrics.generationMs).toFixed(1)} tok/s`
+    : 'Measuring…'
+
+  return (
+    <div
+      className="flex items-center justify-between gap-3 border-t border-border px-2.5 py-2 text-[12px] text-muted-foreground"
+    >
+      <span>Tokens per second</span>
+      <span className="tabular-nums text-foreground">{speed}</span>
+    </div>
+  )
+}
+
 function buildRenderedToolBlocks(entries: readonly ToolInvocationDisplayEntry[]) {
   const renderedBlocks: RenderedToolBlock[] = []
   let groupedEntries: ToolInvocationDisplayEntry[] = []
@@ -110,6 +127,7 @@ export function AssistantMessage({
   onTideUIDraft,
   onTideUISend,
   content,
+  generationMetrics,
   finalizeToolGroups = false,
   hasSubsequentAssistantText = false,
   isCompactionInProgress = false,
@@ -162,7 +180,9 @@ export function AssistantMessage({
   const copyableText = getCopyableAssistantMessageText({ content, reasoningContent });
   const canShowCopyButton =
     showCopyButton && copyableText.length > 0;
-  const isActionRowVisible = showCopyButton && !isStreaming && (canShowCopyButton || onBranch !== undefined);
+  const canShowActionsMenu = generationMetrics !== undefined || (!isStreaming && onBranch !== undefined);
+  const isActionRowVisible = (showCopyButton || (isStreaming && generationMetrics !== undefined)) &&
+    (canShowActionsMenu || (!isStreaming && canShowCopyButton));
   const messagePaddingClassName = isActionRowVisible ? "pb-6" : "";
 
   useEffect(() => {
@@ -276,7 +296,7 @@ export function AssistantMessage({
 
       {isActionRowVisible ? (
         <div className="absolute bottom-1.5 right-0 flex items-center gap-1 pointer-events-auto opacity-100 transition-opacity duration-150 [@media(hover:hover)]:pointer-events-none [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:pointer-events-auto [@media(hover:hover)]:focus-within:opacity-100">
-          {canShowCopyButton ? (
+          {canShowCopyButton && !isStreaming ? (
             <Tooltip content={isCopied ? "Copied" : "Copy"}>
               <button
                 type="button"
@@ -289,7 +309,7 @@ export function AssistantMessage({
             </Tooltip>
           ) : null}
 
-          {onBranch ? (
+          {canShowActionsMenu ? (
             <>
               <button
                 ref={actionsButtonRef}
@@ -305,22 +325,25 @@ export function AssistantMessage({
               <AnchoredTooltip
                 anchorElement={actionsButtonRef.current}
                 content={
-                  <div data-assistant-message-actions-menu="true" className="w-[210px] py-0.5">
+                  <div data-assistant-message-actions-menu="true" className="w-[230px] py-0.5">
                     <div className="px-2.5 py-1.5 text-[12px] font-normal text-muted-foreground">
                       {formatAssistantActionTimestamp(timestamp)}
                     </div>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setIsActionsOpen(false)
-                        onBranch()
-                      }}
-                      className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm font-normal text-foreground transition-colors hover:bg-[var(--dropdown-option-hover-surface)]"
-                    >
-                      <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span>Branch in new chat</span>
-                    </button>
+                    {generationMetrics ? <AssistantGenerationMetadata metrics={generationMetrics} /> : null}
+                    {onBranch && !isStreaming ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setIsActionsOpen(false)
+                          onBranch()
+                        }}
+                        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm font-normal text-foreground transition-colors hover:bg-[var(--dropdown-option-hover-surface)]"
+                      >
+                        <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span>Branch in new chat</span>
+                      </button>
+                    ) : null}
                   </div>
                 }
                 panelClassName="!pointer-events-auto !block !p-1"

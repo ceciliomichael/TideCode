@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { StreamGenerationMetrics } from './streamGenerationMetrics'
 import type { WebContents } from 'electron'
 import {
   type PrepareStepFunction,
@@ -179,6 +180,7 @@ export async function runToolEnabledChatStream(input: {
 }) {
   const contextCompaction = normalizeContextCompactionSettings(input.startInput.contextCompaction)
   const runId = randomUUID()
+  const generationMetrics = new StreamGenerationMetrics()
   const conversationId = input.startInput.conversationId?.trim() || null
   let workspaceRootPath: string | null = null
   let codeModeExecutor: CodeModeExecutor | null = null
@@ -669,6 +671,7 @@ export async function runToolEnabledChatStream(input: {
 
       try {
         const result = await processRuntimeStream({
+          generationMetrics,
           abortController: input.abortController,
           conversationId,
           fullStream: stream.fullStream,
@@ -693,6 +696,7 @@ export async function runToolEnabledChatStream(input: {
           messages: imageRetryMessages,
         })
         const result = await processRuntimeStream({
+          generationMetrics,
           abortController: input.abortController,
           conversationId,
           fullStream: stream.fullStream,

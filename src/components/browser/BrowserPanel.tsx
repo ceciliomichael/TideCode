@@ -40,6 +40,8 @@ interface BrowserLoadFailure {
 }
 
 interface BrowserPanelProps {
+  isInMainPanel?: boolean
+  onTogglePlacement?: () => void
   urlRequests?: readonly BrowserUrlRequest[]
   onUrlRequestsConsumed?: (ids: readonly string[]) => void
   agentTab?: { tabId: string; projectPath: string; url: string } | null
@@ -593,7 +595,7 @@ function BrowserTabSession({
   )
 }
 
-export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose, projectKey, conversationId, agentTab, urlRequests, onUrlRequestsConsumed }: BrowserPanelProps) {
+export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMainPanel, onTogglePlacement, onClose, projectKey, conversationId, agentTab, urlRequests, onUrlRequestsConsumed }: BrowserPanelProps) {
   const initialTabRef = useRef<BrowserTab | null>(null)
   if (!initialTabRef.current) {
     initialTabRef.current = createBrowserTab()
@@ -727,6 +729,8 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, onClose
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       <BrowserTabsBar
+        isInMainPanel={isInMainPanel}
+        onTogglePlacement={onTogglePlacement}
         activeTabId={activeTabId}
         onCloseTab={handleCloseTab}
         onCreateTab={handleCreateTab}

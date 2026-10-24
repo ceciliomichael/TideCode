@@ -260,6 +260,7 @@ const MessageRow = memo(
             onTideUIDraft={onTideUIDraft}
             onTideUISend={onTideUISend}
             content={message.content}
+            generationMetrics={message.generationMetrics}
             finalizeToolGroups={finalizeToolGroups}
             hasSubsequentAssistantText={hasSubsequentAssistantText}
             isCompactionInProgress={isCompactionInProgress}

@@ -146,7 +146,15 @@ export interface ToolInvocationTrace {
   toolName: string
 }
 
+export interface GenerationMetrics {
+  outputTokens: number
+  estimated: boolean
+  generationMs: number
+  toolExecutionMs: number
+}
+
 export interface Message {
+  generationMetrics?: GenerationMetrics
   attachments?: ChatAttachment[]
   chatMode?: ChatMode
   hiddenUserContext?: HiddenUserContext[]

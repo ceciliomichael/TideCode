@@ -53,9 +53,10 @@ test(
       }
       function Fixture() {
         const [full, setFull] = useState(false)
+        const [main, setMain] = useState(false)
         const [selection, setSelection] = useState('a')
         return <>
-          <BrowserPanel active isFullScreen={full} onToggleFullScreen={() => setFull(value => !value)} onClose={() => {}} projectKey={${JSON.stringify(directory)}} />
+          <BrowserPanel active isFullScreen={full} onToggleFullScreen={() => setFull(value => !value)} isInMainPanel={main} onTogglePlacement={() => setMain(value => !value)} onClose={() => {}} projectKey={${JSON.stringify(directory)}} />
           <div className="absolute bottom-4 left-4 z-20"><DropdownField ariaLabel="Test selector" value={selection} onChange={setSelection} options={[{label:'First',value:'a'},{label:'Second',value:'b'}]} /></div>
         </>
       }
@@ -245,8 +246,19 @@ test(
 
           await click('[aria-label="Reset page zoom"]')
           await wait(() => guest.getZoomFactor() === 1, 'initial reset')
+          const retainedGuestId = guest.id
+          await guest.executeJavaScript('window.placementMarker = "retained"')
+          await clickText('Open in main panel')
+          assert(await run('!document.querySelector(' + JSON.stringify('[aria-label="Browser actions"]') + ')'), 'placement dismisses the menu')
+          await click('[aria-label="Browser menu"]')
+          await clickText('Move to side panel')
+          assert.equal(await run('document.querySelector("webview").getWebContentsId()'), retainedGuestId, 'placement retains the same browser guest')
+          assert.equal(await guest.executeJavaScript('window.placementMarker'), 'retained', 'placement retains the loaded page state')
+          await click('[aria-label="Browser menu"]')
           await run('document.querySelector("[aria-label=\\\\"Browser actions\\\\"] button").focus()')
           await run('document.querySelector("[aria-label=\\\\"Browser actions\\\\"]").dispatchEvent(new KeyboardEvent("keydown", {key:"ArrowDown",bubbles:true}))')
+          assert.equal(await run('document.activeElement.textContent.trim()'), 'Open DevTools')
+          await run('document.activeElement.dispatchEvent(new KeyboardEvent("keydown", {key:"ArrowDown",bubbles:true}))')
           assert.equal(await run('document.activeElement.getAttribute("aria-label")'), 'Zoom out')
           const menuOverGuest = await run('const panel=document.querySelector("[aria-label=\\\\"Browser actions\\\\"]"); const rect=panel.getBoundingClientRect(); panel.contains(document.elementFromPoint(rect.x+20,rect.y+80))')
           assert(menuOverGuest, 'shared dropdown stays above the webpage')

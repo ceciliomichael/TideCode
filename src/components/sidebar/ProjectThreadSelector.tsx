@@ -5,7 +5,7 @@ import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
 import { Tooltip } from '../Tooltip'
 import { RemoveProjectFolderDialog } from './RemoveProjectFolderDialog'
 import type { SidebarProjectOption } from './sidebarProjectThreads'
-import { resolveSidebarProjectLabel } from './sidebarProjectThreads'
+import { CHATS_PROJECT_FILTER_ID, resolveSidebarProjectLabel } from './sidebarProjectThreads'
 
 interface ProjectThreadSelectorProps {
   cachedSelectedProjectName?: string | null
@@ -28,6 +28,14 @@ export function ProjectThreadSelector({
   projects,
   selectedProjectId,
 }: ProjectThreadSelectorProps) {
+  const [agentContextsPath] = useState<string | null>(() => {
+    try {
+      const draftPath = window.tidecodeHistory?.getDraftAgentContextPathSync?.()
+      return draftPath?.replace(/[\\/][^\\/]+$/, '') ?? null
+    } catch {
+      return null
+    }
+  })
   const [isOpen, setIsOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const [highlightedProjectId, setHighlightedProjectId] = useState<string | null>(selectedProjectId)
@@ -48,12 +56,22 @@ export function ProjectThreadSelector({
   )
   const normalizedSearch = normalizeSearch(searchValue)
   const filteredProjects = useMemo(() => {
+    const options: readonly SidebarProjectOption[] = [
+      {
+        id: CHATS_PROJECT_FILTER_ID,
+        name: 'Chats',
+        path: agentContextsPath,
+        conversationCount: 0,
+      },
+      ...projects,
+    ]
+
     if (normalizedSearch.length === 0) {
-      return projects
+      return options
     }
 
-    return projects.filter((project) => project.name.toLowerCase().includes(normalizedSearch))
-  }, [normalizedSearch, projects])
+    return options.filter((project) => project.name.toLowerCase().includes(normalizedSearch))
+  }, [agentContextsPath, normalizedSearch, projects])
   const menuStyle = useFloatingMenuPosition({
     anchorRef: buttonRef,
     isOpen,
@@ -243,7 +261,11 @@ export function ProjectThreadSelector({
                             <span className="block truncate text-[15px] leading-5">{project.name}</span>
                             {(project.description ?? project.path) ? (
                               <span
-                                title={project.description ?? project.path ?? undefined}
+                                title={
+                                  project.id === CHATS_PROJECT_FILTER_ID
+                                    ? undefined
+                                    : project.description ?? project.path ?? undefined
+                                }
                                 className="mt-0.5 block truncate text-[11px] font-medium text-muted-foreground"
                               >
                                 {project.description ?? project.path}
@@ -261,35 +283,37 @@ export function ProjectThreadSelector({
                             />
                           </span>
                         ) : null}
-                        <Tooltip
-                          content="Project actions"
-                          hideWhenTriggerExpanded
-                          panelClassName="!z-[1800]"
-                          side="right"
-                        >
-                          <button
-                            type="button"
-                            role="menuitem"
-                            aria-label={`Project actions for ${project.name}`}
-                            aria-haspopup="menu"
-                            aria-expanded={actionsProject?.id === project.id}
-                            onMouseEnter={() => setHighlightedProjectId(project.id)}
-                            onClick={(event) => {
-                              actionsButtonRef.current = event.currentTarget
-                              setActionsMenuPosition(
-                                event.detail > 0
-                                  ? { x: event.clientX, y: event.clientY }
-                                  : null,
-                              )
-                              setActionsProject((currentValue) =>
-                                currentValue?.id === project.id ? null : project,
-                              )
-                            }}
-                            className="mr-1 flex h-9 w-9 shrink-0 origin-center transform-gpu items-center justify-center rounded-full text-subtle-foreground transition-[color,opacity,transform] duration-150 ease-out hover:scale-110 hover:text-foreground md:hidden md:group-hover/project:flex"
+                        {project.id !== CHATS_PROJECT_FILTER_ID ? (
+                          <Tooltip
+                            content="Project actions"
+                            hideWhenTriggerExpanded
+                            panelClassName="!z-[1800]"
+                            side="right"
                           >
-                            <MoreHorizontal size={16} strokeWidth={2.1} />
-                          </button>
-                        </Tooltip>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              aria-label={`Project actions for ${project.name}`}
+                              aria-haspopup="menu"
+                              aria-expanded={actionsProject?.id === project.id}
+                              onMouseEnter={() => setHighlightedProjectId(project.id)}
+                              onClick={(event) => {
+                                actionsButtonRef.current = event.currentTarget
+                                setActionsMenuPosition(
+                                  event.detail > 0
+                                    ? { x: event.clientX, y: event.clientY }
+                                    : null,
+                                )
+                                setActionsProject((currentValue) =>
+                                  currentValue?.id === project.id ? null : project,
+                                )
+                              }}
+                              className="mr-1 flex h-9 w-9 shrink-0 origin-center transform-gpu items-center justify-center rounded-full text-subtle-foreground transition-[color,opacity,transform] duration-150 ease-out hover:scale-110 hover:text-foreground md:hidden md:group-hover/project:flex"
+                            >
+                              <MoreHorizontal size={16} strokeWidth={2.1} />
+                            </button>
+                          </Tooltip>
+                        ) : null}
                       </div>
                     )
                   })

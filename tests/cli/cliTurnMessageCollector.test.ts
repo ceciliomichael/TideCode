@@ -18,6 +18,20 @@ function createState(): CliSessionState {
   }
 }
 
+test('generation metadata follows live drafts and survives finalized message serialization', () => {
+  const projections: CliSessionState['messages'][] = []
+  const collector = new CliTurnMessageCollector(createState(), {
+    onProjectionUpdated: (messages) => projections.push(messages),
+  })
+  collector.handleEvent({ delta: 'Answer', streamId: 'stream-1', type: 'content_delta' })
+  const metrics = { outputTokens: 20, estimated: false, generationMs: 1000, toolExecutionMs: 500 }
+  collector.handleEvent({ metrics, streamId: 'stream-1', type: 'generation_metrics_updated' })
+  assert.deepEqual(projections.at(-1)?.at(-1)?.generationMetrics, metrics)
+  collector.handleEvent({ streamId: 'stream-1', type: 'completed' })
+  const reloaded = JSON.parse(JSON.stringify(collector.finalize()))
+  assert.deepEqual(reloaded.at(-1).generationMetrics, metrics)
+})
+
 test('CLI collector exposes a live desktop-compatible projection while the turn is running', () => {
   const projections: CliSessionState['messages'][] = []
   const runtimePatches: Array<{ streamingAssistantMessageId?: string | null; streamingWaitingIndicatorVariant?: string | null }> = []

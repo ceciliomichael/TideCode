@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { StreamGenerationMetrics } from './streamGenerationMetrics'
 import type { WebContents } from 'electron'
 import type {
   ChatStreamEvent,
@@ -194,6 +195,7 @@ function emitTerminatedToolInvocations(
 }
 
 interface ProcessRuntimeStreamInput {
+  generationMetrics?: StreamGenerationMetrics
   abortController: AbortController
   conversationId: string | null
   fullStream: AsyncIterable<RuntimeStreamPart>
@@ -203,6 +205,25 @@ interface ProcessRuntimeStreamInput {
 }
 
 export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
+  const generationMetrics = input.generationMetrics ?? new StreamGenerationMetrics()
+  generationMetrics.beginRequest()
+  let lastMetricsEmittedAt = -Infinity
+  const emitGenerationMetrics = (force = false) => {
+    const now = performance.now()
+    if (!force && now - lastMetricsEmittedAt < 250) {
+      return
+    }
+    const metrics = generationMetrics.snapshot()
+    if (metrics.outputTokens === 0 && metrics.toolExecutionMs === 0) {
+      return
+    }
+    lastMetricsEmittedAt = now
+    emitChatStreamEvent(input.webContents, {
+      metrics,
+      streamId: input.streamId,
+      type: 'generation_metrics_updated',
+    })
+  }
   const { conversationId, queueHistoryWrite } = input
   const invocationStateById = new Map<string, ToolInvocationState>()
   const pendingToolInputDeltaIds = new Set<string>()
@@ -258,6 +279,12 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
           continue
         }
 
+        generationMetrics.observe(part)
+        // Publish the preceding delta first so metadata follows its message draft.
+        if (part.type !== 'text-delta' && part.type !== 'reasoning-delta' && part.type !== 'tool-input-start') {
+          emitGenerationMetrics(part.type === 'finish-step' || part.type === 'finish')
+        }
+
         if (isStreamPart(part, 'error')) {
           throw new Error(getProviderStreamErrorMessage(part.error))
         }
@@ -268,6 +295,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
             streamId: input.streamId,
             type: 'content_delta',
           })
+          emitGenerationMetrics()
           continue
         }
   
@@ -277,6 +305,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
             streamId: input.streamId,
             type: 'reasoning_delta',
           })
+          emitGenerationMetrics()
           continue
         }
   
@@ -510,6 +539,9 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
       emitTerminatedToolInvocations(input, invocationStateById)
     }
     throw error
+  } finally {
+    generationMetrics.endRequest()
+    emitGenerationMetrics(true)
   }
 
   if (input.abortController.signal.aborted) {

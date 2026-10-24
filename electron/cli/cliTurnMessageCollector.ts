@@ -67,6 +67,9 @@ export class CliTurnMessageCollector {
 
   handleEvent(event: ChatStreamEvent): void {
     switch (event.type) {
+      case 'generation_metrics_updated':
+        this.manager.handleGenerationMetrics(event.metrics)
+        break
       case 'content_delta':
         this.manager.handleContentDelta(event.delta)
         break
