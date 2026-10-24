@@ -140,7 +140,7 @@ The Browser control is available only in the desktop Electron app. Remote web cl
 
 ## Resource retention and previews
 
-Desktop and remote Send show the accepted user message before checkpoint/context/history saving finishes, preserving its identity when saving completes. Required persistence still precedes provider execution. Saving or failure handling must not overwrite newly typed composer text or another conversation's draft.
+Desktop and remote Send show the accepted user message before checkpoint/context/history saving finishes, preserving its identity when saving completes. Required persistence still precedes provider execution. A blocked Send preserves the composer's text, attachments and mentions. The send workflow clears accepted submissions and restores unchanged drafts after persistence failure; the input does not clear them a second time. Queue actions clear the composer after enqueueing. Saving or failure handling must not overwrite newly typed composer text or another conversation's draft.
 
 Each new draft has independent send, saving and stop state, including drafts in the same project. Opening a new chat while another response is running or saving permits a separate submission. Stop and Revert affect their originating chat; completing or rolling back an older send must not select it over a newer draft or clear the newer draft's message. Reverting an unresponded turn preserves its conversation record while removing the pending turn from saved history.
 

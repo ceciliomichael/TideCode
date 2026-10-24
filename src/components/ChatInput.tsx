@@ -240,17 +240,28 @@ export function ChatInput({
     onAbort()
   }
 
-  function submitFollowUp(
+  function submitMessage(
     callback: (value: string, attachments: ChatAttachment[], mentionPathMap: ReadonlyMap<string, string>) => void,
   ) {
-    if (!canSend) return
+    if (!canSend) {
+      return false
+    }
     mentionMenu.closeMenu()
     const mentionPathMap = new Map(mentionMenu.mentionPathMapRef.current)
     callback(mentionMenu.expandValueForSend(value), attachments, mentionPathMap)
+    setAttachmentError(null)
+    return true
+  }
+
+  function submitFollowUp(
+    callback: (value: string, attachments: ChatAttachment[], mentionPathMap: ReadonlyMap<string, string>) => void,
+  ) {
+    if (!submitMessage(callback)) {
+      return
+    }
     onValueChange('')
     onAttachmentsChange?.([])
     mentionMenu.clearMentionPathMap()
-    setAttachmentError(null)
   }
 
   function handleQueue() {
@@ -264,7 +275,7 @@ export function ChatInput({
   }
 
   function handleSend() {
-    submitFollowUp(onSend)
+    submitMessage(onSend)
   }
 
   function handlePrimaryAction() {

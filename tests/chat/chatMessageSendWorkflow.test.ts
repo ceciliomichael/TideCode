@@ -4,7 +4,7 @@ import { persistAndStreamMessage } from '../../src/hooks/chatMessageSendWorkflow
 import { createTerminatedToolResultContent } from '../../src/lib/toolResultContent'
 import type { ChatRuntimeSelection } from '../../src/hooks/chatMessageRuntime'
 import type { PersistAndStreamMessageInput } from '../../src/hooks/chatMessageSendTypes'
-import type { ConversationRecord, Message } from '../../src/types/chat'
+import type { ChatAttachment, ConversationRecord, Message, StartChatStreamInput } from '../../src/types/chat'
 
 interface HistoryCall {
   conversationId: string
@@ -122,6 +122,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   let composerRevision = 0
   let optimisticDraftMessages: Message[] = []
   let providerStarts = 0
+  const providerInputs: StartChatStreamInput[] = []
   const originalText = options.originalText ?? 'Please update the README'
 
   const upsertConversationRecord = (nextConversation: ConversationRecord) => {
@@ -293,8 +294,9 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
           streamListener = null
         }
       },
-      startStream: async () => {
+      startStream: async (streamInput: StartChatStreamInput) => {
         providerStarts += 1
+        providerInputs.push(streamInput)
         queueMicrotask(() => {
           if (options.streamContent) {
             streamListener?.({ delta: options.streamContent, streamId, type: 'content_delta' })
@@ -355,6 +357,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   return {
     windowStub,
     getProviderStarts: () => providerStarts,
+    providerInputs,
     activeConversationIdRef,
     composerValues,
     conversation,
@@ -705,13 +708,45 @@ test('desktop bubble renders before a blocked checkpoint and retains its ID afte
 
 test('failed persistence removes its bubble and restores an unchanged composer without starting a provider', async (t) => {
   const harness = createWorkflowHarness()
+  const attachments: ChatAttachment[] = [{
+    id: 'notes', kind: 'text', fileName: 'notes.txt', mimeType: 'text/plain',
+    sizeBytes: 5, textContent: 'notes',
+  }]
+  const attachmentUpdates: ChatAttachment[][] = []
+  harness.input.attachments = attachments
+  harness.input.setMainComposerAttachments = (value) => { attachmentUpdates.push(value) }
   t.mock.method(console, 'error', () => undefined)
   harness.history.api.appendMessages = async () => { throw new Error('Disk full') }
   try {
     assert.equal(await persistAndStreamMessage(harness.input), false)
     assert.deepEqual(harness.getRuntimeMessages(harness.conversation.id), [])
     assert.equal(harness.composerValues.at(-1), harness.input.originalText)
+    assert.deepEqual(attachmentUpdates, [[], attachments])
     assert.equal(harness.getProviderStarts(), 0)
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('sending after a completed DeepSeek turn uses the selected Codex model and retains history', async () => {
+  const harness = createWorkflowHarness()
+  const previousMessages: Message[] = [
+    { id: 'old-user', role: 'user', content: 'Inspect this project', timestamp: 1, providerId: 'deepseek', modelId: 'deepseek-flash' },
+    { id: 'old-assistant', role: 'assistant', content: 'Inspection complete', timestamp: 2, providerId: 'deepseek', modelId: 'deepseek-flash' },
+  ]
+  harness.conversation.messages = previousMessages
+  harness.input.replaceLocalMessages(harness.conversation.id, previousMessages)
+  try {
+    assert.equal(await persistAndStreamMessage(harness.input), true)
+    assert.equal(harness.providerInputs.length, 1)
+    const request = harness.providerInputs[0]
+    assert.equal(request.providerId, 'codex')
+    assert.equal(request.modelId, harness.input.runtimeSelection.modelId)
+    assert.deepEqual(request.messages.slice(0, 2), previousMessages)
+    const submitted = request.messages.find((message) => message.role === 'user' && message.id !== 'old-user')
+    assert.equal(submitted?.providerId, 'codex')
+    assert.equal(submitted?.content, harness.input.originalText)
+    assert.equal(harness.getRuntimeState(harness.conversation.id)?.isSending, false)
   } finally {
     harness.restoreWindow()
   }

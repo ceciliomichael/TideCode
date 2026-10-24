@@ -113,6 +113,9 @@ export function useChatMessageActions({
         isSending: chatMessages.isSending,
       })) {
         enqueueMessage(value, attachments, mentionPathMap)
+        chatMessages.setMainComposerValue('')
+        chatMessages.setMainComposerAttachments([])
+        chatMessages.setMainComposerMentionPathMap(new Map())
         return
       }
       void chatMessages.sendNewMessage(runtimeSelection, value, attachments, { mentionPathMap }).then(
