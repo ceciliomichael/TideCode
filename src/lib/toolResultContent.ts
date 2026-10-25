@@ -295,6 +295,11 @@ export function getToolResultModelContent(content: string) {
     modelContent = content.trim()
   }
 
+  // The UI already has the structured status, but plain model text does not.
+  // Make failed tool calls unambiguous without repeating metadata on successes.
+  if (parsedContent.metadata?.status === 'error' && !/^(?:error|failed)\b/iu.test(modelContent)) {
+    return `Error: ${modelContent}`
+  }
   return modelContent
 }
 

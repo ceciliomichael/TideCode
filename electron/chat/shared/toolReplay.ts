@@ -7,7 +7,13 @@ import {
   parseWebSearchToolResultBody,
 } from '../../../src/lib/webSearchResults'
 import type { AgentToolExecutionResult } from './toolTypes'
-import { projectToolOutputForModel, TOOL_OUTPUT_PAGED_READ_MAX_BYTES } from './tools/toolOutputBudget'
+import {
+  projectToolOutputForModel,
+  TOOL_OUTPUT_DEFAULT_PREVIEW_BYTES,
+  TOOL_OUTPUT_MAX_BYTES,
+  TOOL_OUTPUT_PAGED_READ_MAX_BYTES,
+  TOOL_OUTPUT_TERMINAL_PREVIEW_BYTES,
+} from './tools/toolOutputBudget'
 import { persistToolOutput } from './tools/toolOutputStore'
 
 export function isAgentToolExecutionResult(value: unknown): value is AgentToolExecutionResult {
@@ -24,6 +30,14 @@ export function isAgentToolExecutionResult(value: unknown): value is AgentToolEx
 function stringifyUnknown(value: unknown) {
   try {
     return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function stringifyCompact(value: unknown) {
+  try {
+    return JSON.stringify(value)
   } catch {
     return String(value)
   }
@@ -73,8 +87,11 @@ export function normalizeToolExecutionResult(toolName: string, output: unknown):
   }
 
   if (isAgentToolExecutionResult(output)) return output
+  const body = typeof output === 'string' ? output : stringifyCompact(output)
+  const readableBody = typeof output === 'string' ? body : stringifyUnknown(output)
   return {
-    body: typeof output === 'string' ? output : stringifyUnknown(output),
+    body,
+    ...(readableBody !== body ? { displayBody: readableBody } : {}),
     status: 'success',
     summary: `Completed ${toolName}`,
   }
@@ -140,7 +157,18 @@ export async function prepareToolExecutionResultForModel(input: {
     return input.result
   }
 
-  const initialProjection = projectToolOutputForModel(body)
+  const terminalTool = input.toolName.includes('terminal')
+  const contentTool = ['read', 'grep', 'glob', 'list', 'skill.load', 'web_search'].includes(input.toolName)
+  const previewBytes = contentTool
+    ? TOOL_OUTPUT_MAX_BYTES
+    : terminalTool
+      ? TOOL_OUTPUT_TERMINAL_PREVIEW_BYTES
+      : TOOL_OUTPUT_DEFAULT_PREVIEW_BYTES
+  const previewOptions = {
+    maximumBytes: previewBytes,
+    highlightErrors: terminalTool || input.result.status === 'error',
+  }
+  const initialProjection = projectToolOutputForModel(body, undefined, previewOptions)
   if (!initialProjection.truncated) {
     return input.result
   }
@@ -156,7 +184,7 @@ export async function prepareToolExecutionResultForModel(input: {
     }
   }
 
-  const projection = projectToolOutputForModel(body, outputPath)
+  const projection = projectToolOutputForModel(body, outputPath, previewOptions)
   return {
     ...input.result,
     body: projection.text,

@@ -1,11 +1,31 @@
 import { jsonSchema, tool } from 'ai'
+import { classifyWorkspaceMemoryPath, MEMORY_DETAILS_DIRECTORY, MEMORY_DIRECTORY } from '../../../memory/service'
 import {
   createListToolResult,
   OPTIONAL_ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
   resolveReadOnlyTargetPath,
   type WorkspaceToolContext,
 } from './workspaceTools'
+import { resolveReadableTargetPath } from './workspaceToolPaths'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
+import { createSuccessResult } from './workspaceToolResults'
+import { WorkspaceTargetNotFoundError } from './workspaceTools'
+
+function emptyMemoryListing(absolutePath: string, workspaceRootPath: string) {
+  const memoryPath = classifyWorkspaceMemoryPath(absolutePath, workspaceRootPath)
+  const message = memoryPath?.path === MEMORY_DIRECTORY
+    ? 'No workspace memory yet.'
+    : memoryPath?.path === MEMORY_DETAILS_DIRECTORY
+      ? 'No memory details yet.'
+      : null
+  if (!message) return null
+  return createSuccessResult({
+    body: message,
+    semantics: { memory_state: 'empty', has_more: false, returned_count: 0, total_count: 0 },
+    subject: { kind: 'directory', path: memoryPath?.path },
+    summary: message,
+  })
+}
 
 export function createListTool(context: WorkspaceToolContext) {
   return tool({
@@ -34,8 +54,21 @@ export function createListTool(context: WorkspaceToolContext) {
             enabledSkills: context.enabledSkills,
           },
         )
-        return await createListToolResult(context.workspaceRootPath, target.absolutePath, target.displayPath, input.offset, input.limit)
+        const result = await createListToolResult(context.workspaceRootPath, target.absolutePath, target.displayPath, input.offset, input.limit)
+        return result.semantics?.total_count === 0
+          ? emptyMemoryListing(target.absolutePath, context.workspaceRootPath) ?? result
+          : result
       } catch (error) {
+        if (error instanceof WorkspaceTargetNotFoundError) {
+          const target = resolveReadableTargetPath(
+            context.workspaceRootPath,
+            input.path,
+            context.terminalExecutionMode,
+            { allowGlobalAgentsDirectory: true, conversationId: context.conversationId, enabledSkills: context.enabledSkills },
+          )
+          const empty = emptyMemoryListing(target.absolutePath, context.workspaceRootPath)
+          if (empty) return empty
+        }
         return createToolErrorResult(getToolErrorSummary(error, 'List failed.'))
       }
     },

@@ -118,8 +118,6 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
         if (unreadOutput.lines.length > 0) {
           const modelOutputLines = formatTerminalOutputForModel(session, unreadOutput.lines);
           bodyLines.push(
-            `new_output_lines: ${unreadOutput.lines.length}`,
-            `total_output_lines: ${transcriptSummary.lineCount}`,
             "",
             "new_output:",
             ...modelOutputLines,
@@ -128,12 +126,12 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
             if (session.isDaemon) {
               bodyLines.push(
                 "",
-                "guidance: Web server or watcher is running and listening. Do not wait in a polling loop; proceed with your tasks or send Ctrl+C to stop it.",
+                "next: Server is listening. Continue other work; use Ctrl+C to stop it.",
               );
             } else {
               bodyLines.push(
                 "",
-"guidance: Command is still running. Read this same session again when more output is needed. Use interact_terminal only if an input prompt appears or a control key is required.",
+"next: Read this session again when needed; interact only for input.",
               );
             }
           }
@@ -141,9 +139,8 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
           if (commandSummary.state === "running") {
             bodyLines.push(
               `waited_seconds: ${waitedSeconds}`,
-              `total_output_lines_so_far: ${transcriptSummary.lineCount}`,
               "",
-              "No new terminal output was emitted during this collection window.",
+              "No new output.",
             );
 
             const recentTail = getRecentTranscriptTail(session, 5);
@@ -158,12 +155,12 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
             if (session.isDaemon) {
               bodyLines.push(
                 "",
-                "guidance: Process is an active web server or watcher (listening on port). It will not exit on its own. Do not poll in a loop; proceed with next steps or send Ctrl+C to stop it.",
+                "next: Server is listening. Continue other work; use Ctrl+C to stop it.",
               );
             } else {
               bodyLines.push(
                 "",
-"guidance: The command is still running. Keep the same session_id and call read_terminal again later. If the terminal asks for input, answer with interact_terminal on this session instead of re-running the command.",
+"next: Read this session again when needed; interact only for input.",
               );
             }
           } else {

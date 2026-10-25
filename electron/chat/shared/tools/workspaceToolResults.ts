@@ -58,12 +58,11 @@ export function buildFileChangeResult(
   changes: ChangeDiffToolResultItem[],
 operation: 'edit' | 'noop' | 'write',
   subjectPath: string,
-  bodyPrefix?: string,
 ) {
   const addedPathCount = changes.filter((change) => change.kind === 'add').length
   const deletedPathCount = changes.filter((change) => change.kind === 'delete').length
   const updatedPathCount = changes.filter((change) => change.kind === 'update').length
-  const bodyLines = bodyPrefix ? [bodyPrefix, summary] : [summary]
+  const bodyLines = [summary]
 
   for (const change of changes) {
     const label = change.kind === 'add' ? 'A' : change.kind === 'delete' ? 'D' : 'M'

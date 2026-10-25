@@ -180,9 +180,10 @@ export function AssistantMessage({
   const copyableText = getCopyableAssistantMessageText({ content, reasoningContent });
   const canShowCopyButton =
     showCopyButton && copyableText.length > 0;
-  const canShowActionsMenu = generationMetrics !== undefined || (!isStreaming && onBranch !== undefined);
-  const isActionRowVisible = (showCopyButton || (isStreaming && generationMetrics !== undefined)) &&
-    (canShowActionsMenu || (!isStreaming && canShowCopyButton));
+  const canShowActionsMenu = !isConversationStreaming &&
+    (generationMetrics !== undefined || onBranch !== undefined);
+  const isActionRowVisible = showCopyButton && !isStreaming &&
+    (canShowCopyButton || canShowActionsMenu);
   const messagePaddingClassName = isActionRowVisible ? "pb-6" : "";
 
   useEffect(() => {

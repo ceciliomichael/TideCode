@@ -81,17 +81,12 @@ function plainTabList(input: {
   const rows = input.tabs.map((tab, index) => {
     const title = tab.title.replace(/[\r\n]/gu, ' ').slice(0, 100)
     const url = tab.url.replace(/[\r\n]/gu, '').slice(0, 1000)
-    return [
-      'Tab ' + ((input.page - 1) * 10 + index + 1),
-      'Tab ID: ' + tab.tab_id,
-      'Title: ' + title,
-      'Kind: ' + tab.kind,
-      'URL: ' + url,
-    ].join('\n')
+    return ((input.page - 1) * 10 + index + 1) + '. [' + tab.tab_id + '] '
+      + title + ' (' + tab.kind + ') ' + url
   })
   return [
     'Page ' + input.page + ' (10 per page, ' + input.total + ' tabs total).',
-    ...rows.map((row) => '\n' + row),
+    ...rows,
     input.has_more ? 'More tabs: call with page ' + (input.page + 1) + '.' : 'No more tabs.',
   ].join('\n')
 }
@@ -194,9 +189,8 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
       return {
         status: 'success',
         summary: 'Browser ' + data.action,
-        body: 'Action: ' + data.action + '\nURL: ' + data.url
-          + '\nTitle: ' + (data.title || 'Untitled')
-          + '\nLoading: ' + data.loading,
+        body: 'Tab: ' + tab_id + '\nURL: ' + data.url
+          + (data.loading ? '\nPage is still loading.' : ''),
       }
     }, { oneOf: [
       { required: ['action'], not: { required: ['steps'] } },
@@ -275,7 +269,7 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
         status: 'success',
         summary: 'Browser diagnostics: ' + action.action,
         body: '### ' + action.action + '\n\n'
-          + JSON.stringify(data.output, null, 2).slice(0, 16_000),
+          + JSON.stringify(data.output, null, 2),
         semantics: { tab_id, action: action.action },
       }
     }),

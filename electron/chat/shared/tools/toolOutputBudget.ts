@@ -5,6 +5,11 @@ export const TOOL_OUTPUT_MAX_LINES = 2_000
 export const TOOL_OUTPUT_MAX_LINE_LENGTH = 2_000
 export const TOOL_OUTPUT_PAGED_READ_MAX_BYTES = 32 * 1024
 
+// Model previews are smaller than the absolute safety cap. Content-oriented
+// tools retain larger pages so that useful source evidence is not discarded.
+export const TOOL_OUTPUT_DEFAULT_PREVIEW_BYTES = 24 * 1024
+export const TOOL_OUTPUT_TERMINAL_PREVIEW_BYTES = 16 * 1024
+
 const TOOL_OUTPUT_PREVIEW_RESERVE_BYTES = 2_048
 const TOOL_OUTPUT_NOTICE_LINES = 2
 const TOOL_OUTPUT_MODEL_WRAPPER_RESERVE_LINES = 8
@@ -12,6 +17,11 @@ const TOOL_OUTPUT_MODEL_WRAPPER_RESERVE_LINES = 8
 export interface ToolOutputProjection {
   text: string
   truncated: boolean
+}
+
+export interface ToolOutputPreviewOptions {
+  maximumBytes?: number
+  highlightErrors?: boolean
 }
 
 interface VisibleLine {
@@ -98,12 +108,19 @@ function buildRecoveryHint(outputPath?: string) {
   return 'Re-run the original tool with narrower arguments only if omitted content is needed.'
 }
 
-export function projectToolOutputForModel(value: string, outputPath?: string): ToolOutputProjection {
+export function projectToolOutputForModel(
+  value: string,
+  outputPath?: string,
+  options: number | ToolOutputPreviewOptions = TOOL_OUTPUT_MAX_BYTES,
+): ToolOutputProjection {
+  const maximumBytes = typeof options === 'number' ? options : options.maximumBytes ?? TOOL_OUTPUT_MAX_BYTES
+  const highlightErrors = typeof options === 'object' && options.highlightErrors === true
+  const boundedBytes = Math.max(2_048, Math.min(TOOL_OUTPUT_MAX_BYTES, maximumBytes))
   const sourceBytes = byteLength(value)
   const sourceLines = splitLines(value)
   const hasLongLine = sourceLines.some((line) => hasMoreThanCodePoints(line, TOOL_OUTPUT_MAX_LINE_LENGTH))
   const needsTruncation =
-    sourceBytes > TOOL_OUTPUT_MAX_BYTES ||
+    sourceBytes > boundedBytes ||
     sourceLines.length > TOOL_OUTPUT_MAX_LINES ||
     hasLongLine
 
@@ -114,15 +131,16 @@ export function projectToolOutputForModel(value: string, outputPath?: string): T
     }
   }
 
-  const previewBudget = Math.max(0, TOOL_OUTPUT_MAX_BYTES - TOOL_OUTPUT_PREVIEW_RESERVE_BYTES)
+  const previewBudget = Math.max(0, boundedBytes - TOOL_OUTPUT_PREVIEW_RESERVE_BYTES)
   const visibleLineBudget = Math.max(
     0,
     TOOL_OUTPUT_MAX_LINES - TOOL_OUTPUT_NOTICE_LINES - TOOL_OUTPUT_MODEL_WRAPPER_RESERVE_LINES,
   )
   const headLineBudget = Math.ceil(visibleLineBudget / 2)
   const tailLineBudget = visibleLineBudget - headLineBudget
-  const headByteBudget = Math.floor(previewBudget / 2)
-  const tailByteBudget = previewBudget - headByteBudget
+  const errorByteBudget = highlightErrors ? Math.floor(previewBudget / 4) : 0
+  const headByteBudget = Math.floor((previewBudget - errorByteBudget) / 2)
+  const tailByteBudget = previewBudget - errorByteBudget - headByteBudget
   const headLines = collectHeadLines(sourceLines, headLineBudget, headByteBudget)
   const tailLines = collectTailLines(
     sourceLines,
@@ -139,7 +157,23 @@ export function projectToolOutputForModel(value: string, outputPath?: string): T
 
   const headText = headLines.map((line) => line.text).join('\n')
   const tailText = tailLines.map((line) => line.text).join('\n')
-  const text = [headText, notice, tailText].filter((section) => section.length > 0).join('\n')
+  const firstOmittedIndex = headLines.at(-1)?.lineNumber ?? 0
+  const lastOmittedIndex = (tailLines[0]?.lineNumber ?? sourceLines.length + 1) - 1
+  const errorLines: string[] = []
+  let errorBytes = 0
+  if (highlightErrors) {
+    const diagnosticPattern = /(?:^|\s)(?:error|fatal|exception|failed|traceback|\berr(?:or)?\b\s*:)/iu
+    for (let index = firstOmittedIndex; index < lastOmittedIndex; index += 1) {
+      if (!diagnosticPattern.test(sourceLines[index])) continue
+      const line = `Line ${index + 1}: ${truncateLine(sourceLines[index])}`
+      const lineBytes = byteLength(line) + 1
+      if (errorBytes + lineBytes > errorByteBudget) break
+      errorLines.push(line)
+      errorBytes += lineBytes
+    }
+  }
+  const diagnostics = errorLines.length ? `[Diagnostics from omitted output]\n${errorLines.join('\n')}` : ''
+  const text = [headText, notice, diagnostics, tailText].filter((section) => section.length > 0).join('\n')
 
   return {
     text,

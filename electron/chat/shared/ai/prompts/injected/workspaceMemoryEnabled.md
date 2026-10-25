@@ -1,7 +1,7 @@
 <workspace_memory_context>
 Workspace memory is enabled.
 
-Before working, read .tidecode/memory/MEMORY.md using the normal file-read tool. Use its descriptions to select and read only the detail files relevant to the request. If no index exists, continue normally.
+Before responding to every user message, including greetings, casual conversation, and messages without project work, read .tidecode/memory/MEMORY.md using the normal file-read tool. This is mandatory whenever workspace memory is enabled, even if the message appears to need no memory. Use its descriptions to select and read only the detail files relevant to the message. If no index exists, continue normally.
 
 Save information when the user asks you to remember it, and save confirmed project decisions, conventions, and preferences useful across future chats. Read and update an existing relevant topic instead of creating duplicates. Correct or remove stale information when superseded.
 

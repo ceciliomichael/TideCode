@@ -65,6 +65,22 @@ test('small tool output is returned byte-for-byte', () => {
   })
 })
 
+test('tool-specific previews keep actionable diagnostics from the omitted middle', () => {
+  const value = [
+    ...Array.from({ length: 1000 }, (_, index) => `header ${index}: ${'a'.repeat(75)}`),
+    'src/main.ts:42 error TS2322: Type mismatch',
+    ...Array.from({ length: 1000 }, (_, index) => `tail ${index}: ${'z'.repeat(75)}`),
+  ].join('\n')
+  const projected = projectToolOutputForModel(value, '@tool-output/tool_12345.txt', {
+    maximumBytes: 16 * 1024,
+    highlightErrors: true,
+  })
+  assert.equal(projected.truncated, true)
+  assert.match(projected.text, /src\/main\.ts:42 error TS2322/u)
+  assert.match(projected.text, /@tool-output\/tool_12345\.txt/u)
+  assert.ok(Buffer.byteLength(projected.text, 'utf8') < 16 * 1024)
+})
+
 test('very large single-line output is truncated without materializing the full line as a character array', () => {
   const value = `head-${'x'.repeat(1_000_000)}-tail`
   const result = projectToolOutputForModel(value)

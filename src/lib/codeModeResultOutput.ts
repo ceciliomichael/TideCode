@@ -11,8 +11,6 @@ interface NestedReturnedToolResult {
   summary: string
 }
 
-const IMPLICIT_TOOL_RESULT_OUTPUT_LIMIT = 32_000
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -86,14 +84,6 @@ function formatStructuredCodeModeOutput(value: unknown) {
   return [structure, ...resultSections].filter((section) => section.length > 0).join('\n\n')
 }
 
-function limitOutput(value: string) {
-  if (value.length <= IMPLICIT_TOOL_RESULT_OUTPUT_LIMIT) {
-    return value
-  }
-
-  return `${value.slice(0, IMPLICIT_TOOL_RESULT_OUTPUT_LIMIT)}\n\n[Additional tool output omitted.]`
-}
-
 /**
  * Keeps structured program returns valid JSON, while avoiding a second JSON
  * encoding when the program directly returns one inner ToolResult. The inner
@@ -135,8 +125,8 @@ export function formatImplicitCodeModeToolResults(toolCalls: readonly CodeModeTo
     return `${toolCall.name} (${toolCall.status}):\n${body}`
   })
 
-  return limitOutput([
+  return [
     'The program completed tool calls but returned no explicit value.',
     ...sections,
-  ].join('\n\n'))
+  ].join('\n\n')
 }

@@ -1,3 +1,3 @@
 <workspace_instruction_context path="AGENTS.md" state="present">
-Read AGENTS.md in full and treat it as authoritative workspace instructions throughout this task. Follow every applicable requirement and exception; do not treat it as optional reference data.
+Before responding to every user message, including a greeting, casual conversation, or a message with no requested project work, read AGENTS.md in full through the file tool. Follow every applicable requirement and exception; this read is mandatory and is not conditional on whether the user requests code changes. Do not treat the instructions as optional reference data.
 </workspace_instruction_context>

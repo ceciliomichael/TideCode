@@ -18,16 +18,23 @@ test('assistant actions stay right aligned and expose the branch menu trigger', 
   assert.doesNotMatch(markup, /bottom-1\.5 left-0/u)
 })
 
-test('streaming responses expose metadata actions without enabling branching', () => {
-  const markup = renderToStaticMarkup(createElement(AssistantMessage, {
-    content: 'Streaming response',
-    isStreaming: true,
+test('metadata menu stays hidden until the full AI turn finishes', () => {
+  const props = {
+    content: 'Response',
+    showCopyButton: true,
     onBranch: () => undefined,
     timestamp: 1,
     generationMetrics: { outputTokens: 12, generationMs: 1000, toolExecutionMs: 2000, estimated: true },
-  }))
-  assert.match(markup, /aria-label="Message actions"/u)
-  assert.doesNotMatch(markup, /aria-label="Copy message"/u)
+  }
+  for (const streamingState of [
+    { isStreaming: true, isConversationStreaming: true },
+    { isStreaming: false, isConversationStreaming: true },
+  ]) {
+    const markup = renderToStaticMarkup(createElement(AssistantMessage, { ...props, ...streamingState }))
+    assert.doesNotMatch(markup, /aria-label="Message actions"/u)
+  }
+  const completed = renderToStaticMarkup(createElement(AssistantMessage, props))
+  assert.match(completed, /aria-label="Message actions"/u)
 })
 
 test('metadata shows only approximate tokens per second without a tooltip', () => {

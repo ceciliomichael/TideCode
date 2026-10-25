@@ -199,8 +199,6 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
         if (unreadOutput.lines.length > 0) {
           const modelOutputLines = formatTerminalOutputForModel(session, unreadOutput.lines);
           bodyLines.push(
-            `new_output_lines: ${unreadOutput.lines.length}`,
-            `total_output_lines: ${transcriptSummary.lineCount}`,
             "",
             "new_output:",
             ...modelOutputLines,
@@ -209,12 +207,12 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
             if (session.isDaemon) {
               bodyLines.push(
                 "",
-                "guidance: Web server or watcher is running and listening. Do not wait in a polling loop; proceed with your tasks or send Ctrl+C to stop it.",
+                "next: Server is listening. Continue other work; use Ctrl+C to stop it.",
               );
             } else {
               bodyLines.push(
                 "",
-                "guidance: Input was written to the PTY and the command is still running. Use read_terminal with the same session_id to verify whether the process accepted it and to collect more output.",
+                "next: Read this session to verify the command accepted the input.",
               );
             }
           }
@@ -222,9 +220,8 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
           if (summary.state === "running") {
             bodyLines.push(
               `waited_seconds: ${waitMilliseconds / 1_000}`,
-              `total_output_lines_so_far: ${transcriptSummary.lineCount}`,
               "",
-              "No new terminal output was emitted during this collection window.",
+              "No new output.",
             );
 
             const recentTail = getRecentTranscriptTail(session, 5);
@@ -239,12 +236,12 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
             if (session.isDaemon) {
               bodyLines.push(
                 "",
-                "guidance: Process is an active web server or watcher (listening on port). It will not exit on its own. Do not poll in a loop; proceed with next steps or send Ctrl+C to stop it.",
+                "next: Server is listening. Continue other work; use Ctrl+C to stop it.",
               );
             } else {
               bodyLines.push(
                 "",
-                "guidance: The terminal session is still active. Use read_terminal with the same session_id to verify the process state; use interact_terminal again only when fresh output shows that more input or a control key is needed.",
+                "next: Read this session to verify its state; interact again only for input.",
               );
             }
           } else {

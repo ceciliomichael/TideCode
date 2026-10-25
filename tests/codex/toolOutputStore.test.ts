@@ -6,16 +6,68 @@ import test from 'node:test'
 import type { AgentToolExecutionResult } from '../../electron/chat/shared/toolTypes'
 import { electronApp } from '../../electron/electronApp'
 import { prepareToolExecutionResultForModel } from '../../electron/chat/shared/toolReplay'
+import { formatImplicitCodeModeToolResults } from '../../src/lib/codeModeResultOutput'
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
 
 const createAgentTools = async (...args: Parameters<typeof createAgentToolBundle>) =>
   (await createAgentToolBundle(...args)).nativeTools
 import {
   appendToolOutput,
+  cleanupStaleToolOutputs,
   getToolOutputDirectory,
   persistToolOutput,
   resolveToolOutputAliasPath,
 } from '../../electron/chat/shared/tools/toolOutputStore'
+
+test('cleanup retains stale output referenced by persisted history', async () => {
+  const home = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-output-retention-'))
+  const originalGetPath = electronApp.getPath
+  try {
+    electronApp.getPath = () => home
+    const retained = await persistToolOutput('referenced result')
+    const orphaned = await persistToolOutput('unreferenced result')
+    const oldDate = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000)
+    await fs.utimes(retained.absolutePath, oldDate, oldDate)
+    await fs.utimes(orphaned.absolutePath, oldDate, oldDate)
+    const historyDir = path.join(home, '.tidecode', 'history', 'canonical-history')
+    await fs.mkdir(historyDir, { recursive: true })
+    await fs.writeFile(path.join(historyDir, 'chat.json'), JSON.stringify({
+      output: retained.aliasPath,
+    }))
+    await cleanupStaleToolOutputs()
+    assert.equal(await fs.readFile(retained.absolutePath, 'utf8'), 'referenced result')
+    await assert.rejects(fs.stat(orphaned.absolutePath), { code: 'ENOENT' })
+  } finally {
+    electronApp.getPath = originalGetPath
+    await fs.rm(home, { recursive: true, force: true })
+  }
+})
+
+test('large implicit Code Mode results are preserved before model projection', async () => {
+  const home = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-output-implicit-'))
+  const originalGetPath = electronApp.getPath
+  try {
+    electronApp.getPath = () => home
+    const full = formatImplicitCodeModeToolResults([{
+      name: 'tools.grep',
+      status: 'success',
+      summary: 'Large search',
+      body: 'match result\n'.repeat(5_000),
+    }])
+    assert.ok(full.length > 32_000)
+    const bounded = await prepareToolExecutionResultForModel({
+      result: { status: 'success', summary: 'Executed Code Mode', body: full },
+      toolName: 'exec',
+    })
+    assert.equal(bounded.truncated, true)
+    const outputPath = bounded.semantics?.output_path
+    assert.equal(typeof outputPath, 'string')
+    assert.equal(await fs.readFile(resolveToolOutputAliasPath(String(outputPath)).absolutePath, 'utf8'), full)
+  } finally {
+    electronApp.getPath = originalGetPath
+    await fs.rm(home, { recursive: true, force: true })
+  }
+})
 
 async function executeTool(
   execute: unknown,

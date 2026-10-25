@@ -16,8 +16,8 @@ export function buildWorkspaceInstructionsRuntimeBlock() {
   return [
     '<workspace_instruction_context>',
     `- When root \`${WORKSPACE_INSTRUCTIONS_REPO_PATH}\` exists, the runtime supplies a revision-aware hidden bootstrap context for its repository instructions.`,
-    `- The bootstrap does not contain the file contents. Read the current \`${WORKSPACE_INSTRUCTIONS_REPO_PATH}\` only when that exact revision has not already been read into the model context. If the same revision is already available from earlier history or tool output, reuse it and do not read it again.`,
-    `- If the bootstrap revision changes, read the updated \`${WORKSPACE_INSTRUCTIONS_REPO_PATH}\` before project work.`,
+    `- The bootstrap does not contain the file contents. Read the current \`${WORKSPACE_INSTRUCTIONS_REPO_PATH}\` before responding to every user turn, even greetings and non-project messages. Previous reads in conversation history do not replace this required read.`,
+    `- If the bootstrap revision changes, read the updated \`${WORKSPACE_INSTRUCTIONS_REPO_PATH}\` before responding.`,
     '- If no workspace-instructions bootstrap is present, continue without attempting that bootstrap read.',
     '</workspace_instruction_context>',
   ].join('\n')

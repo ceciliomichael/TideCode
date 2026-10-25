@@ -266,7 +266,6 @@ export function createApplyPatchTool(context: WorkspaceToolContext, runtimeState
           fileChanges,
           'edit',
           fileChanges.length === 1 ? fileChanges[0].fileName : 'workspace',
-          'Patch applied successfully.',
         )
         if (result.autofixedPaths.length > 0) {
           patchResult.body = `${patchResult.body}\nAutofixed escaping: ${result.autofixedPaths.join(', ')}`

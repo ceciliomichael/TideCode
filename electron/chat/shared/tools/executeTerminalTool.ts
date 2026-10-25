@@ -209,7 +209,6 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
 
         if (unreadOutputLines.length > 0) {
           bodyLines.push(
-            `new_output_lines: ${unreadOutputLines.length}`,
             "",
             "new_output:",
             ...unreadOutputLines,
@@ -218,12 +217,12 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
             if (session.isDaemon) {
               bodyLines.push(
                 "",
-                "guidance: Web server or background watcher started and is listening on port. Do not wait in a polling loop; proceed with tasks or send Ctrl+C using interact_terminal when finished.",
+                "next: Server is listening. Continue other work; use Ctrl+C to stop it.",
               );
             } else {
               bodyLines.push(
                 "",
-"guidance: Command is actively executing in the background. Use read_terminal with this session_id for more output. If it reports or shows an input prompt, use interact_terminal on the same session.",
+"next: Use read_terminal with this session_id for more output; interact_terminal only for input.",
               );
             }
           }
@@ -231,12 +230,12 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           if (session.isDaemon) {
             bodyLines.push(
               "",
-              "guidance: Web server started and is listening in background. Do not poll in a loop; proceed with next steps or send Ctrl+C via interact_terminal to stop it.",
+              "next: Server is listening. Continue other work; use Ctrl+C to stop it.",
             );
           } else {
             bodyLines.push(
               "",
-"guidance: Command started and is actively executing in the background. Use read_terminal with this session_id instead of starting the command again. If input is requested, use interact_terminal on this same session.",
+"next: Use read_terminal with this session_id; do not restart the command.",
             );
           }
         }
