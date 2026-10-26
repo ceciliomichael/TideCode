@@ -10,6 +10,7 @@ import { SidebarPanel } from '../../components/sidebar/SidebarPanel'
 import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID, CHATS_PROJECT_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
 import { WorkspaceTerminalPanel } from '../../components/chat/WorkspaceTerminalPanel'
 import { MIN_CHAT_PANEL_WIDTH } from '../../lib/chatPanelSizing'
+import { loadBrowserPlacement, saveBrowserPlacement } from '../../lib/browserPlacementStorage'
 import { MIN_WORKSPACE_EDITOR_WIDTH } from '../../lib/workspaceEditorSizing'
 import { getMaxSidebarWidthForContent } from '../../lib/sidebarSizing'
 import { MobileWorkspaceExplorerSurface } from '../../components/workspaceExplorer/MobileWorkspaceExplorerSurface'
@@ -308,7 +309,12 @@ synchronizeDraftFolder,
   const [isCompressingChat, setIsCompressingChat] = useState(false)
   const isMobileViewport = useIsMobileViewport()
   const [workspaceViewMode, setWorkspaceViewMode] = useState<ChatWorkspaceViewMode>('chat')
-  const [browserPlacement, setBrowserPlacement] = useState<'main' | 'side'>('side')
+  const [browserPlacement, setBrowserPlacement] = useState(loadBrowserPlacement)
+
+  useEffect(() => {
+    saveBrowserPlacement(browserPlacement)
+  }, [browserPlacement])
+
   const [agentBrowserTab, setAgentBrowserTab] = useState<{ tabId: string; projectPath: string; url: string } | null>(null)
   const [mobileSurface, setMobileSurface] = useState<MobileWorkspaceSurface>('chat')
   const isRemoteBrowser = isRemoteBrowserRuntime()
