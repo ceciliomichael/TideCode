@@ -9,10 +9,13 @@ export async function withAgentViewport<T>(
   contents: WebContents,
   action: (send: CdpSend, viewport: Readonly<AgentViewport>) => Promise<T>,
   requestedViewport: AgentViewport = getAgentViewport(contents),
+  signal?: AbortSignal,
 ): Promise<T> {
   const viewport = resolveAgentViewport(requestedViewport)
-  const budget = new AgentBrowserOperation()
+  const budget = new AgentBrowserOperation(20_000, signal)
   const host = contents.hostWebContents
+  // Offscreen agent windows have no embedded webview to resize. Their CDP
+  // viewport is independent from the user's Browser panel.
   const backgroundThrottling = contents.getBackgroundThrottling()
   const token = randomUUID()
   let operationError: unknown
@@ -87,7 +90,22 @@ export async function withAgentViewport<T>(
     }
     try {
       if (!contents.isDestroyed()) {
-        await withBrowserProtocol(contents, (cleanup) => cleanup('Emulation.clearDeviceMetricsOverride'), new AgentBrowserOperation(2_000))
+        if (host && !host.isDestroyed()) {
+          // Restore an embedded user webview if this scope was used for one.
+          await withBrowserProtocol(contents, (cleanup) => cleanup('Emulation.clearDeviceMetricsOverride'), new AgentBrowserOperation(2_000))
+        } else if (operationFailed) {
+          // Hidden AI tabs retain their selected emulated viewport after a
+          // successful read. On failure, restore the last committed viewport.
+          const previousViewport = getAgentViewport(contents)
+          if (previousViewport.width !== viewport.width || previousViewport.height !== viewport.height) {
+            await withBrowserProtocol(contents, (cleanup) => cleanup('Emulation.setDeviceMetricsOverride', {
+              width: previousViewport.width,
+              height: previousViewport.height,
+              deviceScaleFactor: 1,
+              mobile: false,
+            }), new AgentBrowserOperation(2_000))
+          }
+        }
       }
     } catch (error) {
       cleanupErrors.push(error)

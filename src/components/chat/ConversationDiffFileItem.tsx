@@ -2,7 +2,7 @@ import { memo, useCallback, type CSSProperties, type ReactElement } from 'react'
 import { Minus, Plus, Undo2 } from 'lucide-react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import { DiffViewer } from './DiffViewer'
-import { CONVERSATION_DIFF_ROW_HEIGHT_PX, DiffFileHeader } from './DiffFileHeader'
+import { PANEL_DIFF_ROW_HEIGHT_PX, DiffFileHeader } from './DiffFileHeader'
 import { Tooltip } from '../Tooltip'
 
 interface ConversationDiffFileItemProps {
@@ -24,7 +24,7 @@ export type DiffPanelScope = 'branch' | 'last_turn' | 'staged' | 'unstaged'
 
 const collapsedDiffFileRowStyle: CSSProperties = {
   contain: 'layout paint',
-  height: CONVERSATION_DIFF_ROW_HEIGHT_PX,
+  height: PANEL_DIFF_ROW_HEIGHT_PX,
 }
 
 const compactActionButtonClassName =
@@ -171,11 +171,12 @@ function CollapsedConversationDiffFileRow({
 }: CollapsedConversationDiffFileRowProps) {
   return (
     <div
-      className="my-0 w-full overflow-hidden rounded-none border-0 border-b border-border bg-surface shadow-none"
+      className="my-0 w-full overflow-hidden rounded-none border-0 border-b border-border/60 bg-surface shadow-none"
       style={collapsedDiffFileRowStyle}
     >
       <DiffFileHeader
         filePath={diff.fileName}
+        fileChange={diff}
         collapsible
         isExpanded={false}
         stableLayout
@@ -188,12 +189,6 @@ function CollapsedConversationDiffFileRow({
           void onPreloadDiff(diff)
           onPrewarmDiff(diff.fileName)
         }}
-        inlineContent={
-          <span className="inline-flex items-center gap-1 text-xs leading-none">
-            <span className="leading-none text-git-added">{`+${diff.addedLineCount}`}</span>
-            <span className="leading-none text-git-removed">{`-${diff.removedLineCount}`}</span>
-          </span>
-        }
         rightContent={
           <DiffFileActionButtons
             diff={diff}
@@ -273,12 +268,7 @@ function ConversationDiffFileItemComponent({
         startLineNumber={diff.startLineNumber}
         onExpandedChange={handleExpandedChange}
         onPrewarmReady={handlePrewarmReady}
-        headerInlineContent={
-          <span className="inline-flex items-center gap-1 text-xs leading-none">
-            <span className="leading-none text-git-added">{`+${diff.addedLineCount}`}</span>
-            <span className="leading-none text-git-removed">{`-${diff.removedLineCount}`}</span>
-          </span>
-        }
+        headerFileChange={diff}
         headerRightContent={
           <DiffFileActionButtons
             diff={diff}
@@ -327,6 +317,8 @@ function areConversationDiffFileItemPropsEqual(
     left.onPrewarmReady === right.onPrewarmReady &&
     left.diff.addedLineCount === right.diff.addedLineCount &&
     left.diff.removedLineCount === right.diff.removedLineCount &&
+    left.diff.changeStatus === right.diff.changeStatus &&
+    left.diff.originalFileName === right.diff.originalFileName &&
     left.diff.isDeleted === right.diff.isDeleted &&
     left.diff.isStaged === right.diff.isStaged &&
     left.diff.isUnstaged === right.diff.isUnstaged &&

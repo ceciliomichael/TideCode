@@ -8,6 +8,7 @@ import { ArrowLeft, ArrowRight, Globe2, Home, LoaderCircle, RefreshCw, Search, V
 import { useBrowserPageActions, type BrowserPageControls, type BrowserPageState } from './useBrowserPageActions'
 import { BrowserTabsBar } from './BrowserTabsBar'
 import { BrowserNewTabPage } from './BrowserNewTabPage'
+import { BrowserAgentPreview } from './BrowserAgentPreview'
 import type { BrowserVisitedSite } from './browserHistory'
 import { useBrowserHistory } from './useBrowserHistory'
 import {
@@ -605,17 +606,19 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMai
   const [activeTabId, setActiveTabId] = useState(initialTabRef.current.id)
   useEffect(() => {
     if (!agentTab || agentTab.projectPath.toLowerCase() !== projectKey.toLowerCase()) return
+    const existingFrame = window.tidecodeBrowserPageActions.getAgentFrame(agentTab.tabId)
     setTabs((current) => {
       if (current.some((tab) => tab.id === agentTab.tabId)) return current
       return [...current, {
         ...createBrowserTab(),
         id: agentTab.tabId,
-        title: new URL(agentTab.url).hostname,
+        title: existingFrame?.title || new URL(agentTab.url).hostname,
         initialUrl: agentTab.url,
+        faviconUrl: existingFrame?.faviconUrl ?? '',
         aiOwned: true,
       }]
     })
-    setActiveTabId(agentTab.tabId)
+    // An agent opening a page must never steal the user's active browser tab.
   }, [agentTab, projectKey])
   const pageControlsRef = useRef<BrowserPageControls | null>(null)
   const privateTabIdsRef = useRef(new Set<string>())
@@ -673,6 +676,20 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMai
       tab.id === tabId && tab.faviconUrl !== faviconUrl ? { ...tab, faviconUrl } : tab
     )))
   }, [])
+  useEffect(() => {
+    return window.tidecodeBrowserPageActions.onAgentFrame((frame) => {
+      if (frame.projectPath.toLowerCase() !== projectKey.toLowerCase()) return
+      setTabs((current) => current.map((tab) => {
+        if (tab.id !== frame.tabId || !tab.aiOwned) return tab
+        return {
+          ...tab,
+          title: frame.title || new URL(frame.url).hostname,
+          initialUrl: frame.url,
+          faviconUrl: frame.faviconUrl || '',
+        }
+      }))
+    })
+  }, [projectKey])
 
   const handleCreateTab = useCallback(async (incognito: boolean) => {
     let tab: BrowserTab
@@ -691,7 +708,11 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMai
     setActiveTabId(tab.id)
   }, [projectKey])
 
-  const handleCloseTab = useCallback((tabId: string) => {
+  const handleCloseTab = useCallback((tabId: string, fromHost = false) => {
+    const target = tabs.find((tab) => tab.id === tabId)
+    if (target?.aiOwned && !fromHost) {
+      void window.tidecodeBrowserPageActions.closeAgentTab({ tabId, projectPath: projectKey }).catch(console.error)
+    }
     if (privateTabIdsRef.current.delete(tabId)) {
       void window.tidecodeBrowserPageActions.releaseIncognitoTab({ tabId }).catch(console.error)
     }
@@ -708,7 +729,7 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMai
     const nextActiveTabId = selectBrowserTabAfterClose(tabs, activeTabId, tabId)
     setTabs(tabs.filter((tab) => tab.id !== tabId))
     setActiveTabId(nextActiveTabId)
-  }, [activeTabId, onClose, tabs])
+  }, [activeTabId, onClose, projectKey, tabs])
 
   useEffect(() => {
     if (!window.tidecodeBrowserPageActions?.onAgentTabTermination) return
@@ -721,10 +742,12 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMai
         setActiveTabId(replacement.id)
         onClose()
       } else {
-        handleCloseTab(tabId)
+        handleCloseTab(tabId, true)
       }
     })
   }, [handleCloseTab, onClose, projectKey, tabs])
+
+  const activeAgentTab = tabs.some((tab) => tab.id === activeTabId && tab.aiOwned)
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -736,15 +759,21 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMai
         onCreateTab={handleCreateTab}
         isFullScreen={isFullScreen}
         onToggleFullScreen={onToggleFullScreen}
-        pageState={pageState}
+        pageState={activeAgentTab
+          ? { isWebsite: false, canUsePage: false, zoomPercent: 100 }
+          : pageState}
 
         onOpenDevTools={async () => {
+          if (activeAgentTab) {
+            throw new Error('Use the browser.devtools tool to inspect an AI-owned browser tab.')
+          }
           if (!pageControlsRef.current) {
             throw new Error('Open a webpage first.')
           }
           await pageControlsRef.current.openDevTools()
         }}
         onChangeZoom={async (direction) => {
+          if (activeAgentTab) return
           await pageControlsRef.current?.changeZoom(direction)
         }}
         onSelectTab={setActiveTabId}
@@ -752,7 +781,13 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMai
       />
 
       <div className="relative flex min-h-0 flex-1 flex-col">
-        {tabs.map((tab) => (
+        {tabs.map((tab) => tab.aiOwned ? (
+          <div key={tab.id} className={active && tab.id === activeTabId
+            ? 'flex min-h-0 flex-1 flex-col'
+            : 'pointer-events-none absolute inset-0 flex min-h-0 flex-col opacity-0'}>
+            <BrowserAgentPreview tabId={tab.id} projectPath={projectKey} />
+          </div>
+        ) : (
           <BrowserTabSession
             aiOwned={tab.aiOwned}
             initialUrl={tab.initialUrl}

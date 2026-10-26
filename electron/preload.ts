@@ -420,7 +420,30 @@ const browserDevToolsApi: TideCodeBrowserDevToolsApi = {
   open: (input) => ipcRenderer.invoke('browser:openDevTools', input),
 }
 
+const agentFrames = new Map<string, import('../src/types/browser').AgentBrowserFrame>()
+ipcRenderer.on('browser:agentFrame', (_event, input: import('../src/types/browser').AgentBrowserFrame) => {
+  agentFrames.set(input.tabId, input)
+})
+ipcRenderer.on('browser:terminateAgentTab', (_event, input: { tabId: string }) => {
+  agentFrames.delete(input.tabId)
+})
+ipcRenderer.on('browser:agentCursor', (_event, input: { tabId: string; cursor: import('../src/types/browser').AgentBrowserCursor }) => {
+  const frame = agentFrames.get(input.tabId)
+  if (frame) agentFrames.set(input.tabId, { ...frame, cursor: input.cursor })
+})
 const browserPageActionsApi: TideCodeBrowserPageActionsApi = {
+  onAgentCursor: (listener) => {
+    const wrapped = (_event: unknown, input: Parameters<typeof listener>[0]) => listener(input)
+    ipcRenderer.on('browser:agentCursor', wrapped)
+    return () => ipcRenderer.off('browser:agentCursor', wrapped)
+  },
+  closeAgentTab: (input) => ipcRenderer.invoke('browser:closeAgentTab', input),
+  getAgentFrame: (tabId) => agentFrames.get(tabId) ?? null,
+  onAgentFrame: (listener) => {
+    const wrapped = (_event: unknown, input: Parameters<typeof listener>[0]) => listener(input)
+    ipcRenderer.on('browser:agentFrame', wrapped)
+    return () => ipcRenderer.off('browser:agentFrame', wrapped)
+  },
   onUrlOpen: (listener) => {
     const wrapped = (_event: Electron.IpcRendererEvent, request: Parameters<typeof listener>[0]) => listener(request)
     ipcRenderer.on('browser:openUrl', wrapped)
@@ -441,7 +464,10 @@ const browserPageActionsApi: TideCodeBrowserPageActionsApi = {
   removeAnnotation: (input) => ipcRenderer.invoke('browser:removeAnnotation', input),
   registerAgentTab: (input) => ipcRenderer.invoke('browser:registerAgentTab', input),
   onAgentTabTermination: (listener) => {
-    const wrappedListener = (_event: unknown, payload: { tabId: string; projectPath: string }) => listener(payload)
+    const wrappedListener = (_event: unknown, payload: { tabId: string; projectPath: string }) => {
+      agentFrames.delete(payload.tabId)
+      listener(payload)
+    }
     ipcRenderer.on('browser:terminateAgentTab', wrappedListener)
     return () => ipcRenderer.off('browser:terminateAgentTab', wrappedListener)
   },

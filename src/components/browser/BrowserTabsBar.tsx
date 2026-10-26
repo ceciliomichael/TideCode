@@ -1,5 +1,5 @@
 import { BrowserNewTabMenu } from './BrowserNewTabMenu'
-import { Bot, Globe2, Maximize, Minimize, VenetianMask, X } from 'lucide-react'
+import { Globe2, Maximize, Minimize, VenetianMask, X } from 'lucide-react'
 import { useState } from 'react'
 import { handleWorkspaceTabStripWheel, WORKSPACE_TAB_ACTIONS_CLASS_NAME } from '../ui/workspaceTabStrip'
 import { Tooltip } from '../Tooltip'
@@ -94,8 +94,6 @@ export function BrowserTabsBar({
                 >
                   {tab.incognito ? (
                     <VenetianMask size={14} />
-                  ) : tab.aiOwned ? (
-                    <Bot size={14} />
                   ) : (
                     <BrowserTabFavicon faviconUrl={tab.faviconUrl} />
                   )}

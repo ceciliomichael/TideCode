@@ -420,14 +420,12 @@ function SourceControlPanelContent({
       ) : null}
 
       <aside className="non-selectable-ui flex h-full min-w-0 flex-1 flex-col border-l border-border bg-[var(--workspace-panel-surface)]">
-        <div className="flex h-14 shrink-0 items-center justify-between px-4">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
           <div className="flex min-w-0 items-center gap-2">
             <GitCommitHorizontal size={16} className="text-muted-foreground" />
             <span className="truncate text-sm font-semibold text-foreground">SOURCE CONTROL</span>
           </div>
         </div>
-
-        <div className="h-px w-full bg-border" />
 
         <div
           ref={panelBodyRef}

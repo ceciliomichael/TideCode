@@ -20,7 +20,7 @@ function candidateLine(content: string, offset: number) {
   return content.slice(0, offset).split('\n').length
 }
 
-function resolveEditMatches(content: string, change: StructuredReplacement, oldText: string): { matches: TextMatch[]; tolerant: boolean } {
+function resolveEditMatches(content: string, change: StructuredReplacement, oldText: string) {
   let matches = findExactMatchOffsets(content, oldText)
   let tolerant = false
   if (matches.length === 0) {
@@ -33,6 +33,7 @@ function resolveEditMatches(content: string, change: StructuredReplacement, oldT
     })
     tolerant = matches.length > 0
   }
+  const candidates = matches
   if (change.line !== undefined) {
     matches = matches.filter((match) => candidateLine(content, match.startOffset) === change.line)
   }
@@ -44,7 +45,28 @@ function resolveEditMatches(content: string, change: StructuredReplacement, oldT
     const after = normalizeContentLineEndings(change.after)
     matches = matches.filter((match) => content.slice(match.endOffset).startsWith(after))
   }
-  return { matches, tolerant }
+  return { matches, candidates, tolerant }
+}
+
+function describeEditCandidates(content: string, matches: TextMatch[]) {
+  const lines = content.split('\n')
+  const excerpts = matches.slice(0, 3).map((match) => {
+    const line = candidateLine(content, match.startOffset)
+    const start = Math.max(0, line - 2)
+    const end = Math.min(lines.length, line + 1)
+    const excerpt = lines.slice(start, end).map((text, index) => {
+      let preview = text
+      if (preview.length > 160) {
+        preview = `${preview.slice(0, 157)}...`
+      }
+      return `${start + index + 1} | ${preview}`
+    }).join('\n')
+    return `Candidate at line ${line}:\n${excerpt}`
+  })
+  if (matches.length > 3) {
+    excerpts.push(`${matches.length - 3} more candidates omitted.`)
+  }
+  return excerpts.join('\n\n')
 }
 
 function preserveReplacementIndentation(actual: string, expected: string, replacement: string) {
@@ -112,17 +134,32 @@ export async function applyStructuredEdits(
       if (change.line !== undefined && (!Number.isSafeInteger(change.line) || change.line < 1)) {
         throw new Error(`Change ${index + 1} in ${target.relativePath}: line must be a positive integer.`)
       }
-      const { matches, tolerant } = resolveEditMatches(current, change, oldText)
+      const { matches, candidates, tolerant } = resolveEditMatches(current, change, oldText)
       const count = matches.length
       if (count === 0) {
-        if (existing && normalizeContentLineEndings(original).includes(oldText)) {
-          throw new Error(`Change ${index + 1} in ${target.relativePath}: oldText was removed or modified by an earlier change in this batch. Make the replacements non-overlapping or match the updated text.`)
+        if (candidates.length > 0) {
+          let constraint = 'the specified before/after context'
+          if (change.line !== undefined) {
+            constraint = `starting line ${change.line}`
+            if (change.before !== undefined || change.after !== undefined) {
+              constraint += ' and before/after context'
+            }
+          }
+          throw new Error(`Change ${index + 1} in ${target.relativePath}: oldText exists, but no match satisfies ${constraint}. No files were changed. Use verified line/context from the staged text below.\n${describeEditCandidates(current, candidates)}`)
         }
-        throw new Error(`Change ${index + 1} in ${target.relativePath}: oldText not found${change.line !== undefined || change.before !== undefined || change.after !== undefined ? ' at the specified line/context' : ''}. Reread the file and retry.`)
+        const originalMatches = resolveEditMatches(normalizeContentLineEndings(original), {
+          path: change.path,
+          oldText: change.oldText,
+          newText: change.newText,
+        }, oldText).matches
+        if (existing && originalMatches.length > 0) {
+          throw new Error(`Change ${index + 1} in ${target.relativePath}: oldText was removed or modified by an earlier change in this batch. No files were changed. Make the replacements non-overlapping or match the updated text.`)
+        }
+        throw new Error(`Change ${index + 1} in ${target.relativePath}: oldText not found. No files were changed. Reread the file and retry.`)
       }
       if (count > 1 && change.replace_all !== true) {
         const lines = matches.slice(0, 10).map((match) => candidateLine(current, match.startOffset)).join(', ')
-        throw new Error(`Change ${index + 1} in ${target.relativePath}: ${count} matches (lines ${lines}${count > 10 ? ', ...' : ''}). Supply line, before/after context, more specific oldText, or set replace_all: true.`)
+        throw new Error(`Change ${index + 1} in ${target.relativePath}: ${count} matches (lines ${lines}${count > 10 ? ', ...' : ''}). No files were changed. Supply line, before/after context, more specific oldText, or set replace_all: true.\n${describeEditCandidates(current, matches)}`)
       }
       let updated = current
       for (const match of [...matches].reverse()) {

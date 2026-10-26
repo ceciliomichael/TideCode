@@ -174,10 +174,10 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   )
   const shouldLimitResultHeight =
     terminalToolName === null && !isFileWriteTool(displayInvocation.toolName) && !isFileEditTool(displayInvocation.toolName)
-  const isMarkdownResult = toolDiffPresentation === null && imageResultPresentation === null && terminalToolName === null
-    && (displayInvocation.toolName === 'web_search'
-      || (displayInvocation.toolName.startsWith('browser.') && displayInvocation.toolName !== 'browser.tabs'))
-  const isBrowserRead = displayInvocation.toolName === 'browser.read'
+  const isMarkdownResult = toolDiffPresentation === null && imageResultPresentation === null
+    && terminalToolName === null && displayInvocation.toolName === 'web_search'
+  const isBrowserImageResult = displayInvocation.toolName.startsWith('browser.')
+    && imageResultPresentation !== null
 
   return (
     <div className="relative w-full">
@@ -216,13 +216,13 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
           isStreaming={displayInvocation.state === 'running'}
           presentation={toolDiffPresentation}
         />
-      ) : isOpen && isBrowserRead && displayInvocation.resultContent ? (
+      ) : isOpen && isBrowserImageResult && displayInvocation.resultContent ? (
         <div className="mt-1.5 w-full min-w-0">
           <ToolBrowserReadResult
             conversationId={conversationId}
             presentation={imageResultPresentation}
             workspaceRootPath={workspaceRootPath}
-            details={normalizedResultBody}
+            details={displayResultBody}
           />
         </div>
       ) : isOpen && isMarkdownResult && displayInvocation.resultContent ? (

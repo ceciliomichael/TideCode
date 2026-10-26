@@ -428,7 +428,7 @@ function ConversationDiffPanelContent({
       ) : null}
 
       <aside className="non-selectable-ui flex h-full min-w-0 flex-1 flex-col border-l border-border bg-[var(--workspace-panel-surface)]">
-        <div className="flex h-14 shrink-0 items-center justify-between px-4">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
           <div ref={scopeContainerRef} className="relative w-fit max-w-full">
             <button
               ref={scopeButtonRef}
@@ -484,8 +484,6 @@ function ConversationDiffPanelContent({
             </button>
           </Tooltip>
         </div>
-
-        <div className="h-px w-full bg-border" />
 
         {displayedFileDiffs.length === 0 ? (
           <div className="flex flex-1 items-center justify-center px-4 text-sm text-muted-foreground">

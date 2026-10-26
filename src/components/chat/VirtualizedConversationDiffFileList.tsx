@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { CONVERSATION_DIFF_ROW_HEIGHT_PX } from './DiffFileHeader'
+import { PANEL_DIFF_ROW_HEIGHT_PX } from './DiffFileHeader'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import {
   calculateVariableSizeVirtualRange,
@@ -166,7 +166,7 @@ export const VirtualizedConversationDiffFileList = memo(function VirtualizedConv
     () =>
       diffs.map((diff) => {
         if (!expandedFilePathSet.has(diff.fileName)) {
-          return CONVERSATION_DIFF_ROW_HEIGHT_PX
+          return PANEL_DIFF_ROW_HEIGHT_PX
         }
         return measuredHeightsByPath[diff.fileName] ?? DEFAULT_EXPANDED_DIFF_ROW_HEIGHT_PX
       }),

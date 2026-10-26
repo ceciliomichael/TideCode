@@ -1,5 +1,15 @@
 # Durable project knowledge
 
+- On 2026-10-27 the user explicitly approved separating navigation into `browser.navigate` and removing it from `browser.interact` including sequences. Keep browser tool result display structured plain text at the producer, with no fallback conversion and screenshots outside the text-scrolling area.
+
+- Latest browser policy, approved 2026-10-26: AI-owned tabs have full control and AI-selected viewport resolution (default 1440×900); user-owned tabs are strictly read-only at their actual screen resolution, with no focus, scroll or resize side effects. Keep identical tab styling with ownership labels, scale preview to fit without cropping or stretching, animate a context-aware virtual pointer in correct viewport coordinates before tool completion, and show Markdown per-action reports with actual target coordinates. Never move the Windows pointer or automatically retry uncertain browser input.
+
+- On 2026-10-26 the user approved stronger AI editing with the explicit constraint that AI instructions must stay lean. Prefer accurate runtime diagnostics and targeted evidence over adding repetitive prompt instructions.
+
+
+
+- On 2026-10-25 the user required AI browser automation to use its own background Chromium surface and virtual cursor without moving the user's OS pointer, stealing focus, switching the user's active tab, or temporarily resizing the user's browser panel. The AI cursor should map to the actual AI screenshot at any preview size and viewport resolution. Do not allow ordinary AI input to interfere with visible user browsing.
+
 - On 2026-10-24 the user clarified that Browser's Open in main panel action must free the shared side-panel area for Explorer and other tools to open independently beside Browser. It must be separate from fullscreen.
 
 - On 2026-10-23 the user reverted the independent right-docked Terminal request: it should replace Browser, Diff, Source Control and Explorer in the shared right-panel area and use their shared width. Keep the Move panel right/bottom action at the far right of the terminal header.
@@ -59,9 +69,9 @@
 
 - For the sidebar project selector, preserve two-row project items and let row highlighting follow hover. On desktop, reveal the ellipsis action on row hover; give its icon its own scale/color hover feedback and tooltip to the right of the icon, above the dropdown menus, without a button background. Hovering the icon also highlights its project row without selecting it. The Rename/remove actions menu opens at the icon's click position, like the Explorer context menu, and stays inside the viewport; close the tooltip while that menu is open. Do not show checkmarks in the project dropdown. Choosing a project should immediately filter history to it and retain that filter while its new conversation is created. On 2026-10-24 the user moved Chats into the main project dropdown and requested its automatically resolved absolute agent-contexts directory beneath the title, rather than a literal placeholder or home-relative path. Chats has no project rename/remove actions.
 
-- Opening/reopening Diff must show its known changed-file list immediately; refresh metadata and hydrate previews without clearing the list while full file contents load. This includes accurate Staged/Unstaged +/− counts alongside file names; do not defer counts until preview contents arrive.
+- Opening/reopening Diff must show its known changed-file list immediately; refresh metadata and hydrate previews without clearing the list while full file contents load. The user approved matching Diff panel file rows to Source Control: compact 49-pixel rows, file-type icons, semantic status letters instead of inline +/− counts, deleted-name strikethrough, subtle separators, hover backgrounds and right-aligned actions. Keep expansion/previews and Git actions, and leave inline chat diffs unchanged.
 
-- Diff file headers should already occupy their final positions before clicking: preserve filename/count/control alignment across collapsed, loading and expanded states, while retaining on-demand heavy preview rendering.
+- Diff file headers should already occupy their final positions before clicking: preserve filename/status/control alignment across collapsed, loading and expanded states, while retaining on-demand heavy preview rendering.
 
 - The user wants Browser to open as a right sidebar with optional workspace fullscreen, replacing other right-side panels when selected. Browser's new-tab control and Diff's fullscreen control should match the terminal controls and use the shared Tooltip. Panel resizing must stop before chat contents overlap and must keep the layout stable during drag and release.
 

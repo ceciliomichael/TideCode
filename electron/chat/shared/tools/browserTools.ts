@@ -2,7 +2,8 @@ import { jsonSchema, tool } from 'ai'
 import type { ToolSet } from 'ai'
 import type { ToolResultOutput } from '@ai-sdk/provider-utils'
 import { validateBrowserSequence, type AgentBrowserStep, type BrowserSequenceCapture } from '../../../browser/agentPageSequence'
-import { validateBrowserInteraction, type AgentBrowserInteraction } from '../../../browser/agentPageInput'
+import { validateBrowserInteraction, type AgentBrowserInteraction, type BrowserActionReport } from '../../../browser/agentPageInput'
+import { validateBrowserNavigation, type BrowserNavigationInput } from '../../../browser/agentPageNavigation'
 import type { JSONSchema7 } from '@ai-sdk/provider'
 import { storeChatImageAttachment } from '../../../history/chatAttachments'
 import { requestTideCodeBrowser } from '../../../runService/browserService'
@@ -12,19 +13,21 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 const STRING = { type: 'string' } as const
 const TAB_ID = { type: 'string', minLength: 1 } as const
-const ACTIONS = ['click', 'fill', 'type', 'key', 'scroll', 'navigate', 'back', 'forward', 'reload'] as const
+const ACTIONS = ['click', 'hover', 'double_click', 'drag', 'fill', 'type', 'key', 'scroll'] as const
 
 const INTERACTION_PROPERTIES: Record<string, JSONSchema7> = {
   action: { type: 'string', enum: [...ACTIONS] },
-  element_ref: { ...STRING, description: 'Required target reference for click and fill, from browser.read.' },
-  x: { type: 'number', description: 'Scroll anchor only, in viewport CSS pixels.' },
-  y: { type: 'number', description: 'Scroll anchor only, in viewport CSS pixels.' },
+  element_ref: { ...STRING, description: 'Target from browser.read; required for fill, optional for pointer actions when coordinates are supplied.' },
+  observation_id: { ...STRING, description: 'Required with coordinate pointer actions. Use the latest observation_id from browser.read.' },
+  x: { type: 'number', description: 'Viewport CSS pixel X for pointer actions or scrolling.' },
+  y: { type: 'number', description: 'Viewport CSS pixel Y for pointer actions or scrolling.' },
+  to_x: { type: 'number', description: 'Destination X in viewport CSS pixels for drag.' },
+  to_y: { type: 'number', description: 'Destination Y in viewport CSS pixels for drag.' },
   button: { type: 'string', enum: ['left', 'right', 'middle'] },
   text: STRING,
   key: STRING,
   delta_x: { type: 'number' },
   delta_y: { type: 'number' },
-  url: STRING,
 }
 
 interface BrowserToolInput {
@@ -34,10 +37,13 @@ interface BrowserToolInput {
   tab_id: string
   action: string
   element_ref?: string
+  observation_id?: string
   text?: string
   key?: string
   x?: number
   y?: number
+  to_x?: number
+  to_y?: number
   button?: 'left' | 'right' | 'middle'
   delta_x?: number
   delta_y?: number
@@ -49,6 +55,8 @@ interface BrowserToolInput {
   limit?: number
   page?: number
   expression?: string
+  wait_until?: 'none' | 'commit' | 'domcontentloaded' | 'load'
+  timeout_ms?: number
   method?: string
   parameters?: Record<string, unknown>
 }
@@ -56,15 +64,16 @@ interface BrowserToolInput {
 function makeTool(
   properties: Record<string, JSONSchema7>,
   required: string[],
-  execute: (input: BrowserToolInput) => Promise<AgentToolExecutionResult>,
+  execute: (input: BrowserToolInput, signal?: AbortSignal) => Promise<AgentToolExecutionResult>,
   constraints: Pick<JSONSchema7, 'oneOf'> = {},
+  description = 'TideCode native browser automation.',
 ) {
   return tool({
-    description: 'TideCode native browser automation.',
+    description,
     inputSchema: jsonSchema({ type: 'object', additionalProperties: false, properties, required, ...constraints }),
-    execute: async (input) => {
+    execute: async (input, options) => {
       try {
-        return await execute(input as BrowserToolInput)
+        return await execute(input as BrowserToolInput, options?.abortSignal)
       } catch (error) {
         return createToolErrorResult(getToolErrorSummary(error, 'Browser operation failed.'))
       }
@@ -72,50 +81,126 @@ function makeTool(
   })
 }
 
-function plainTabList(input: {
-  page: number
-  total: number
-  has_more: boolean
-  tabs: Array<{ tab_id: string; kind: string; title: string; url: string }>
-}) {
-  const rows = input.tabs.map((tab, index) => {
-    const title = tab.title.replace(/[\r\n]/gu, ' ').slice(0, 100)
-    const url = tab.url.replace(/[\r\n]/gu, '').slice(0, 1000)
-    return ((input.page - 1) * 10 + index + 1) + '. [' + tab.tab_id + '] '
-      + title + ' (' + tab.kind + ') ' + url
-  })
-  return [
-    'Page ' + input.page + ' (10 per page, ' + input.total + ' tabs total).',
-    ...rows,
-    input.has_more ? 'More tabs: call with page ' + (input.page + 1) + '.' : 'No more tabs.',
-  ].join('\n')
+function plainTabList(input: { page: number; total: number; has_more: boolean; tabs: Array<{ tab_id: string; kind: string; title: string; url: string }> }) {
+  const rows = input.tabs.map((tab, index) => [
+    `${(input.page - 1) * 10 + index + 1}. ${tab.title.replace(/[\r\n]/gu, ' ').slice(0, 100)}`,
+    `   Ownership: ${tab.kind === 'agent' ? 'AI-owned' : 'User-owned'}`,
+    `   Tab: ${tab.tab_id}`,
+    `   URL: ${tab.url.replace(/[\r\n]/gu, ' ').slice(0, 1000)}`,
+  ].join('\n'))
+  return [`Browser tabs: page ${input.page}, ${input.total} total`, ...rows,
+    input.has_more ? `More tabs: page ${input.page + 1}` : 'No more tabs.'].join('\n\n')
 }
+
+
+function diagnosticCell(value: unknown): string {
+  if (value === null || value === undefined) return 'None'
+  if (typeof value === 'object') {
+    if (Array.isArray(value)) return value.length + ' items'
+    return Object.keys(value).length + ' fields'
+  }
+  return String(value).replace(/[|<>\r\n`]/gu, ' ').slice(0, 4000)
+}
+
+function formatBrowserDiagnostics(output: unknown): string {
+  if (!output || typeof output !== 'object') return diagnosticCell(output)
+  const record = output as Record<string, unknown>
+  if (Array.isArray(record.events)) {
+    return record.events.length ? record.events.slice(0, 100).map((event) => {
+      const item = event as Record<string, unknown>
+      const time = typeof item.time === 'number' ? new Date(item.time).toISOString() : 'Unknown time'
+      return `${time}  ${diagnosticCell(item.category)} / ${diagnosticCell(item.level)}: ${diagnosticCell(item.message)}`
+    }).join('\n') : 'No events recorded.'
+  }
+  if (Array.isArray(record.metrics)) {
+    return record.metrics.slice(0, 80).map((metric) => {
+      const item = metric as Record<string, unknown>
+      return `${diagnosticCell(item.name)}: ${diagnosticCell(item.value)}`
+    }).join('\n')
+  }
+  return Object.entries(record).slice(0, 50).map(([name, value]) => `${name}: ${diagnosticCell(value)}`).join('\n')
+}
+
+
+function sequenceRows(steps: AgentBrowserStep[], data: Record<string, unknown>): string[] {
+  const reports = Array.isArray(data.actions) ? data.actions as Array<{ step: number; report: BrowserActionReport }> : []
+  const completed = typeof data.completed_steps === 'number' ? data.completed_steps : 0
+  const failed = typeof data.failed_step === 'number' ? data.failed_step : -1
+  return steps.map((step, index) => {
+    const number = index + 1
+    const report = reports.find((item) => item.step === number)?.report
+    const reference = 'element_ref' in step ? step.element_ref : undefined
+    const target = report?.target ?? (typeof reference === 'string' ? reference : step.action)
+    const x = report?.x ?? ('x' in step ? step.x : undefined)
+    const y = report?.y ?? ('y' in step ? step.y : undefined)
+    const toX = report?.to_x ?? ('to_x' in step ? step.to_x : undefined)
+    const toY = report?.to_y ?? ('to_y' in step ? step.to_y : undefined)
+    const method = report?.method ?? (reference ? 'element_ref' : x !== undefined ? 'coordinates' : 'other')
+    const coords = x === undefined ? 'N/A' : `${report ? '' : 'requested ' }(${Math.round(x)}, ${Math.round(y ?? 0)})${toX === undefined ? '' : ` to (${Math.round(toX)}, ${Math.round(toY ?? 0)})`}`
+    const status = number === failed ? 'Failed' : number > completed ? 'Not executed' : step.action === 'read' ? 'Observed' : step.action.startsWith('wait') ? 'Wait completed' : 'Input dispatched'
+    const detail = report?.detail ?? ('text' in step && typeof step.text === 'string' ? `${step.text.length} characters` : '')
+    return `${number}. ${step.action}: ${diagnosticCell(target)}\n   Coordinates: ${coords} | Method: ${method} | ${status}${detail ? ` | ${detail}` : ''}`
+  })
+}
+
 
 export function createBrowserToolSet(context: AgentToolContext): Record<string, ToolSet[string]> {
   const workspace = context.workspaceRootPath
   return {
+    'browser.navigate': makeTool({
+      tab_id: TAB_ID,
+      action: { type: 'string', enum: ['goto', 'back', 'forward', 'reload', 'stop'] },
+      url: STRING,
+      wait_until: { type: 'string', enum: ['none', 'commit', 'domcontentloaded', 'load'] },
+      timeout_ms: { type: 'integer', minimum: 100, maximum: 20000 },
+    }, ['tab_id', 'action'], async ({ tab_id, action, url, wait_until, timeout_ms }, signal) => {
+      const input = { action, url, wait_until, timeout_ms } as BrowserNavigationInput
+      validateBrowserNavigation(input)
+      const { data } = await requestTideCodeBrowser({
+        operation: 'navigate', projectPath: workspace, tabId: tab_id, input,
+      }, signal)
+      return {
+        status: 'success',
+        summary: 'Browser navigation: ' + action,
+        body: [
+          'Browser navigation',
+          'Tab: ' + tab_id,
+          'Action: ' + action,
+          'From: ' + data.from,
+          'URL: ' + data.url,
+          'Status: ' + data.status,
+          'Loading: ' + (data.loading ? 'Yes' : 'No'),
+          ...(data.title ? ['Title: ' + data.title] : []),
+        ].join('\n'),
+        semantics: { tab_id, ...data },
+      }
+    }, {}, 'Navigate an existing AI-owned tab. Supports goto, back, forward, reload and stop with bounded page-load waiting.'),
     'browser.open': makeTool({
       url: { ...STRING, minLength: 1 },
       new_tab: { type: 'boolean' },
-    }, ['url'], async ({ url, new_tab = false }) => {
+      width: { type: 'integer', minimum: 1, maximum: 4096 },
+      height: { type: 'integer', minimum: 1, maximum: 4096 },
+    }, ['url'], async ({ url, new_tab = false, width, height }, signal) => {
       const { data } = await requestTideCodeBrowser({
-        operation: 'open', projectPath: workspace, url, newTab: new_tab,
-      })
+        operation: 'open', projectPath: workspace, url, newTab: new_tab, width, height,
+      }, signal)
       return {
         status: 'success',
         summary: data.status === 'reused' ? 'Reused browser tab' : 'Opened browser tab',
         body: [
-          'Tab ID: ' + data.tab_id,
-          'URL: ' + data.url,
-          'Title: ' + (data.title || 'Untitled'),
-          'Status: ' + data.status,
+          'AI-owned browser tab',
+          'Tab: ' + diagnosticCell(data.tab_id),
+          'URL: ' + diagnosticCell(data.url),
+          'Title: ' + diagnosticCell(data.title || 'Untitled'),
+          'Status: ' + diagnosticCell(data.status),
+          'Viewport: ' + data.width + ' × ' + data.height,
           ...(data.error ? ['Load error: ' + data.error] : []),
         ].join('\n'),
-        semantics: { tab_id: data.tab_id, url: data.url, status: data.status },
+        semantics: { tab_id: data.tab_id, url: data.url, status: data.status, width: data.width, height: data.height },
       }
-    }),
-    'browser.tabs': makeTool({ page: { type: 'integer', minimum: 1 } }, [], async ({ page = 1 }) => {
-      const { data } = await requestTideCodeBrowser({ operation: 'tabs', projectPath: workspace, page })
+    }, {}, 'Open an isolated AI-owned Chromium tab at optional width and height (default 1440 × 900), without resizing the user browser.'),
+    'browser.tabs': makeTool({ page: { type: 'integer', minimum: 1 } }, [], async ({ page = 1 }, signal) => {
+      const { data } = await requestTideCodeBrowser({ operation: 'tabs', projectPath: workspace, page }, signal)
       const result = data as {
         page: number
         total: number
@@ -128,15 +213,15 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
         body: plainTabList(result),
         semantics: { page: result.page, total: result.total, has_more: result.has_more },
       }
-    }),
-    'browser.terminate': makeTool({ tab_id: TAB_ID }, ['tab_id'], async ({ tab_id }) => {
-      const { data } = await requestTideCodeBrowser({ operation: 'terminate', projectPath: workspace, tabId: tab_id })
+    }, {}, 'List project tabs marked AI-owned or User-owned. User-owned tabs are read-only to AI; only AI-owned tabs permit interaction, diagnostics and closure.'),
+    'browser.terminate': makeTool({ tab_id: TAB_ID }, ['tab_id'], async ({ tab_id }, signal) => {
+      const { data } = await requestTideCodeBrowser({ operation: 'terminate', projectPath: workspace, tabId: tab_id }, signal)
       return {
         status: 'success',
         summary: data.status === 'closed' ? 'Closed browser tab' : 'Requested browser tab close',
-        body: 'Tab ID: ' + tab_id + '\nStatus: ' + data.status,
+        body: 'AI-owned tab closed\nTab: ' + tab_id + '\nStatus: ' + data.status,
       }
-    }),
+    }, {}, 'Close an AI-owned page only. User-owned tabs cannot be closed by AI.'),
     'browser.interact': makeTool({
       tab_id: TAB_ID,
       ...INTERACTION_PROPERTIES,
@@ -147,16 +232,19 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
           type: 'object', additionalProperties: false, required: ['action'],
           properties: {
             ...INTERACTION_PROPERTIES,
-            action: { type: 'string', enum: [...ACTIONS, 'wait', 'read'] },
+            action: { type: 'string', enum: [...ACTIONS, 'wait', 'wait_for', 'read'] },
             label: { type: 'string', maxLength: 120 },
             duration_ms: { type: 'integer', minimum: 0, maximum: 5000 },
+            selector: { type: 'string', maxLength: 512 },
+            url_contains: { type: 'string', maxLength: 512 },
+            timeout_ms: { type: 'integer', minimum: 0, maximum: 5000 },
             view: { type: 'string', enum: ['combined', 'visual', 'structure'] },
             offset: { type: 'integer', minimum: 0 },
             limit: { type: 'integer', minimum: 1, maximum: 200 },
           },
         },
       },
-    }, ['tab_id'], async ({ tab_id, steps, ...action }) => {
+    }, ['tab_id'], async ({ tab_id, steps, ...action }, signal) => {
       if (steps !== undefined) {
         if (Object.keys(action).length) {
           throw new Error('Pass steps or a single action, without mixing them.')
@@ -164,16 +252,19 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
         validateBrowserSequence(steps)
         const { data, captures = [] } = await requestTideCodeBrowser({
           operation: 'sequence', projectPath: workspace, tabId: tab_id, steps,
-        })
+        }, signal)
         const body = [
+          'Browser sequence',
           'Tab: ' + tab_id,
-          'Completed steps: ' + data.completed_steps + '/' + steps.length,
+          'Completed: ' + data.completed_steps + '/' + steps.length,
           'Elapsed: ' + data.elapsed_ms + 'ms',
-          ...(data.error ? ['Stopped at step ' + data.failed_step + ': ' + data.error
-            + '\nEarlier actions were not rolled back. No actions were retried.'] : []),
-          ...captures.map((capture) => capture.label + ' (step ' + capture.step + ', '
+          '',
+          ...sequenceRows(steps, data),
+          ...(data.error ? ['', 'Stopped at step ' + data.failed_step + ': ' + data.error,
+            'Earlier actions were not rolled back. No actions were retried.'] : []),
+          ...captures.map((capture) => '\n' + capture.label + ' (step ' + capture.step + ', '
             + capture.started_ms + '–' + capture.completed_ms + 'ms)\n' + capture.body),
-        ].join('\n\n')
+        ].join('\n')
         const presented = await presentSequenceCaptures(context, tab_id, captures, body)
         return {
           status: data.error ? 'error' : 'success',
@@ -185,32 +276,44 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
       validateBrowserInteraction(action as AgentBrowserInteraction)
       const { data } = await requestTideCodeBrowser({
         operation: 'interact', projectPath: workspace, tabId: tab_id, action,
-      })
+      }, signal)
       return {
         status: 'success',
         summary: 'Browser ' + data.action,
-        body: 'Tab: ' + tab_id + '\nURL: ' + data.url
-          + (data.loading ? '\nPage is still loading.' : ''),
+        body: [
+          'Browser ' + data.action,
+          'Tab: ' + diagnosticCell(tab_id),
+          'URL: ' + diagnosticCell(data.url),
+          ...((data.report && typeof data.report === 'object') ? [
+            'Target: ' + diagnosticCell((data.report as { target?: string }).target ?? 'Page'),
+            'Method: ' + diagnosticCell((data.report as { method?: string }).method ?? 'Unknown'),
+            'Coordinates: ' + ((data.report as { x?: number; y?: number }).x === undefined
+              ? 'N/A' : '(' + (data.report as { x: number }).x + ', ' + (data.report as { y: number }).y + ')'),
+            ...((data.report as { detail?: string }).detail ? ['Details: ' + (data.report as { detail: string }).detail] : []),
+          ] : []),
+          data.loading ? 'Page is still loading.' : 'Input dispatched. Page outcome is not yet verified.',
+        ].join('\n'),
       }
     }, { oneOf: [
       { required: ['action'], not: { required: ['steps'] } },
       { required: ['steps'], not: { required: ['action'] } },
-    ] }),
+    ] }, 'Act in a browser tab. Prefer element_ref from browser.read. Coordinate actions require x, y and latest observation_id; sequences support wait_for, screenshots, and multiple steps. Never blindly retry submissions.'),
     'browser.read': makeTool({
       tab_id: TAB_ID,
-      width: { type: 'integer', minimum: 1, maximum: 4096, default: 1280, description: 'Viewport width in CSS pixels. Defaults to 1280.' },
-      height: { type: 'integer', minimum: 1, maximum: 4096, default: 720, description: 'Viewport height in CSS pixels. Defaults to 720.' },
+      width: { type: 'integer', minimum: 1, maximum: 4096, description: 'Optional AI-owned viewport width. Omit to preserve the current width.' },
+      height: { type: 'integer', minimum: 1, maximum: 4096, description: 'Optional AI-owned viewport height. Omit to preserve the current height.' },
       view: { type: 'string', enum: ['combined', 'visual', 'structure', 'annotations'] },
       include_annotations: { type: 'boolean' },
       offset: { type: 'integer', minimum: 0 },
       limit: { type: 'integer', minimum: 1, maximum: 200 },
     }, ['tab_id'], async ({
       tab_id, width, height, view = 'combined', include_annotations = false, offset = 0, limit = 80,
-    }) => {
-      const viewport = resolveAgentViewport({ width, height })
+    }, signal) => {
+      if (width !== undefined || height !== undefined) resolveAgentViewport({ width, height })
       const { data, imageBase64 } = await requestTideCodeBrowser({
         operation: 'read',
-        ...viewport,
+        ...(width !== undefined ? { width } : {}),
+        ...(height !== undefined ? { height } : {}),
         projectPath: workspace,
         tabId: tab_id,
         view,
@@ -218,7 +321,7 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
         offset,
         limit,
         conversationId: context.conversationId ?? null,
-      })
+      }, signal)
       const png = imageBase64 ? Buffer.from(imageBase64, 'base64') : null
       if (png) context.captureModelOutput?.({
         type: 'content',
@@ -251,9 +354,12 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
             relativePath: saved.path,
           },
         } : {}),
-        semantics: { tab_id, width: data.width, height: data.height },
+        semantics: {
+          tab_id, width: data.width, height: data.height,
+          ...(typeof data.observation_id === 'string' ? { observation_id: data.observation_id } : {}),
+        },
       }
-    }),
+    }, {}, 'Read a browser tab. Use structure for element references, combined for screenshot plus elements, or visual for images. Returns observation_id for viewport-bound coordinate actions. Does not resize the user browser.'),
     'browser.devtools': makeTool({
       tab_id: TAB_ID,
       action: { type: 'string', enum: ['console', 'network', 'performance', 'evaluate', 'cdp'] },
@@ -261,18 +367,17 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
       method: STRING,
       parameters: { type: 'object', additionalProperties: true },
       limit: { type: 'integer', minimum: 1, maximum: 100 },
-    }, ['tab_id', 'action'], async ({ tab_id, ...action }) => {
+    }, ['tab_id', 'action'], async ({ tab_id, ...action }, signal) => {
       const { data } = await requestTideCodeBrowser({
         operation: 'devtools', projectPath: workspace, tabId: tab_id, input: action,
-      })
+      }, signal)
       return {
         status: 'success',
         summary: 'Browser diagnostics: ' + action.action,
-        body: '### ' + action.action + '\n\n'
-          + JSON.stringify(data.output, null, 2),
-        semantics: { tab_id, action: action.action },
+        body: 'Browser diagnostics: ' + action.action + '\n' + formatBrowserDiagnostics(data.output),
+        semantics: { tab_id, action: action.action, output: data.output },
       }
-    }),
+    }, {}, 'Inspect browser console, network, performance, evaluation or CDP diagnostics. Use browser.read for normal page observations.'),
   }
 }
 

@@ -374,9 +374,10 @@ app.whenReady().then(async () => {
   })
 
   await createWindow(parseTideCodeLaunchRequest(process.argv))
-  configureDesktopBrowserHost((request) => executeDesktopBrowserRequest(
+  configureDesktopBrowserHost((request, signal) => executeDesktopBrowserRequest(
     request,
     win && !win.isDestroyed() ? win.webContents : null,
+    signal,
   ))
   void ensureRunServiceClient().catch((error) => {
     console.error('[browser] Desktop browser host registration failed:', error)

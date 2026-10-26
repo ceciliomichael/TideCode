@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WebContents } from 'electron'
 import { executeAgentBrowserSequenceInViewport, validateBrowserSequence, type AgentBrowserStep } from '../../electron/browser/agentPageSequence'
-import { DEFAULT_AGENT_VIEWPORT } from '../../electron/browser/agentViewport'
+const FIXTURE_VIEWPORT = { width: 1280, height: 720 } as const
 import type { CdpSend } from '../../electron/browser/agentCdpSession'
 
 const contents = {
@@ -33,7 +33,7 @@ test('sequence dispatches input and observations in order, retaining labeled ima
     { action: 'key', key: 'Space' },
     { action: 'wait', duration_ms: 10 },
     { action: 'read', view: 'visual', label: 'During' },
-  ], send, DEFAULT_AGENT_VIEWPORT)
+  ], send, FIXTURE_VIEWPORT)
   assert.deepEqual(commands, [
     'Page.captureScreenshot:', 'Input.dispatchKeyEvent:keyDown',
     'Input.dispatchKeyEvent:keyUp', 'Page.captureScreenshot:',
@@ -61,7 +61,7 @@ test('an invalid later action or out-of-viewport scroll is rejected before earli
   ]) {
     await assert.rejects(executeAgentBrowserSequenceInViewport(contents, [
       { action: 'type', text: 'must not be sent' }, invalid,
-    ] as AgentBrowserStep[], send, DEFAULT_AGENT_VIEWPORT))
+    ] as AgentBrowserStep[], send, FIXTURE_VIEWPORT))
   }
   assert.equal(dispatched, false)
   assert.throws(() => validateBrowserSequence([]), /1 and 32/)
@@ -84,7 +84,7 @@ test('a failed action stops the chain without replay and preserves earlier obser
       return screenshot()
     }
     throw new Error('Input connection failed')
-  }, DEFAULT_AGENT_VIEWPORT)
+  }, FIXTURE_VIEWPORT)
   assert.equal(result.completed_steps, 1)
   assert.equal(result.failed_step, 2)
   assert.match(result.error!, /Input connection failed/)
@@ -102,10 +102,78 @@ test('aggregate image bytes are bounded and earlier captures survive a size fail
     assert.equal(method, 'Page.captureScreenshot')
     captures += 1
     return screenshot(5 * 1024 * 1024)
-  }, DEFAULT_AGENT_VIEWPORT)
+  }, FIXTURE_VIEWPORT)
   assert.equal(captures, 2)
   assert.equal(result.completed_steps, 1)
   assert.equal(result.failed_step, 2)
   assert.equal(result.captures.length, 1)
   assert.match(result.error!, /8 MiB/)
+})
+
+test('wait_for observes page conditions without a model round trip', async () => {
+  let attempts = 0
+  const result = await executeAgentBrowserSequenceInViewport(contents, [
+    { action: 'wait_for', selector: '#ready', timeout_ms: 1000 },
+    { action: 'key', key: 'Enter' },
+  ], async (method) => {
+    if (method === 'Runtime.evaluate') {
+      attempts += 1
+      return { result: { value: attempts >= 2 } }
+    }
+    return {}
+  }, FIXTURE_VIEWPORT)
+  assert.equal(result.completed_steps, 2)
+  assert.equal(attempts, 2)
+})
+
+test('wait_for tolerates a navigation replacing the execution context', async () => {
+  let attempts = 0
+  const result = await executeAgentBrowserSequenceInViewport(contents, [
+    { action: 'wait_for', selector: '#ready', timeout_ms: 1000 },
+    { action: 'key', key: 'Enter' },
+  ], async (method) => {
+    if (method === 'Runtime.evaluate') {
+      attempts += 1
+      if (attempts === 1) throw new Error('Execution context was destroyed.')
+      return { result: { value: true } }
+    }
+    return {}
+  }, FIXTURE_VIEWPORT)
+  assert.equal(result.completed_steps, 2)
+  assert.equal(attempts, 2)
+})
+
+test('wait_for stops before later actions when its condition never becomes true', async () => {
+  const sent: string[] = []
+  const result = await executeAgentBrowserSequenceInViewport(contents, [
+    { action: 'wait_for', url_contains: '/missing', timeout_ms: 0 },
+    { action: 'click', element_ref: 'ref' },
+  ], async (method) => {
+    sent.push(method)
+    return {}
+  }, FIXTURE_VIEWPORT)
+  assert.equal(result.completed_steps, 0)
+  assert.equal(result.failed_step, 1)
+  assert.match(result.error ?? '', /wait_for condition/u)
+  assert.deepEqual(sent, [])
+  assert.throws(() => validateBrowserSequence([{ action: 'wait_for' }]), /selector or url_contains/u)
+  assert.throws(() => validateBrowserSequence([
+    { action: 'wait_for', url_contains: 'a', timeout_ms: 3000 },
+    { action: 'wait_for', url_contains: 'b', timeout_ms: 3000 },
+  ]), /total at most/u)
+})
+
+test('cancelling an active wait prevents the next browser input', async () => {
+  const controller = new AbortController()
+  const sent: string[] = []
+  const pending = executeAgentBrowserSequenceInViewport(contents, [
+    { action: 'wait', duration_ms: 2000 },
+    { action: 'key', key: 'Enter' },
+  ], async (method) => { sent.push(method); return {} }, FIXTURE_VIEWPORT, controller.signal)
+  setTimeout(() => controller.abort(), 20)
+  const result = await pending
+  assert.equal(result.failed_step, 1)
+  assert.equal(result.completed_steps, 0)
+  assert.match(result.error ?? '', /abort/iu)
+  assert.deepEqual(sent, [])
 })

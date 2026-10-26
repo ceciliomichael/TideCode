@@ -125,11 +125,17 @@ export interface RunServiceBrowserRequestEnvelope {
   input: BrowserHostRequest
 }
 
+export interface RunServiceBrowserCancelEnvelope {
+  type: 'browser_cancel'
+  requestId: string
+}
+
 export type RunServiceWireMessage =
   | RunServiceResponse
   | RunServiceEventEnvelope
   | RunServiceTerminalEventEnvelope
   | RunServiceBrowserRequestEnvelope
+  | RunServiceBrowserCancelEnvelope
 
 export function isRunServiceRequest(value: unknown): value is RunServiceRequest {
   if (!value || typeof value !== 'object') return false

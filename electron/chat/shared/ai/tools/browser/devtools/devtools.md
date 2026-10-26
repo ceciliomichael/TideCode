@@ -1,17 +1,7 @@
 # tools.browser.devtools
 
-Inspect TideCode's built-in Chromium browser via a coordinated Chrome DevTools Protocol connection. Requires tab_id and action.
+Inspect Chromium diagnostics for the specified tab_id. **User-owned tabs are read-only** and permit only `console`, `network`, or `performance`, not JavaScript evaluation or custom CDP calls. AI-owned tabs additionally allow `evaluate` (JavaScript expression) and `cdp` (advanced domain.method with optional parameters).
 
-Actions:
-- console: bounded console messages, warnings, JavaScript exceptions, stack information.
-- network: bounded response statuses and request failure messages. Headers and response bodies are never collected for this view.
-- performance: a bounded set of Chromium performance metrics.
-- evaluate: JavaScript expression evaluation, always enabled for normal browser sessions.
-- cdp: advanced CDP domain.method with optional parameters, always enabled for normal browser sessions.
+Examples: `await tools.browser.devtools({tab_id:"id",action:"console"})` and `await tools.browser.devtools({tab_id:"id",action:"network",limit:30})`.
 
-Examples:
-await tools.browser.devtools({ tab_id: "id", action: "console" })
-await tools.browser.devtools({ tab_id: "id", action: "network", limit: 30 })
-await tools.browser.devtools({ tab_id: "id", action: "evaluate", expression: "document.title" })
-
-Diagnostics record events while the CDP session is connected, so they may omit events before a visible tab was inspected. Sensitive fields are redacted from standard diagnostic output. Raw CDP and evaluate can run privileged page commands and are always enabled for normal browser sessions. The CDP session is coordinated with Electron DevTools; close the native DevTools window before invoking AI browser commands.
+Diagnostics record only events collected while the CDP session is attached. Standard output redacts recognized secrets; never print raw authentication tokens into tool results. Evaluation and custom CDP are powerful capabilities; use them only on AI-owned tabs. Use browser.read for normal page inspection.

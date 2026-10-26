@@ -26,9 +26,9 @@ import { DEFAULT_AGENT_VIEWPORT, getAgentViewport, rememberAgentViewport, resolv
 import type { WebContents } from 'electron'
 
 test('browser viewport defaults, dimension validation and per-tab ownership are explicit', () => {
-  assert.deepEqual(resolveAgentViewport(), { width: 1280, height: 720 })
-  assert.deepEqual(resolveAgentViewport({ width: 390 }), { width: 390, height: 720 })
-  assert.deepEqual(resolveAgentViewport({ height: 844 }), { width: 1280, height: 844 })
+  assert.deepEqual(resolveAgentViewport(), { width: 1440, height: 900 })
+  assert.deepEqual(resolveAgentViewport({ width: 390 }), { width: 390, height: 900 })
+  assert.deepEqual(resolveAgentViewport({ height: 844 }), { width: 1440, height: 844 })
   for (const value of [0, -1, 4097, 1.5, NaN, Infinity, '390', null]) {
     assert.throws(() => resolveAgentViewport({ width: value }), /viewport width/)
     assert.throws(() => resolveAgentViewport({ height: value }), /viewport height/)
@@ -51,8 +51,8 @@ test('browser.read forwards actual viewport dimensions and rejects invalid sizes
     const read = createBrowserToolSet({ workspaceRootPath: 'C:/viewport-test' })['browser.read']
     await read.execute!({ tab_id: 'same-tab', view: 'structure' }, {} as never)
     const mobile = await read.execute!({ tab_id: 'same-tab', width: 390, height: 844 }, {} as never)
-    assert.equal(requests[0].width, 1280)
-    assert.equal(requests[0].height, 720)
+    assert.equal(requests[0].width, undefined)
+    assert.equal(requests[0].height, undefined)
     assert.equal(requests[1].width, 390)
     assert.equal(requests[1].height, 844)
     assert.deepEqual(mobile.semantics, { tab_id: 'same-tab', width: 390, height: 844 })
@@ -97,18 +97,19 @@ test('browser tab listing uses 10-entry pages and validates page numbers', () =>
   }
 })
 
-test('six documented browser tools register in Agent Mode and remain unavailable in Plan Mode', async () => {
+test('seven documented browser tools register in Agent Mode and remain unavailable in Plan Mode', async () => {
   const workspaceRootPath = await mkdtemp(path.join(tmpdir(), 'tidecode-browser-tools-'))
   setRunServiceBrowserHandler(async (request) => {
     assert.equal(request.projectPath, workspaceRootPath)
     if (request.operation !== 'tabs') throw new Error('Unexpected browser operation.')
     return { data: { page: request.page, total: 0, has_more: false, tabs: [] } }
   })
+
   try {
     const agent = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
     const plan = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'plan' })
     try {
-      for (const name of ['open', 'read', 'tabs', 'terminate', 'interact', 'devtools']) {
+      for (const name of ['open', 'navigate', 'read', 'tabs', 'terminate', 'interact', 'devtools']) {
         const fullName = 'browser.' + name
         const definition = agent.registry.get(fullName)
         assert.ok(definition, fullName)
@@ -123,7 +124,7 @@ test('six documented browser tools register in Agent Mode and remain unavailable
       const outcome = await agent.codeModeExecutor.run(script)
       assert.equal(outcome.status, 'success', outcome.error)
       assert.equal(outcome.toolCalls.at(-1)?.name, 'browser.tabs')
-      assert.match(String(outcome.toolCalls.at(-1)?.body), /Page 1 \(10 per page, 0 tabs total\)/)
+      assert.match(String(outcome.toolCalls.at(-1)?.body), /Browser tabs: page 1, 0 total/)
       const invalid = await agent.codeModeExecutor.run('return await tools.browser.tabs({ page: 0 });')
       assert.equal(invalid.status, 'error')
     } finally {
@@ -136,6 +137,27 @@ test('six documented browser tools register in Agent Mode and remain unavailable
   }
 })
 
+test('browser.tabs explicitly identifies AI-owned and user-owned tabs', async () => {
+  setRunServiceBrowserHandler(async () => ({
+    data: {
+      page: 1,
+      total: 2,
+      has_more: false,
+      tabs: [
+        { tab_id: 'agent-tab', kind: 'agent', title: 'Agent Page', url: 'https://example.com/' },
+        { tab_id: 'user-tab', kind: 'visible', title: 'User Page', url: 'https://example.org/' },
+      ],
+    },
+  }))
+  try {
+    const tool = createBrowserToolSet({ workspaceRootPath: 'C:/browser-owner-test' })['browser.tabs']
+    const result = await tool.execute!({ page: 1 }, {} as never)
+    assert.match(result.body ?? '', /Agent Page\n {3}Ownership: AI-owned/u)
+    assert.match(result.body ?? '', /User Page\n {3}Ownership: User-owned/u)
+  } finally {
+    setRunServiceBrowserHandler(null)
+  }
+})
 test('Node-only browser tools report a missing desktop host rather than accessing Electron globals', async () => {
   const workspaceRootPath = await mkdtemp(path.join(tmpdir(), 'tidecode-browser-no-host-'))
   try {
@@ -189,7 +211,7 @@ test('read observes the existing tab without URL input and non-navigation intera
   }
 })
 
-test('browser clicks require a reference and reject coordinates before forwarding, while scroll anchors remain supported', async () => {
+test('browser clicks accept either element references or coordinates and reject ambiguous targets', async () => {
   const requests: unknown[] = []
   setRunServiceBrowserHandler(async (request) => {
     requests.push(request)
@@ -200,17 +222,19 @@ test('browser clicks require a reference and reject coordinates before forwardin
     for (const input of [
       { action: 'click' },
       { action: 'click', element_ref: ' ' },
-      { action: 'click', x: 10, y: 20 },
+      { action: 'click', x: 10 },
       { action: 'click', element_ref: 'el-current', x: 10, y: 20 },
     ]) {
       const result = await interact.execute!({ tab_id: 'existing-tab', ...input }, {} as never)
       assert.equal(result.status, 'error')
-      assert.match(result.body ?? '', /clicks require an element_ref/)
+      assert.match(result.body ?? '', /(?:either an element_ref or x and y viewport coordinates|observation_id)/u)
     }
     assert.equal(requests.length, 0, 'rejected clicks never reach the desktop')
     await interact.execute!({ tab_id: 'existing-tab', action: 'click', element_ref: 'el-current' }, {} as never)
+    await interact.execute!({ tab_id: 'existing-tab', action: 'click', x: 10, y: 20, observation_id: 'observed-frame' }, {} as never)
+    await interact.execute!({ tab_id: 'existing-tab', action: 'hover', x: 12, y: 22, observation_id: 'observed-frame' }, {} as never)
     await interact.execute!({ tab_id: 'existing-tab', action: 'scroll', x: 10, y: 20, delta_y: 200 }, {} as never)
-    assert.equal(requests.length, 2)
+    assert.equal(requests.length, 4)
   } finally {
     setRunServiceBrowserHandler(null)
   }
@@ -250,7 +274,7 @@ test('browser.interact sequences make one host call and deliver each labeled ima
     const result = await interact.execute!({ tab_id: 'game', steps }, {} as never)
     assert.equal(requests.length, 1)
     assert.equal(result.status, 'error')
-    assert.match(result.body!, /Completed steps: 3\/4/)
+    assert.match(result.body!, /Completed: 3\/4/)
     assert.match(result.body!, /Stopped at step 4: Target detached/)
     assert.match(result.body!, /Airborne/)
     assert.equal(outputs.length, 1)

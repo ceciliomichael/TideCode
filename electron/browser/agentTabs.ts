@@ -1,30 +1,34 @@
-import type { WebContents } from 'electron'
+import type { BrowserWindow, WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { BROWSER_SESSION_PARTITION } from '../../src/types/browser'
 import { clearBrowserStructure } from './agentPageStructure'
 import { requireBrowserElectronRuntime } from './agentElectronRuntime'
 import { AgentBrowserOperation } from './agentBrowserOperation'
+import { clearAgentObservation } from './agentObservation'
+import { observeAgentCursor } from './agentCursor'
+import { getAgentViewport } from './agentViewport'
+import { rememberAgentViewport, resolveAgentViewport, type AgentViewport } from './agentViewport'
 
 const MAX_AGENT_TABS_PER_PROJECT = 12
 
 export interface AgentBrowserTab {
   id: string
   projectPath: string
-  kind: 'visible'
+  kind: 'visible' | 'agent'
   createdByAgent: boolean
   contents: WebContents
   ownerId: number
+  window?: BrowserWindow
 }
 
 const tabs = new Map<string, AgentBrowserTab>()
 const operations = new Map<string, Promise<unknown>>()
-const pendingOpen = new Map<string, {
-  projectPath: string
-  resolve: (tab: AgentBrowserTab) => void
-  reject: (error: Error) => void
-  timeout: ReturnType<typeof setTimeout>
-}>()
+const agentFavicons = new WeakMap<WebContents, string>()
+
+export function getAgentTabFavicon(contents: WebContents) {
+  return agentFavicons.get(contents) ?? ''
+}
 
 export function requireBrowserUrl(raw: string) {
   if (typeof raw !== 'string' || !raw.trim()) throw new Error('A browser URL is required.')
@@ -50,27 +54,21 @@ export function registerVisibleBrowserTab(input: {
   const existing = tabs.get(input.id)
   if (existing && existing.contents !== input.contents) throw new Error('Browser tab ID is already in use.')
   if (existing) return existing
-  const pending = pendingOpen.get(input.id)
   const project = path.resolve(input.projectPath)
-  if (pending && pending.projectPath !== project) {
-    throw new Error('The registered browser tab belongs to another project.')
-  }
   const tab: AgentBrowserTab = {
     ...input,
     projectPath: project,
     kind: 'visible',
-    createdByAgent: Boolean(pending),
+    createdByAgent: false,
   }
   tabs.set(input.id, tab)
-  if (pending) {
-    pendingOpen.delete(input.id)
-    clearTimeout(pending.timeout)
-    pending.resolve(tab)
-  }
   input.contents.once('destroyed', () => {
     if (tabs.get(input.id)?.contents === input.contents) tabs.delete(input.id)
   })
-  input.contents.on('did-navigate', () => clearBrowserStructure(input.contents))
+  input.contents.on('did-navigate', () => {
+    clearBrowserStructure(input.contents)
+    clearAgentObservation(input.contents)
+  })
   return tab
 }
 
@@ -121,19 +119,22 @@ export async function withAgentBrowserTab<T>(
   id: string,
   operation: (tab: AgentBrowserTab) => Promise<T>,
   allowUnsupportedUrl = false,
+  signal?: AbortSignal,
 ): Promise<T> {
+  if (signal?.aborted) throw new Error('Browser operation cancelled.')
   const previous = operations.get(id) ?? Promise.resolve()
   let release!: () => void
   const next = new Promise<void>((resolve) => { release = resolve })
   const queued = previous.catch(() => undefined).then(() => next)
   operations.set(id, queued)
   try {
-    await new AgentBrowserOperation(10_000).run(
+    await new AgentBrowserOperation(10_000, signal).run(
       'waiting for the previous operation on tab ' + id,
       () => previous.catch(() => undefined),
       () => undefined,
       10_000,
     )
+    if (signal?.aborted) throw new Error('Browser operation cancelled.')
     return await operation(resolveAgentBrowserTab(projectPath, id, allowUnsupportedUrl))
   } finally {
     release()
@@ -141,68 +142,147 @@ export async function withAgentBrowserTab<T>(
   }
 }
 
-export async function openAgentBrowserTab(projectPath: string, url: string, owner: WebContents, newTab = false) {
-  const { app } = requireBrowserElectronRuntime()
+export async function openAgentBrowserTab(
+  projectPath: string, url: string, owner: WebContents, newTab = false, signal?: AbortSignal,
+  requestedViewport?: AgentViewport,
+) {
+  const viewport = resolveAgentViewport(requestedViewport)
+  if (signal?.aborted) throw new Error('Browser operation cancelled.')
+  const { app, BrowserWindow } = requireBrowserElectronRuntime()
   if (!app.isReady()) throw new Error('Browser automation requires the TideCode desktop application.')
   const target = requireBrowserUrl(url)
   const project = path.resolve(projectPath)
   if (!newTab) {
     const existing = [...tabs.values()].find((tab) =>
       tab.projectPath === project && tab.createdByAgent && !tab.contents.isDestroyed()
-      && tab.ownerId === owner.id && tab.contents.getURL() === target)
+      && tab.ownerId === owner.id && tab.contents.getURL() === target
+      && getAgentViewport(tab.contents).width === viewport.width
+      && getAgentViewport(tab.contents).height === viewport.height)
     if (existing) {
       return {
         tab_id: existing.id, url: target,
-        title: existing.contents.getTitle(), status: 'reused',
+        title: existing.contents.getTitle(), status: 'reused', width: viewport.width, height: viewport.height,
       }
     }
   }
   const agentCount = [...tabs.values()].filter((tab) =>
-    tab.projectPath === project && tab.createdByAgent && !tab.contents.isDestroyed()).length
-    + [...pendingOpen.values()].filter((pending) => pending.projectPath === project).length
+    tab.projectPath === project && tab.kind === 'agent' && !tab.contents.isDestroyed()).length
   if (agentCount >= MAX_AGENT_TABS_PER_PROJECT) {
     throw new Error('Too many AI browser tabs. Close an existing tab before opening another.')
   }
   const id = randomUUID()
-  const registered = new Promise<AgentBrowserTab>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      pendingOpen.delete(id)
-      reject(new Error('The TideCode browser panel did not attach the requested tab in time.'))
-    }, 20_000)
-    pendingOpen.set(id, { projectPath: project, resolve, reject, timeout })
+  const window = new BrowserWindow({
+    show: false,
+    width: viewport.width,
+    height: viewport.height,
+    webPreferences: {
+      offscreen: { useSharedTexture: false },
+      partition: BROWSER_SESSION_PARTITION,
+      backgroundThrottling: false,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  const contents = window.webContents
+  rememberAgentViewport(contents, viewport)
+  contents.on('page-favicon-updated', (_event, favicons) => {
+    agentFavicons.set(contents, favicons[0] ?? '')
+  })
+  // Agent pages must not spawn visible popups or navigate into privileged URLs.
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  contents.on('will-navigate', (event, navigationURL) => {
+    try {
+      requireBrowserUrl(navigationURL)
+    } catch {
+      event.preventDefault()
+    }
+  })
+  const tab: AgentBrowserTab = {
+    id, projectPath: project, kind: 'agent', createdByAgent: true,
+    contents, ownerId: owner.id, window,
+  }
+  tabs.set(id, tab)
+  observeAgentCursor(contents, (cursor) => {
+    if (owner.isDestroyed()) return
+    const viewport = getAgentViewport(contents)
+    owner.send('browser:agentCursor', {
+      tabId: id, projectPath: project,
+      width: viewport.width, height: viewport.height, cursor,
+    })
   })
   const onOwnerDestroyed = () => {
-    const pending = pendingOpen.get(id)
-    if (!pending) return
-    pendingOpen.delete(id)
-    clearTimeout(pending.timeout)
-    pending.reject(new Error('The TideCode browser window closed before attaching the tab.'))
+    if (tabs.get(id) === tab) {
+      tabs.delete(id)
+      if (!window.isDestroyed()) window.destroy()
+    }
   }
   owner.once('destroyed', onOwnerDestroyed)
-  try {
-    owner.send('browser:openAgentTab', { tabId: id, projectPath: project, url: target })
-    const tab = await registered
-    return { tab_id: id, url: tab.contents.getURL() || target, title: tab.contents.getTitle(), status: 'loaded' }
-  } catch (error) {
-    const pending = pendingOpen.get(id)
-    if (pending) {
-      pendingOpen.delete(id)
-      clearTimeout(pending.timeout)
-    }
-    throw error
-  } finally {
+  contents.once('destroyed', () => {
+    if (tabs.get(id) === tab) tabs.delete(id)
     owner.removeListener('destroyed', onOwnerDestroyed)
+  })
+  contents.on('did-navigate', () => {
+    clearBrowserStructure(contents)
+    clearAgentObservation(contents)
+  })
+  try {
+    // Resolve on DOM readiness rather than waiting for images and trackers to
+    // finish, so an unrelated slow resource does not stall browser.open.
+    const ready = new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        clearTimeout(timeout)
+        contents.removeListener('dom-ready', onReady)
+        contents.removeListener('did-fail-load', onFailed)
+        signal?.removeEventListener('abort', onAbort)
+      }
+      const onAbort = () => {
+        cleanup()
+        reject(new Error('Browser operation cancelled.'))
+      }
+      const onReady = () => {
+        cleanup()
+        resolve()
+      }
+      const onFailed = (_event: unknown, code: number, description: string, _url: string, isMainFrame: boolean) => {
+        if (!isMainFrame || code === -3) return
+        cleanup()
+        reject(new Error('The AI browser could not load the page: ' + description))
+      }
+      const timeout = setTimeout(() => {
+        cleanup()
+        reject(new Error('The AI browser page did not become ready within 15 seconds.'))
+      }, 15_000)
+      contents.once('dom-ready', onReady)
+      contents.on('did-fail-load', onFailed)
+      signal?.addEventListener('abort', onAbort, { once: true })
+      if (signal?.aborted) onAbort()
+    })
+    void contents.loadURL(target).catch(() => undefined)
+    await ready
+    if (signal?.aborted) throw new Error('Browser operation cancelled.')
+    return { tab_id: id, url: contents.getURL() || target, title: contents.getTitle(), status: 'loaded', width: viewport.width, height: viewport.height }
+  } catch (error) {
+    tabs.delete(id)
+    owner.removeListener('destroyed', onOwnerDestroyed)
+    window.destroy()
+    throw error
   }
 }
 
 export async function terminateAgentBrowserTab(projectPath: string, id: string) {
   return withAgentBrowserTab(projectPath, id, async (tab) => {
+    if (tab.kind !== 'agent' || !tab.window) {
+      throw new Error('User-owned browser tabs cannot be closed by AI.')
+    }
+    tabs.delete(id)
+    tab.window.destroy()
     const { webContents } = requireBrowserElectronRuntime()
     const owner = webContents.fromId(tab.ownerId)
-    if (!owner || owner.isDestroyed()) throw new Error('The visible browser owner is no longer available.')
-    owner.send('browser:terminateAgentTab', { tabId: tab.id, projectPath: tab.projectPath })
-    // Renderer owns visible-tab state. It will unmount the corresponding webview.
-    return { tab_id: id, status: 'close_requested' }
+    if (owner && !owner.isDestroyed()) {
+      owner.send('browser:terminateAgentTab', { tabId: id, projectPath: tab.projectPath })
+    }
+    return { tab_id: id, status: 'closed' }
   }, true)
 }
 

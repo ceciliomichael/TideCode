@@ -9,7 +9,7 @@ const API_NAMES = new Set([
   'terminal.execute', 'terminal.read', 'terminal.interact', 'terminal.terminate',
   'skill.list', 'skill.search', 'skill.load', 'plan.create',
   'edit', 'patch', 'write', 'available.list', 'available.search', 'available.get',
-  'browser.open', 'browser.read', 'browser.tabs', 'browser.terminate', 'browser.interact', 'browser.devtools',
+  'browser.open', 'browser.navigate', 'browser.read', 'browser.tabs', 'browser.terminate', 'browser.interact', 'browser.devtools',
 ])
 
 function readRequiredMarkdown(relativePath: string): string {

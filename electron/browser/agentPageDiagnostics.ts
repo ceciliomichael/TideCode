@@ -1,5 +1,6 @@
 import type { WebContents } from 'electron'
 import { withBrowserProtocol, listBrowserDiagnosticEvents, scrubBrowserDiagnosticText } from './agentCdpSession'
+import { AgentBrowserOperation } from './agentBrowserOperation'
 
 export interface BrowserDiagnosticRequest {
   action: 'console' | 'network' | 'performance' | 'evaluate' | 'cdp'
@@ -13,6 +14,7 @@ export async function readBrowserDiagnostics(
   contents: WebContents,
   _projectPath: string,
   input: BrowserDiagnosticRequest,
+  signal?: AbortSignal,
 ) {
   const limit = input.limit ?? 50
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
@@ -62,5 +64,5 @@ export async function readBrowserDiagnostics(
       return { method: input.method, result: scrubBrowserDiagnosticText(JSON.stringify(value).slice(0, 8000)) }
     }
     throw new Error('Unknown diagnostic action.')
-  })
+  }, new AgentBrowserOperation(20_000, signal))
 }

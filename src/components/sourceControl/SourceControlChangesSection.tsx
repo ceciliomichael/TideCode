@@ -101,8 +101,6 @@ export function SourceControlChangesSection({
   const sectionBodyClassName = 'min-h-0 flex flex-1 flex-col overflow-hidden'
 
   const diffViewportClassName = 'min-h-0 flex-1 overflow-y-auto'
-  const hasStagedSection = stagedFileDiffs.length > 0
-  const shouldShowUnstagedSectionTopBorder = hasStagedSection && isStagedSectionOpen
   const stagedBadgeClassName =
     stagedFileCount < 10
       ? 'grid h-5 w-5 flex-none place-items-center rounded-full bg-border-muted text-[10px] font-medium leading-none text-foreground'
@@ -363,7 +361,6 @@ export function SourceControlChangesSection({
                 className={[
                   'min-h-0 flex flex-col',
                   isUnstagedSectionOpen ? 'flex-1' : 'shrink-0',
-                  shouldShowUnstagedSectionTopBorder ? 'border-t border-border' : '',
                 ].join(' ')}
               >
                 <div className="flex h-10 w-full items-center border-b border-border">

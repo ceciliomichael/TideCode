@@ -5,7 +5,7 @@ export interface AgentViewport {
   height: number
 }
 
-export const DEFAULT_AGENT_VIEWPORT: Readonly<AgentViewport> = Object.freeze({ width: 1280, height: 720 })
+export const DEFAULT_AGENT_VIEWPORT: Readonly<AgentViewport> = Object.freeze({ width: 1440, height: 900 })
 const viewports = new WeakMap<WebContents, Readonly<AgentViewport>>()
 
 export function resolveAgentViewport(input: { width?: unknown; height?: unknown } = {}): Readonly<AgentViewport> {

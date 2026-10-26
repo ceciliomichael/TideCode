@@ -1,5 +1,6 @@
 import { lazy, memo, Suspense, useState, type ReactNode } from 'react'
 import { DiffFileHeader } from './DiffFileHeader'
+import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import { WorkspaceMonacoDiffLoadingView } from './diffViewer/WorkspaceMonacoDiffLoadingView'
 import { estimateWorkspaceMonacoDiffHeight, resolveWorkspaceMonacoDiffMaxHeight } from './diffViewer/workspaceMonacoDiffConfig'
 import { preloadWorkspaceMonacoDiffView } from '../../lib/workspaceMonacoPreload'
@@ -20,6 +21,7 @@ interface DiffViewerProps {
   diffCacheKey?: string
   filePath: string
   stableHeaderLayout?: boolean
+  headerFileChange?: Pick<ConversationFileDiff, 'changeStatus' | 'isDeleted' | 'originalFileName'>
   headerClassName?: string
   headerInlineContent?: ReactNode
   headerRightContent?: ReactNode
@@ -50,6 +52,7 @@ function areDiffViewerPropsEqual(left: DiffViewerProps, right: DiffViewerProps) 
     left.diffCacheKey === right.diffCacheKey &&
     left.filePath === right.filePath &&
     left.stableHeaderLayout === right.stableHeaderLayout &&
+    left.headerFileChange === right.headerFileChange &&
     left.headerClassName === right.headerClassName &&
     left.headerInlineContent === right.headerInlineContent &&
     left.headerRightContent === right.headerRightContent &&
@@ -78,6 +81,7 @@ function DiffViewerComponent({
   diffCacheKey,
   filePath,
   stableHeaderLayout = false,
+  headerFileChange,
   headerClassName,
   headerInlineContent,
   headerRightContent,
@@ -111,6 +115,7 @@ function DiffViewerComponent({
   const header = (
     <DiffFileHeader
       filePath={filePath}
+      fileChange={headerFileChange}
       collapsible={collapsible}
       isExpanded={isExpanded}
       stableLayout={stableHeaderLayout}
@@ -137,6 +142,7 @@ function DiffViewerComponent({
         isStackedLayout
           ? 'my-0 w-full overflow-hidden rounded-none border-0 border-b border-border bg-surface shadow-none'
           : 'my-2 w-full overflow-hidden rounded-2xl border border-border bg-surface shadow-sm',
+        headerFileChange && isStackedLayout ? 'border-border/60' : '',
         className ?? '',
       ].join(' ')}
     >

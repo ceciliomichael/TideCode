@@ -45,8 +45,12 @@ const ACTIONABLE_POINT_PROBE = `function() {
   if(!this.isConnected) return {error:"Element is no longer attached. Read the page again."};
   this.scrollIntoView({behavior:"instant",block:"center",inline:"nearest"});
   const r=this.getBoundingClientRect(),s=getComputedStyle(this);
-  if(r.width<1||r.height<1||s.visibility==="hidden"||s.display==="none"||s.pointerEvents==="none")
-    return {error:"Element is not actionable"};
+  if(r.width<1||r.height<1)
+    return {error:"The element has no visible size. It may have been hidden or collapsed by an earlier action. Read the page again before selecting a target."};
+  if(s.visibility==="hidden"||s.display==="none")
+    return {error:"The element is hidden, possibly after an earlier interaction. Read the page again to locate the visible control."};
+  if(s.pointerEvents==="none")
+    return {error:"The element is not accepting pointer input. Check whether an animation or disabled state is blocking it, then read the page again."};
   const left=Math.max(r.left,0),right=Math.min(r.right,innerWidth);
   const top=Math.max(r.top,0),bottom=Math.min(r.bottom,innerHeight);
   if(left>=right||top>=bottom) return {error:"Element is outside the viewport"};

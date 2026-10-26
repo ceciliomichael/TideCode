@@ -22,6 +22,7 @@ Workspace memory index. Detailed entries live under `details/`. Treat entries as
 - [data-layout-and-invariants.md](details/persistence/data-layout-and-invariants.md) - Metadata required: add name and description frontmatter before using this memory.
 
 ## details/product
+- [diff-panel-design](details/product/diff-panel-design.md) - Approved Source Control styling for Diff panel file rows, scoped behavior and header divider rendering.
 - [long-term-goal.md](details/product/long-term-goal.md) - Metadata required: add name and description frontmatter before using this memory.
 - [memory-maintenance-guide.md](details/product/memory-maintenance-guide.md) - Metadata required: add name and description frontmatter before using this memory.
 

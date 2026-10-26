@@ -151,7 +151,7 @@ export class TideCodeRunServiceServer {
   private token = ''
 
   constructor(private readonly options: TideCodeRunServiceServerOptions) {
-    setRunServiceBrowserHandler((input) => this.browserBroker.request(input))
+    setRunServiceBrowserHandler((input, signal) => this.browserBroker.request(input, signal))
     this.unsubscribeTerminalEvents = this.terminalBroker.onEvent((event) => this.emitTerminalEvent(event))
   }
 

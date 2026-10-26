@@ -30,6 +30,10 @@ export interface TideCodeBrowserDevToolsApi {
 }
 
 export interface TideCodeBrowserPageActionsApi {
+  onAgentCursor: (listener: (input: { tabId: string; projectPath: string; width: number; height: number; cursor: AgentBrowserCursor }) => void) => () => void
+  closeAgentTab: (input: { tabId: string; projectPath: string }) => Promise<void>
+  getAgentFrame: (tabId: string) => AgentBrowserFrame | null
+  onAgentFrame: (listener: (input: AgentBrowserFrame) => void) => () => void
   onUrlOpen: (listener: (request: BrowserUrlRequest) => void) => () => void
   onZoomRequest: (listener: (webContentsId: number, direction: 'in' | 'out') => void) => () => void
   onAgentTabOpen: (listener: (input: { tabId: string; projectPath: string; url: string }) => void) => () => void
@@ -54,6 +58,27 @@ export interface TideCodeBrowserPageActionsApi {
   ) => Promise<number>
   clearCookies: (input: { partition: string }) => Promise<void>
   clearCache: (input: { partition: string }) => Promise<void>
+}
+
+export interface AgentBrowserFrame {
+  tabId: string
+  projectPath: string
+  url: string
+  title?: string
+  faviconUrl?: string
+  width: number
+  height: number
+  cursor: AgentBrowserCursor | null
+  imageDataUrl: string
+}
+
+export interface AgentBrowserCursor {
+  x: number
+  y: number
+  kind?: string
+  effect?: 'click' | 'drag'
+  revision?: number
+  motionRevision?: number
 }
 
 export interface BrowserElementAnnotationDraft {

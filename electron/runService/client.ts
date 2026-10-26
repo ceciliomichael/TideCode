@@ -70,6 +70,8 @@ export class TideCodeRunServiceClient {
   private readonly eventListeners = new Set<(event: TideCodeRunEvent) => void>()
   private readonly terminalEventListeners = new Set<(event: TerminalBrokerEvent) => void>()
   private readonly browserRequestListeners = new Set<(event: RunServiceBrowserRequestEnvelope) => void>()
+  private readonly browserCancelListeners = new Set<(requestId: string) => void>()
+  private readonly disconnectListeners = new Set<() => void>()
   readonly terminalClientId = randomUUID()
   private buffered = ''
   private token = ''
@@ -182,6 +184,16 @@ export class TideCodeRunServiceClient {
   onBrowserRequest(listener: (event: RunServiceBrowserRequestEnvelope) => void) {
     this.browserRequestListeners.add(listener)
     return () => this.browserRequestListeners.delete(listener)
+  }
+
+  onBrowserCancel(listener: (requestId: string) => void) {
+    this.browserCancelListeners.add(listener)
+    return () => this.browserCancelListeners.delete(listener)
+  }
+
+  onDisconnect(listener: () => void) {
+    this.disconnectListeners.add(listener)
+    return () => this.disconnectListeners.delete(listener)
   }
 
   async registerBrowserHost() {
@@ -430,6 +442,10 @@ export class TideCodeRunServiceClient {
         for (const listener of this.browserRequestListeners) listener(message)
         continue
       }
+      if ('type' in message && message.type === 'browser_cancel') {
+        for (const listener of this.browserCancelListeners) listener(message.requestId)
+        continue
+      }
 
       const response = message as RunServiceResponse
       const pending = this.pending.get(response.id)
@@ -442,6 +458,7 @@ export class TideCodeRunServiceClient {
   }
 
   private handleDisconnect(error: Error) {
+    for (const listener of [...this.disconnectListeners]) listener()
     this.socket = null
     this.buffered = ''
     this.serviceProcessId = null

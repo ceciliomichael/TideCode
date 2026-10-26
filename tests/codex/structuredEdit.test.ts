@@ -104,7 +104,68 @@ test('structured edits select duplicate text using validated line and context hi
     assert.equal(await fs.readFile(target, 'utf8'), 'first\nvalue\nsecond\nupdated\n')
     await assert.rejects(applyStructuredEdits([
       { path: 'source.ts', oldText: 'value', newText: 'wrong', line: 4 },
-    ], resolve, async () => {}), /not found/)
+    ], resolve, async () => {}), /no match satisfies starting line 4/)
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('structured edits distinguish excluded candidates from text removed by earlier changes', async () => {
+  const dir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-edit-diagnostics-'))
+  const target = path.join(dir, 'source.ts')
+  const resolve = (name: string) => ({ absolutePath: path.join(dir, name), relativePath: name })
+  const original = 'header\nfirst\nvalue\nsecond\nvalue\n'
+  try {
+    await fs.writeFile(target, original)
+    const constraints = [
+      { line: 2 },
+      { before: 'missing\n' },
+      { after: '\nmissing' },
+    ]
+    for (const constraint of constraints) {
+      await assert.rejects(applyStructuredEdits([
+        { path: 'source.ts', oldText: 'header', newText: 'new\nheader' },
+        { path: 'source.ts', oldText: 'value', newText: 'updated', ...constraint },
+      ], resolve, async () => {}), (error: Error) => {
+        assert.match(error.message, /oldText exists, but no match satisfies/)
+        assert.match(error.message, /No files were changed/)
+        assert.match(error.message, /Candidate at line 4:\n3 \| first\n4 \| value\n5 \| second/)
+        assert.match(error.message, /Candidate at line 6/)
+        assert.doesNotMatch(error.message, /removed or modified/)
+        return true
+      })
+      assert.equal(await fs.readFile(target, 'utf8'), original)
+    }
+    await assert.rejects(applyStructuredEdits([
+      { path: 'source.ts', oldText: 'header', newText: 'new header' },
+      { path: 'source.ts', oldText: 'absent', newText: 'updated' },
+    ], resolve, async () => {}), /oldText not found\. No files were changed/)
+    assert.equal(await fs.readFile(target, 'utf8'), original)
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('ambiguous edit diagnostics provide bounded candidate context without writing', async () => {
+  const dir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-edit-candidates-'))
+  const target = path.join(dir, 'source.ts')
+  const resolve = (name: string) => ({ absolutePath: path.join(dir, name), relativePath: name })
+  const original = Array.from({ length: 12 }, (_, index) => `section ${index} ${'x'.repeat(400)}\nvalue\n`).join('')
+  try {
+    await fs.writeFile(target, original)
+    await assert.rejects(applyStructuredEdits([
+      { path: 'source.ts', oldText: 'value', newText: 'updated' },
+    ], resolve, async () => {}), (error: Error) => {
+      assert.match(error.message, /12 matches/)
+      assert.match(error.message, /No files were changed/)
+      assert.equal(error.message.match(/Candidate at line /gu)?.length, 3)
+      assert.match(error.message, /9 more candidates omitted/)
+      assert.match(error.message, /1 \| section 0/)
+      assert.doesNotMatch(error.message, /x{161}/u)
+      assert.ok(error.message.length < 2000)
+      return true
+    })
+    assert.equal(await fs.readFile(target, 'utf8'), original)
   } finally {
     await fs.rm(dir, { recursive: true, force: true })
   }

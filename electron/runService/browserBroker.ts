@@ -10,6 +10,7 @@ interface PendingBrowserRequest {
   resolve: (value: BrowserHostResponse) => void
   reject: (reason: Error) => void
   timer: ReturnType<typeof setTimeout>
+  disposeAbort: () => void
 }
 
 export interface BrowserHostReply {
@@ -39,6 +40,7 @@ export class RunServiceBrowserBroker {
       if (request.host !== host) continue
       this.pending.delete(id)
       clearTimeout(request.timer)
+      request.disposeAbort()
       request.reject(new Error('TideCode desktop browser host disconnected. Reconnect the desktop application and retry.'))
     }
   }
@@ -47,25 +49,49 @@ export class RunServiceBrowserBroker {
     if (this.host) this.disconnect(this.host)
   }
 
-  async request(input: BrowserHostRequest): Promise<BrowserHostResponse> {
+  async request(input: BrowserHostRequest, signal?: AbortSignal): Promise<BrowserHostResponse> {
+    if (signal?.aborted) throw new Error('Browser operation cancelled.')
     const host = this.host
     if (!host || host.destroyed) {
       throw new Error('TideCode browser automation needs a connected desktop browser host. Open TideCode Desktop and reconnect the run service.')
     }
     const requestId = randomUUID()
     return new Promise<BrowserHostResponse>((resolve, reject) => {
+      const cancel = () => {
+        this.pending.delete(requestId)
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', cancel)
+        try {
+          if (!host.destroyed) host.write(JSON.stringify({ type: 'browser_cancel', requestId }) + '\n')
+        } catch {
+          // The request is already cancelled; an unavailable socket cannot undo it.
+        }
+        reject(new Error('Browser operation cancelled.'))
+      }
       const timer = setTimeout(() => {
         this.pending.delete(requestId)
+        signal?.removeEventListener('abort', cancel)
+        try {
+          if (!host.destroyed) host.write(JSON.stringify({ type: 'browser_cancel', requestId }) + '\n')
+        } catch {
+          // Preserve the timeout error even if the host disconnected.
+        }
         const target = 'tabId' in input ? ' on tab ' + input.tabId : ''
         reject(new Error('Desktop browser host did not reply to ' + input.operation + target
           + ' within ' + this.requestTimeoutMs + 'ms. This request timed out; it does not establish that the desktop disconnected.'))
       }, this.requestTimeoutMs)
       timer.unref?.()
-      this.pending.set(requestId, { host, resolve, reject, timer })
+      this.pending.set(requestId, { host, resolve, reject, timer, disposeAbort: () => signal?.removeEventListener('abort', cancel) })
+      signal?.addEventListener('abort', cancel, { once: true })
+      if (signal?.aborted) {
+        cancel()
+        return
+      }
       try {
         host.write(JSON.stringify({ type: 'browser_request', requestId, input }) + '\n')
       } catch (error) {
         clearTimeout(timer)
+        signal?.removeEventListener('abort', cancel)
         this.pending.delete(requestId)
         reject(error instanceof Error ? error : new Error(String(error)))
       }
@@ -80,6 +106,7 @@ export class RunServiceBrowserBroker {
     if (!pending || pending.host !== host) return
     this.pending.delete(reply.requestId)
     clearTimeout(pending.timer)
+    pending.disposeAbort()
     if (!reply.ok) {
       pending.reject(new Error(reply.error || 'TideCode browser operation failed.'))
       return

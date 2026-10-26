@@ -8,7 +8,7 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron'
 import { readFile } from 'node:fs/promises'
-import { registerVisibleBrowserTab, isNormalAgentBrowserSession } from './agentTabs'
+import { registerVisibleBrowserTab, isNormalAgentBrowserSession, terminateAgentBrowserTab } from './agentTabs'
 import { resolveAgentBrowserTab } from './agentTabs'
 import { listBrowserAnnotations, saveBrowserAnnotation, removeBrowserAnnotation } from '../history/browserAnnotations'
 import { resolveBrowserScreenshot, saveBrowserScreenshot } from './screenshots'
@@ -70,6 +70,17 @@ export function registerBrowserPageActions(
       contents: guest,
       ownerId: event.sender.id,
     })
+  ipcMain.handle('browser:closeAgentTab', async (event, input) => {
+    requireOwner(event)
+    if (typeof input?.tabId !== 'string' || typeof input?.projectPath !== 'string') {
+      throw new Error('Invalid AI browser tab.')
+    }
+    const tab = resolveAgentBrowserTab(input.projectPath, input.tabId, true)
+    if (tab.kind !== 'agent' || tab.ownerId !== event.sender.id) {
+      throw new Error('This browser tab is not owned by the AI.')
+    }
+    await terminateAgentBrowserTab(input.projectPath, input.tabId)
+  })
   })
   ipcMain.handle('browser:listAnnotations', (event, input) => {
     requireOwner(event)
