@@ -40,6 +40,7 @@ function getEstimatedContextTokens(usage: ContextUsageEstimate) {
     + usage.historyTokens
     + usage.injectionTokens
     + usage.toolResultsTokens
+    + (usage.imageTokens ?? 0)
 }
 
 function getEffectiveMaxTokens(usage: ContextUsageEstimate) {
@@ -90,6 +91,9 @@ export function ContextIndicator({
       </div>
 
       <div className="mt-3 space-y-1.5">
+        <div className="text-xs text-subtle-foreground">
+          {usage.scope === 'next_request' ? 'Next request estimate' : 'Saved context estimate'}
+        </div>
         <div className="flex items-center justify-between gap-3 text-subtle-foreground">
           <span>System prompt</span>
           <span className="text-foreground">{formatTokenCount(usage.systemPromptTokens)}</span>
@@ -116,6 +120,25 @@ export function ContextIndicator({
             {formatTokenCount(estimatedTotalTokens)} / {formatTokenCount(effectiveMaxTokens)}
           </span>
         </div>
+        <div className="flex items-center justify-between gap-3 text-subtle-foreground">
+          <span>Images</span>
+          <span className="text-foreground">~{formatTokenCount(usage.imageTokens ?? 0)}</span>
+        </div>
+        {usage.outputReserveTokens !== undefined ? (
+          <div className="text-xs text-subtle-foreground">
+            Response reserve: {formatTokenCount(usage.outputReserveTokens)}. Estimation headroom: {formatTokenCount(usage.uncertaintyTokens ?? 0)}.
+          </div>
+        ) : null}
+        {usage.triggerTokens !== undefined ? (
+          <div className="text-xs text-subtle-foreground">
+            Preferred compression: {formatTokenCount(usage.triggerTokens)}. Space for a response can require earlier compression.
+          </div>
+        ) : null}
+        {usage.lastReportedInputTokens !== undefined ? (
+          <div className="text-xs text-subtle-foreground">
+            Last reported input: {formatTokenCount(usage.lastReportedInputTokens)}.
+          </div>
+        ) : null}
       </div>
 
       {onCompress ? (

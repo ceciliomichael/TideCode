@@ -110,6 +110,10 @@ test('DeepSeek preserves oversized tool results at the provider wire boundary', 
 test('cache diagnostics report token-weighted and request-weighted hit rates separately', () => {
   const efficiency = calculateCacheEfficiency({
     cacheHitSteps: 2,
+    reportedCacheSteps: 4,
+    reportedCacheHitSteps: 2,
+    reportedCacheInputTokens: 10_000,
+    reportedCacheReadTokens: 9_000,
     cacheReadTokens: 9_000,
     cacheWriteTokens: 0,
     inputTokens: 10_000,

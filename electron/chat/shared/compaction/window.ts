@@ -5,6 +5,7 @@ import type {
   CompactionPacket,
   CompactionWindow,
 } from './contracts'
+import type { CompactionReason } from './contracts'
 import { buildContinuationMessage, isCompactionContinuationMessage } from './markdown'
 import {
   capRetainedContextTokens,
@@ -176,7 +177,7 @@ export function selectCompactionWindow(
   const sourceMessages = messages.slice(sourceStartIndex)
   if (sourceMessages.length === 0) return null
 
-  const retainedContextTokens = capRetainedContextTokens(options?.retainedContextTokens ?? targetHistoryTokens)
+  const retainedContextTokens = Math.max(1, Math.floor(options?.retainedContextTokens ?? targetHistoryTokens))
   const selection = selectLatestContextByTokens(
     sourceMessages,
     retainedContextTokens,
@@ -234,6 +235,21 @@ export function selectCompactionWindow(
       ? selection.messages
       : projectRetainedMessagesForContext(messages.slice(boundaryIndex)),
   }
+}
+
+export function selectCompactionWindowResult(
+  messages: readonly ModelMessage[],
+  targetTokens: number,
+  options?: CompactionWindowSelectionOptions,
+): { window: CompactionWindow; reason: null } | { window: null; reason: CompactionReason } {
+  if (hasUnresolvedToolCall(messages)) {
+    return { window: null, reason: 'invalid_tool_pairs' }
+  }
+  const window = selectCompactionWindow(messages, targetTokens, options)
+  if (!window) {
+    return { window: null, reason: 'no_compactable_source' }
+  }
+  return { window, reason: null }
 }
 
 export function buildCompactionMessage(packet: CompactionPacket): ModelMessage {

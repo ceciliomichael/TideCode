@@ -7,6 +7,8 @@ import {
   readLatestCompactionPacket,
   readLatestConversationMemory,
   recordCompactionCommitted,
+  recordCompactionAttempt,
+  captureCompactionSource,
 } from '../../history/eventStore'
 import { projectCanonicalReplay } from '../../history/replayProjector'
 import { shouldReplayAssistantReasoning } from '../assistantReasoningPolicy'
@@ -17,7 +19,14 @@ import { getStoredSettings } from '../../../settings/store'
 import { resolveModelImageInputSupport } from '../modelImageSupport'
 import { sanitizeModelMessages } from '../modelMessageIntegrity'
 import { compactModelMessages } from './service'
-import type { CompactionStreamFactory, CompactionResult } from './contracts'
+import type { CompactionStreamFactory } from './contracts'
+import type { CompactConversationResult } from '../../../../src/types/chat'
+import { coordinateCompaction, createCompactionSession } from './coordinator'
+import { resolveContextCapabilities, resolveStoredOutputMaximum } from '../contextCapabilities'
+import { prepareContextRequest } from '../contextRequest'
+import { budgetCompactionStream } from './modelSelection'
+import { estimateToolSchemaTokens } from '../runtimeContextUsage'
+import { CompactionError } from './gate'
 
 export interface CompactConversationInput {
   agentContextRootPath: string
@@ -34,14 +43,16 @@ export interface CompactConversationInput {
   terminalExecutionMode: AppTerminalExecutionMode
 }
 
-export async function compactConversationForProvider(input: CompactConversationInput): Promise<CompactionResult | null> {
+export async function compactConversationForProvider(input: CompactConversationInput): Promise<CompactConversationResult> {
   const contextCompaction = normalizeContextCompactionSettings(input.contextCompaction)
-  const includeImageAttachments = await resolveModelImageInputSupport(input.providerId, input.modelId)
+  const sourceProviderId = input.targetProviderId ?? input.providerId
+  const sourceModelId = input.targetModelId?.trim() || input.modelId
+  const includeImageAttachments = await resolveModelImageInputSupport(sourceProviderId, sourceModelId)
   const prompt = buildChatPrompt({
     chatMode: input.chatMode,
     messages: input.messages,
     options: {
-      includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
+      includeAssistantReasoningParts: shouldReplayAssistantReasoning(sourceProviderId),
       includeImageAttachments,
       terminalExecutionMode: input.terminalExecutionMode,
     },
@@ -52,13 +63,13 @@ export async function compactConversationForProvider(input: CompactConversationI
     document: canonicalHistory,
     fallbackMessages: prompt.messages,
     messages: input.messages,
-    modelId: input.modelId,
+    modelId: sourceModelId,
     options: {
-      includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
+      includeAssistantReasoningParts: shouldReplayAssistantReasoning(sourceProviderId),
       includeImageAttachments,
       terminalExecutionMode: input.terminalExecutionMode,
     },
-    providerId: input.providerId,
+    providerId: sourceProviderId,
   })
   const storedSettings = await getStoredSettings().catch(() => null)
   const previousMemory = await readLatestConversationMemory(input.conversationId)
@@ -76,48 +87,64 @@ export async function compactConversationForProvider(input: CompactConversationI
     applyConversationMemoryContext(workspaceMessages, previousMemory),
   )
   const previousPacket = await readLatestCompactionPacket(input.conversationId)
-  const result = await compactModelMessages({
-    conversationId: input.conversationId,
-    createStream: input.createStream,
-    force: true,
-    messages: safeModelMessages,
-    model: input.modelId,
-    providerId: input.providerId,
-    previousPacket,
-    previousMemory,
-    workspaceRootPath: input.agentContextRootPath,
-    reasoningEffort: input.reasoningEffort,
-    sourceModel: input.targetModelId?.trim() || input.modelId,
-    sourceProviderId: input.targetProviderId ?? input.providerId,
-    systemPromptTokens: approximateTokenCount(prompt.system),
+  const capabilities = resolveContextCapabilities({
+    providerId: sourceProviderId, modelId: sourceModelId,
     contextWindowTokens: contextCompaction.contextWindowTokens,
-    retainedContextTokens: contextCompaction.retainedContextTokens,
+    maximumOutputTokens: await resolveStoredOutputMaximum(sourceProviderId, sourceModelId),
+  })
+  const makeRequest = (messages: ModelMessage[]) => prepareContextRequest({
+    messages, capabilities,
+    systemPromptTokens: approximateTokenCount(prompt.system),
+    toolSchemaTokens: estimateToolSchemaTokens(sourceProviderId),
     triggerRatio: contextCompaction.triggerPercent / 100,
-    toolSchemaTokens: 0,
-    turnState: 'settled',
   })
-  if (!result) return null
-
-  result.projectedMessages = await applyWorkspaceMemoryContext(
-    result.projectedMessages,
-    input.agentContextRootPath,
-    storedSettings?.workspaceMemoryEnabled ?? true,
-  )
-
-  await recordCompactionCommitted({
-    anchorUserMessageId: [...input.messages].reverse().find((message) => message.role === 'user')?.id ?? null,
-    compactionId: result.packet.packetId,
-    conversationId: input.conversationId,
-    modelId: input.targetModelId?.trim() || input.modelId,
-    durableMemory: result.durableMemory,
-    packet: result.packet,
-    projectedMessages: result.projectedMessages as ModelMessage[],
-    providerId: input.targetProviderId ?? input.providerId,
-    projectionVersion: result.projectionVersion,
-    reasoningRetention: result.reasoningRetention,
-    parentPacketId: result.packet.parentPacketId,
-    sourceDigest: result.sourceDigest,
-    sourceMessageIds: result.packet.sourceMessageIds,
-  })
-  return result
+  const request = makeRequest(safeModelMessages)
+  const expectedSource = captureCompactionSource(canonicalHistory)
+  try {
+    const outcome = await coordinateCompaction({
+      request, session: createCompactionSession(), previousPacket, manual: true,
+      retainedContextTokens: contextCompaction.retainedContextTokens,
+      report: (diagnostic) => recordCompactionAttempt(input.conversationId, null, diagnostic).then(() => undefined),
+      run: (window, targetTokens, diagnostic) => compactModelMessages({
+        conversationId: input.conversationId,
+        createStream: budgetCompactionStream(input.createStream, input.providerId, contextCompaction.contextWindowTokens),
+        selectedWindow: window, force: true,
+        messages: request.durableMessages, model: input.modelId, providerId: input.providerId,
+        previousPacket, previousMemory, workspaceRootPath: input.agentContextRootPath,
+        reasoningEffort: input.reasoningEffort,
+        sourceModel: sourceModelId, sourceProviderId,
+        systemPromptTokens: approximateTokenCount(prompt.system),
+        contextWindowTokens: contextCompaction.contextWindowTokens,
+        retainedContextTokens: targetTokens,
+        triggerRatio: contextCompaction.triggerPercent / 100,
+        toolSchemaTokens: estimateToolSchemaTokens(sourceProviderId), turnState: 'settled',
+        onWorkerUsage: (operation, usage) => diagnostic.workerUsage.push({ operation, usage }),
+      }),
+      rebuild: async (result) => {
+        result.projectedMessages = await applyWorkspaceMemoryContext(
+          result.projectedMessages, input.agentContextRootPath, storedSettings?.workspaceMemoryEnabled ?? true,
+        )
+        return makeRequest(result.projectedMessages)
+      },
+      commit: (result, diagnostic) => recordCompactionCommitted({
+        expectedSource, diagnostic,
+        anchorUserMessageId: [...input.messages].reverse().find((message) => message.role === 'user')?.id ?? null,
+        compactionId: result.packet.packetId, conversationId: input.conversationId,
+        modelId: sourceModelId, durableMemory: result.durableMemory, packet: result.packet,
+        projectedMessages: result.projectedMessages, providerId: sourceProviderId,
+        projectionVersion: result.projectionVersion, reasoningRetention: result.reasoningRetention,
+        parentPacketId: result.packet.parentPacketId, sourceDigest: result.sourceDigest,
+        sourceMessageIds: result.packet.sourceMessageIds,
+      }).then(() => undefined),
+    })
+    if (outcome.status === 'compacted') {
+      return { compacted: true, packetId: outcome.result.packet.packetId }
+    }
+    return { compacted: false, packetId: null, reason: 'no_compactable_source' }
+  } catch (error) {
+    if (error instanceof CompactionError && ['no_compactable_source', 'insufficient_reduction'].includes(error.reason)) {
+      return { compacted: false, packetId: null, reason: error.reason }
+    }
+    throw error
+  }
 }

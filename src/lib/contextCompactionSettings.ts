@@ -1,7 +1,8 @@
 export interface ContextCompactionSettings {
   contextWindowTokens: number
-  /** Internal compatibility value; retention is no longer user-configurable. */
+  /** Preferred retained context target; protected user context may require more space. */
   retainedContextTokens: number
+  /** Preferred full-window threshold; request admission also reserves response space. */
   triggerPercent: number
 }
 

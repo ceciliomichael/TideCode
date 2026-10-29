@@ -12,7 +12,12 @@ export const WORKSPACE_INSTRUCTIONS_HIDDEN_CONTEXT_KIND = 'workspace_instruction
 const WORKSPACE_INSTRUCTIONS_CONTEXT_PATTERN =
   /<hidden_user_context\b(?=[^>]*\bkind="workspace_instructions")[^>]*>[\s\S]*?<\/hidden_user_context>/gu
 
-export function buildWorkspaceInstructionsRuntimeBlock() {
+export function buildWorkspaceInstructionsRuntimeBlock(workspaceRootPath: string) {
+  try {
+    if (!statSync(path.join(workspaceRootPath, WORKSPACE_INSTRUCTIONS_REPO_PATH)).isFile()) return null
+  } catch {
+    return null
+  }
   return [
     '<workspace_instruction_context>',
     `- When root \`${WORKSPACE_INSTRUCTIONS_REPO_PATH}\` exists, the runtime supplies a revision-aware hidden bootstrap context for its repository instructions.`,

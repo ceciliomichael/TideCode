@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { toUserFacingErrorMessage } from '../../src/lib/userFacingError'
+import { CompactionError } from '../../electron/chat/shared/compaction/gate'
+import { errorCatalog } from '../../src/lib/errors/errorCatalog'
+
+test('specific compaction errors survive transport wrappers as actionable messages', () => {
+  const error = new CompactionError('commit_failed')
+  const transported = new Error(`Error invoking remote method 'chat:start': ${error.message}`)
+  assert.equal(toUserFacingErrorMessage(transported, 'Fallback'), errorCatalog['compaction.commit_failed'].message)
+  assert.notEqual(toUserFacingErrorMessage(error, 'Fallback'), 'Fallback')
+})
 
 test('technical chat failures are replaced with actionable copy', () => {
   assert.equal(

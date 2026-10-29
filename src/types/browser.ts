@@ -32,6 +32,8 @@ export interface TideCodeBrowserDevToolsApi {
 export interface TideCodeBrowserPageActionsApi {
   onAgentCursor: (listener: (input: { tabId: string; projectPath: string; width: number; height: number; cursor: AgentBrowserCursor }) => void) => () => void
   closeAgentTab: (input: { tabId: string; projectPath: string }) => Promise<void>
+  listOpenAgentTabs: (input: { projectPath: string }) => Promise<Array<{ tabId: string; projectPath: string; url: string; title: string }>>
+  setAgentPreviewVisible: (input: { tabId: string; projectPath: string; visible: boolean }) => Promise<void>
   getAgentFrame: (tabId: string) => AgentBrowserFrame | null
   onAgentFrame: (listener: (input: AgentBrowserFrame) => void) => () => void
   onUrlOpen: (listener: (request: BrowserUrlRequest) => void) => () => void

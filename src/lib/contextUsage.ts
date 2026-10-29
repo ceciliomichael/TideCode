@@ -7,7 +7,8 @@ export function approximateTokenCount(value: string) {
   return trimmedValue.length > 0 ? Math.ceil(trimmedValue.length / 4) : 0
 }
 
-export const MODEL_IMAGE_TOKEN_ALLOWANCE = 1_024
+/** Generic heuristic, not a provider-specific image token count. */
+export const MODEL_IMAGE_TOKEN_ALLOWANCE = 4_096
 
 const MIGRATED_TOOL_EXCHANGE_MARKER = 'Previous tool exchange from another provider:'
 const MIGRATED_TOOL_RESULT_MARKER = 'Previous tool result:'
@@ -34,6 +35,7 @@ function sanitizeModelContentForTokenEstimate(value: unknown, seen: WeakSet<obje
       imageCount += sanitized.imageCount
       return sanitized.value
     })
+    seen.delete(value)
     return { imageCount, value: sanitizedItems }
   }
 
@@ -45,8 +47,9 @@ function sanitizeModelContentForTokenEstimate(value: unknown, seen: WeakSet<obje
     (record.mediaType === 'image' || record.mediaType.startsWith('image/'))
   if (isImagePart || isImageFilePart) {
     const metadata = Object.fromEntries(
-      Object.entries(record).filter(([key]) => key !== 'image' && key !== 'data'),
+      Object.entries(record).filter(([key]) => !['image', 'data', 'providerOptions', 'providerMetadata'].includes(key)),
     )
+    seen.delete(value)
     return {
       imageCount: 1,
       value: { ...metadata, payload: '[image payload]' },
@@ -54,12 +57,20 @@ function sanitizeModelContentForTokenEstimate(value: unknown, seen: WeakSet<obje
   }
 
   let imageCount = 0
-  const sanitizedEntries = Object.entries(record).map(([key, entryValue]) => {
+  const isModelPart = ['text', 'reasoning', 'tool-call', 'tool-result', 'file'].includes(String(record.type))
+  const entries = Object.entries(record).filter(([key]) => !isModelPart || !['providerOptions', 'providerMetadata'].includes(key))
+  const sanitizedEntries = entries.map(([key, entryValue]) => {
     const sanitized = sanitizeModelContentForTokenEstimate(entryValue, seen)
     imageCount += sanitized.imageCount
     return [key, sanitized.value]
   })
+  seen.delete(value)
   return { imageCount, value: Object.fromEntries(sanitizedEntries) }
+}
+
+/** Stable request identity without binary payloads or opaque provider metadata. */
+export function serializeModelContentForEstimate(content: unknown) {
+  return JSON.stringify(sanitizeModelContentForTokenEstimate(content, new WeakSet()).value)
 }
 
 export function estimateModelContentTokens(content: unknown) {
@@ -71,6 +82,10 @@ export function estimateModelContentTokens(content: unknown) {
     serialized = ''
   }
   return approximateTokenCount(serialized) + sanitized.imageCount * MODEL_IMAGE_TOKEN_ALLOWANCE
+}
+
+export function estimateModelImageTokens(content: unknown) {
+  return sanitizeModelContentForTokenEstimate(content, new WeakSet()).imageCount * MODEL_IMAGE_TOKEN_ALLOWANCE
 }
 
 export function estimateMessageContextUsage(messages: readonly Message[]) {
@@ -155,9 +170,12 @@ export function estimateModelMessageContextUsage(messages: readonly ModelMessage
   let historyTokens = 0
   let injectionTokens = 0
   let toolResultsTokens = 0
+  let imageTokens = 0
 
   for (const message of messages) {
-    const messageTokens = estimateModelContentTokens(message.content)
+    const messageImageTokens = estimateModelImageTokens(message.content)
+    imageTokens += messageImageTokens
+    const messageTokens = estimateModelContentTokens(message.content) - messageImageTokens
     if (message.role === 'tool') {
       toolResultsTokens += messageTokens
       continue
@@ -181,9 +199,10 @@ export function estimateModelMessageContextUsage(messages: readonly ModelMessage
 
   return {
     historyTokens,
+    imageTokens,
     injectionTokens,
     toolResultsTokens,
-    totalTokens: historyTokens + injectionTokens + toolResultsTokens,
+    totalTokens: historyTokens + injectionTokens + toolResultsTokens + imageTokens,
   }
 }
 

@@ -14,7 +14,7 @@ function createPage() {
   return { contents, navigate: (next: string) => { url = next } }
 }
 
-test('coordinate cursor never accesses the system pointer and requires a current observation', async () => {
+test('coordinate cursor works without a preceding read or system pointer', async () => {
   const page = createPage()
   const commands: Array<{ method: string; parameters?: Record<string, unknown> }> = []
   const send: CdpSend = async (method, parameters) => {
@@ -34,9 +34,9 @@ test('coordinate cursor never accesses the system pointer and requires a current
   assert.deepEqual(commands.filter((value) => value.method === 'Input.dispatchMouseEvent').slice(-3).map((value) => value.parameters?.type), [
     'mouseMoved', 'mousePressed', 'mouseReleased',
   ])
-  await assert.rejects(interactWithAgentPageInViewport(page.contents, {
-    action: 'click', x: 320, y: 180, observation_id,
-  }, send, DEFAULT_AGENT_VIEWPORT), /stale/u)
+  await interactWithAgentPageInViewport(page.contents, {
+    action: 'click', x: 320, y: 180,
+  }, send, DEFAULT_AGENT_VIEWPORT)
 })
 
 test('observation expires on URL or viewport change', () => {
@@ -74,9 +74,92 @@ test('double-click dispatches two clicks and drag releases the pressed button', 
   assert.equal(getAgentCursor(page.contents)?.y, 130)
 })
 
-test('coordinate validation refuses unobserved, mixed, or invalid destinations', () => {
+test('stroke moves through all points with one press and one release', async () => {
+  const events: Array<{ type: unknown; x: unknown; y: unknown; buttons: unknown }> = []
+  const send: CdpSend = async (method, input) => {
+    if (method === 'Input.dispatchMouseEvent') {
+      events.push({ type: input?.type, x: input?.x, y: input?.y, buttons: input?.buttons })
+    }
+    return {}
+  }
+  const report = await interactWithAgentPageInViewport(createPage().contents, {
+    action: 'stroke',
+    points: [{ x: 20, y: 30 }, { x: 30, y: 40 }, { x: 40, y: 30 }],
+  }, send, DEFAULT_AGENT_VIEWPORT)
+  assert.equal(events[0].type, 'mouseMoved')
+  assert.equal(events[1].type, 'mousePressed')
+  assert.ok(events.length > 5, 'interpolation adds movements between points')
+  assert.ok(events.slice(2, -1).every((event) => event.type === 'mouseMoved' && event.buttons === 1))
+  assert.equal(events.at(-1)?.type, 'mouseReleased')
+  assert.equal(report?.detail, '3 connected points')
+  assert.throws(() => validateBrowserInteraction({ action: 'stroke', points: [{ x: 20, y: 30 }] }))
+  assert.throws(() => validateBrowserInteraction({ action: 'stroke', points: [
+    { x: 20, y: 30 }, { x: -1, y: 30 },
+  ] }))
+})
+
+test('stroke releases at the last dispatched point after a failed move', async () => {
+  const events: Array<{ type: unknown; x: unknown }> = []
+  const send: CdpSend = async (method, input) => {
+    if (method !== 'Input.dispatchMouseEvent') return {}
+    events.push({ type: input?.type, x: input?.x })
+    if (input?.type === 'mouseMoved' && input?.x === 40) throw new Error('Mouse move failed')
+    return {}
+  }
+  await assert.rejects(interactWithAgentPageInViewport(createPage().contents, {
+    action: 'stroke',
+    points: [{ x: 20, y: 30 }, { x: 30, y: 40 }, { x: 40, y: 30 }],
+  }, send, DEFAULT_AGENT_VIEWPORT), /Mouse move failed/)
+  assert.deepEqual(events.at(-1), { type: 'mouseReleased', x: 35 })
+})
+
+test('long drags interpolate closely spaced movements and release at the destination', async () => {
+  const events: Array<{ type: unknown; x: number; y: number; buttons?: number }> = []
+  const page = createPage()
+  await interactWithAgentPageInViewport(page.contents, {
+    action: 'drag', x: 20, y: 30, to_x: 380, to_y: 270,
+  }, async (method, input) => {
+    if (method === 'Input.dispatchMouseEvent') {
+      events.push({
+        type: input?.type,
+        x: Number(input?.x),
+        y: Number(input?.y),
+        buttons: input?.buttons as number | undefined,
+      })
+    }
+    return {}
+  }, DEFAULT_AGENT_VIEWPORT)
+  const moves = events.filter((event) => event.type === 'mouseMoved' && event.buttons === 1)
+  assert.ok(moves.length > 25, 'long drags need more than ten fixed mouse movements')
+  const route = [{ x: 20, y: 30 }, ...moves]
+  for (let i = 1; i < route.length; i += 1) {
+    assert.ok(Math.hypot(route[i].x - route[i - 1].x, route[i].y - route[i - 1].y) <= 12.01)
+  }
+  assert.deepEqual(events.at(-1), {
+    type: 'mouseReleased', x: 380, y: 270, buttons: undefined,
+  })
+})
+
+test('drag releases at last completed position after a movement error', async () => {
+  const events: Array<{ type: unknown; x: number }> = []
+  await assert.rejects(interactWithAgentPageInViewport(createPage().contents, {
+    action: 'drag', x: 20, y: 30, to_x: 80, to_y: 30,
+  }, async (method, input) => {
+    if (method === 'Input.dispatchMouseEvent') {
+      events.push({ type: input?.type, x: Number(input?.x) })
+      if (input?.type === 'mouseMoved' && input?.x === 56) {
+        throw new Error('Movement interrupted')
+      }
+    }
+    return {}
+  }, DEFAULT_AGENT_VIEWPORT), /Movement interrupted/)
+  assert.deepEqual(events.at(-1), { type: 'mouseReleased', x: 44 })
+})
+
+test('coordinate validation accepts unobserved positions but rejects mixed or invalid destinations', () => {
+  assert.doesNotThrow(() => validateBrowserInteraction({ action: 'click', x: 20, y: 30 }))
+  assert.doesNotThrow(() => validateBrowserInteraction({ action: 'drag', x: 20, y: 30, to_x: 40, to_y: 60 }))
   for (const action of [
-    { action: 'click', x: 20, y: 30 },
     { action: 'click', x: 20, y: 30, observation_id: 'x', element_ref: 'ref' },
     { action: 'drag', x: 20, y: 30, to_x: -1, to_y: 0, observation_id: 'x' },
   ]) assert.throws(() => validateBrowserInteraction(action as never))

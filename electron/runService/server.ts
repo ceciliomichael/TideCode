@@ -573,6 +573,9 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
   }
 
   private async compactConversation(input: CompactConversationInput): Promise<CompactConversationResult> {
+    if (this.registry.listActive().some((run) => run.conversationId === input.conversationId.trim())) {
+      throw new Error('Wait for the current response to finish before compressing this chat manually.')
+    }
     const conversationId = input.conversationId.trim()
     const [conversation, compactionMarkers] = await Promise.all([
       getStoredConversation(conversationId),
@@ -587,6 +590,9 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
       throw new Error('Conversation compaction is already in progress.')
     }
 
+    if (this.registry.listActive().some((run) => run.conversationId === conversationId)) {
+      throw new Error('Wait for the current response to finish before compressing this chat manually.')
+    }
     const attemptId = randomUUID()
     const streamId = randomUUID()
     const afterMessageId = getCompactionAfterMessageId(compactionMessages)
@@ -618,12 +624,13 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
           type: 'compaction_event',
           seq: 0,
           conversationId,
-          event: { attemptId, conversationId, reason: 'unavailable', streamId, type: 'compaction_failed' },
+          event: { attemptId, conversationId, reason: result.reason ?? 'unavailable', streamId, type: 'compaction_failed' },
         })
         return result
       }
 
       const committedEvent = {
+        attemptId,
         afterMessageId,
         compactionId: result.packetId,
         conversationId,
@@ -662,6 +669,9 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
     const conversationId = input.conversationId?.trim()
     if (!conversationId) {
       throw new Error('A saved conversation is required before starting a shared Tidecode run.')
+    }
+    if (this.compactionStateByConversationId.get(conversationId)?.phase === 'compacting') {
+      throw new Error('Wait for compression to finish before starting another response.')
     }
     const sharedInput: StartChatStreamInput & { conversationId: string } = { ...input, conversationId }
     const createdRun = this.registry.create(sharedInput)

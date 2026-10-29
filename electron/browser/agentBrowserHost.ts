@@ -17,11 +17,13 @@ import { executeAgentBrowserSequence, executeAgentBrowserSequenceInViewport } fr
 import { readBrowserDiagnostics, type BrowserDiagnosticRequest } from './agentPageDiagnostics'
 import { resolveBrowserAnnotationTargets } from './agentAnnotations'
 import { getAgentCursor } from './agentCursor'
+import { addAgentCursorToScreenshot } from './agentScreenshotCursor'
 import { rememberAgentObservation } from './agentObservation'
 import { requireBrowserElectronRuntime } from './agentElectronRuntime'
 import { withBrowserTabAccess } from './agentTabAccess'
 import { withBrowserProtocol } from './agentCdpSession'
 import { AgentBrowserOperation } from './agentBrowserOperation'
+import { attachAgentLivePreview, isAgentLivePreviewVisible } from './agentLivePreview'
 import { formatBrowserAnnotations, listBrowserAnnotations } from '../history/browserAnnotations'
 import type { BrowserHostRequest, BrowserHostResponse } from '../runService/browserService'
 
@@ -73,9 +75,24 @@ function publishAgentFrame(tab: AgentBrowserTab, viewport: AgentViewport, image:
   })
 }
 
+function publishLiveAgentFrame(tab: AgentBrowserTab, imageDataUrl: string) {
+  const { webContents } = requireBrowserElectronRuntime()
+  const owner = webContents.fromId(tab.ownerId)
+  if (!owner || owner.isDestroyed() || tab.contents.isDestroyed()) return
+  const viewport = getAgentViewport(tab.contents)
+  owner.send('browser:agentFrame', {
+    tabId: tab.id, projectPath: tab.projectPath, url: tab.contents.getURL(),
+    title: tab.contents.getTitle(),
+    faviconUrl: getAgentTabFavicon(tab.contents),
+    width: viewport.width, height: viewport.height,
+    cursor: getAgentCursor(tab.contents),
+    imageDataUrl,
+  })
+}
+
 async function publishAgentPreview(projectPath: string, tabId: string) {
   await withAgentBrowserTab(projectPath, tabId, async (tab) => {
-    if (tab.kind !== 'agent') return
+    if (tab.kind !== 'agent' || isAgentLivePreviewVisible(tab.contents)) return
     try {
       const viewport = getAgentViewport(tab.contents)
       const image = await withAgentViewport(tab.contents, (send) => captureAgentPageInViewport(send, viewport), viewport)
@@ -102,6 +119,8 @@ export async function executeDesktopBrowserRequest(
     }
     const viewport = resolveAgentViewport(request)
     const data = await openAgentBrowserTab(workspace, request.url, owner, request.newTab === true, signal, viewport)
+    const tab = resolveAgentBrowserTab(workspace, data.tab_id)
+    attachAgentLivePreview(tab.contents, (imageDataUrl) => publishLiveAgentFrame(tab, imageDataUrl))
     owner.send('browser:openAgentTab', { tabId: data.tab_id, projectPath: workspace, url: data.url })
     void publishAgentPreview(workspace, data.tab_id).catch(() => undefined)
     return { data }
@@ -122,8 +141,12 @@ export async function executeDesktopBrowserRequest(
         if (tab.kind === 'agent') return interactWithAgentPage(tab.contents, action, activeSignal)
         const viewport = await browserViewport(tab)
         return runOnBrowserSurface(tab, async (send) => {
-          await interactWithAgentPageInViewport(tab.contents, action, send, viewport, activeSignal)
-          return { action: action.action, url: tab.contents.getURL(), loading: tab.contents.isLoading() }
+          const report = await interactWithAgentPageInViewport(tab.contents, action, send, viewport, activeSignal)
+          return {
+            action: action.action, url: tab.contents.getURL(),
+            loading: tab.contents.isLoading(), report,
+            width: viewport.width, height: viewport.height,
+          }
         }, viewport, activeSignal)
       }), false, signal)
     if (!signal?.aborted) {
@@ -179,14 +202,7 @@ export async function executeDesktopBrowserRequest(
     }
     const result = await withAgentBrowserTab(workspace, request.tabId, (tab) =>
       withBrowserTabAccess(tab, signal, async (activeSignal) => {
-      const existing = getAgentViewport(tab.contents)
-      const requestedViewport = request.width === undefined && request.height === undefined
-        ? undefined
-        : resolveAgentViewport({
-          width: request.width ?? existing.width,
-          height: request.height ?? existing.height,
-        })
-      const viewport = await browserViewport(tab, requestedViewport)
+      const viewport = await browserViewport(tab)
       const page = await runOnBrowserSurface(tab, async (send) => {
         const png = view === 'combined' || view === 'visual'
           ? await captureAgentPageInViewport(send, viewport)
@@ -201,7 +217,7 @@ export async function executeDesktopBrowserRequest(
         throw new Error('Browser screenshot exceeds the allowed image size.')
       }
       rememberAgentViewport(tab.contents, viewport)
-      return { ...page, viewport, kind: tab.kind }
+      return { ...page, viewport, kind: tab.kind, cursor: tab.kind === 'agent' ? getAgentCursor(tab.contents) : null }
     }), false, signal)
     if (signal?.aborted) throw new Error('Browser operation cancelled.')
     if (result.png) {
@@ -227,6 +243,9 @@ export async function executeDesktopBrowserRequest(
       'Title: ' + safeLine(result.title || 'Untitled'),
       'URL: ' + safeLine(result.url),
       'Viewport: ' + result.viewport.width + ' × ' + result.viewport.height,
+      'AI cursor: ' + (result.cursor
+        ? '(' + result.cursor.x + ', ' + result.cursor.y + ') · ' + (result.cursor.kind || 'default')
+        : 'Not positioned yet'),
       'Read mode: ' + view,
       'Elements found: ' + (result.structure ? result.structure.total : 'Not inspected'),
       'Result: Page inspected',
@@ -245,12 +264,18 @@ export async function executeDesktopBrowserRequest(
         resolvedAnnotations.map((item) => item.annotation.id + ': ' + item.status).join('\n'),
       ] : []),
     ].join('\n')
+    const screenshot = result.png && result.kind === 'agent'
+      ? await addAgentCursorToScreenshot(result.png, result.viewport, result.cursor)
+      : result.png
+    if (screenshot && screenshot.length > MAX_SCREENSHOT_BYTES) {
+      throw new Error('Browser screenshot exceeds the allowed image size.')
+    }
     return {
       data: {
         tab_id: request.tabId, body: details, url: result.url, observation_id: result.observationId,
         width: result.viewport.width, height: result.viewport.height,
       },
-      ...(result.png ? { imageBase64: result.png.toString('base64') } : {}),
+      ...(screenshot ? { imageBase64: screenshot.toString('base64') } : {}),
     }
   }
   throw new Error('Unsupported TideCode browser operation.')

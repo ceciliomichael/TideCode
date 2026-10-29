@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const http = require('node:http')
 const path = require('node:path')
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, nativeImage } = require('electron')
 
 const root = process.argv[2]
 app.setPath('userData', path.join(root, 'user-data'))
@@ -13,7 +13,7 @@ async function run() {
     response.setHeader('Content-Type', 'text/html')
     response.end(`<!doctype html><html><head><title>Isolated Agent</title></head><body style="margin:0">
       <button id="click" style="position:absolute;left:10px;top:10px;width:100px;height:50px"
-        onclick="window.clicked=(window.clicked||0)+1">Click</button>
+        onclick="window.clicked=(window.clicked||0)+1;document.body.style.background=window.clicked%2?'#ff0000':'#00ff00'">Click</button>
       <input id="name" aria-label="Name" style="position:absolute;left:10px;top:90px"/>
       </body></html>`)
   })
@@ -38,6 +38,7 @@ async function run() {
     assert.equal(opened.height, 900)
     const tab = browser.resolveAgentBrowserTab(projectPath, opened.tab_id)
     assert.equal(tab.kind, 'agent')
+    assert.ok(browser.listOpenAgentTabs(projectPath).some((item) => item.tabId === opened.tab_id))
     const navigated = await browser.executeDesktopBrowserRequest({
       operation: 'navigate', projectPath, tabId: opened.tab_id,
       input: { action: 'goto', url, wait_until: 'load' },
@@ -85,16 +86,78 @@ async function run() {
       conversationId: null, includeAnnotations: false,
     }, owner.webContents)
     const png = Buffer.from(imageResult.imageBase64, 'base64')
-    assert.equal(png.readUInt32BE(16), 1280)
-    assert.equal(png.readUInt32BE(20), 720)
+    assert.equal(png.readUInt32BE(16), 1440)
+    assert.equal(png.readUInt32BE(20), 900)
     assert.equal(typeof imageResult.data.observation_id, 'string')
     await browser.executeDesktopBrowserRequest({
       operation: 'interact', projectPath, tabId: opened.tab_id,
       action: { action: 'click', x: 40, y: 30, observation_id: imageResult.data.observation_id },
     }, owner.webContents)
     assert.equal(await tab.contents.executeJavaScript('window.clicked'), 1)
-    assert.equal(browser.getAgentCursor(tab.contents)?.x, 40)
-    assert.equal(browser.getAgentCursor(tab.contents)?.y, 30)
+    const canvasSetup = [
+      '(() => {',
+      '  const canvas = document.createElement("canvas");',
+      '  canvas.id = "draw"; canvas.width = 500; canvas.height = 400;',
+      '  canvas.style.cssText = "position:absolute;left:160px;top:120px";',
+      '  document.body.appendChild(canvas);',
+      '  const ctx = canvas.getContext("2d");',
+      '  ctx.strokeStyle = "black"; ctx.lineWidth = 4;',
+      '  window.strokeCounters = { downs: 0, moves: 0, ups: 0 };',
+      '  let drawing = false;',
+      '  canvas.addEventListener("mousedown", event => {',
+      '    drawing = true; window.strokeCounters.downs++;',
+      '    ctx.beginPath(); ctx.moveTo(event.offsetX, event.offsetY);',
+      '  });',
+      '  canvas.addEventListener("mousemove", event => {',
+      '    if (!drawing) return;',
+      '    window.strokeCounters.moves++;',
+      '    ctx.lineTo(event.offsetX, event.offsetY); ctx.stroke();',
+      '  });',
+      '  canvas.addEventListener("mouseup", () => {',
+      '    drawing = false; window.strokeCounters.ups++;',
+      '  });',
+      '})()',
+    ].join('\n')
+    await tab.contents.executeJavaScript(canvasSetup)
+    const drawn = await browser.executeDesktopBrowserRequest({
+      operation: 'interact', projectPath, tabId: opened.tab_id,
+      action: { action: 'stroke', points: [
+        { x: 200, y: 150 }, { x: 220, y: 160 }, { x: 240, y: 170 },
+      ] },
+    }, owner.webContents)
+    assert.equal(drawn.data.report.detail, '3 connected points')
+    const counters = await tab.contents.executeJavaScript('window.strokeCounters')
+    assert.equal(counters.downs, 1)
+    assert.equal(counters.ups, 1)
+    assert.ok(counters.moves > 2, 'stroke should interpolate intermediate points')
+    const strokePixel = await tab.contents.executeJavaScript(
+      'document.getElementById("draw").getContext("2d").getImageData(60,40,1,1).data[3]',
+    )
+    assert.ok(strokePixel > 0, 'the continuous stroke must paint the canvas between points')
+    assert.equal(browser.getAgentCursor(tab.contents)?.x, 240)
+    assert.equal(browser.getAgentCursor(tab.contents)?.y, 170)
+    assert.equal(drawn.data.width, 1440)
+    assert.equal(drawn.data.height, 900)
+    const cursorRead = await browser.executeDesktopBrowserRequest({
+      operation: 'read', projectPath, tabId: opened.tab_id,
+      view: 'visual', offset: 0, limit: 20,
+      conversationId: null, includeAnnotations: false,
+    }, owner.webContents)
+    const cursorImage = nativeImage.createFromBuffer(Buffer.from(cursorRead.imageBase64, 'base64'))
+    const cursorPixels = cursorImage.toBitmap()
+    const cursorOffset = ((170 + 28) * cursorImage.getSize().width + 240 + 24) * 4
+    assert.ok(cursorPixels[cursorOffset + 1] > 100 && cursorPixels[cursorOffset + 2] < 100,
+      'browser.read must draw the green AI cursor indicator onto the captured image')
+    const sequenceImage = await browser.executeDesktopBrowserRequest({
+      operation: 'sequence', projectPath, tabId: opened.tab_id,
+      steps: [{ action: 'read', view: 'visual' }],
+    }, owner.webContents)
+    assert.equal(sequenceImage.data.width, 1440)
+    assert.equal(sequenceImage.data.height, 900)
+    const captured = nativeImage.createFromBuffer(Buffer.from(sequenceImage.captures[0].imageBase64, 'base64'))
+    const pixels = captured.toBitmap()
+    assert.ok(pixels[cursorOffset + 1] > 100 && pixels[cursorOffset + 2] < 100,
+      'sequence read captures must include the AI cursor overlay')
     assert.deepEqual(owner.getBounds(), ownerBounds)
     const sequence = await browser.executeDesktopBrowserRequest({
       operation: 'sequence', projectPath, tabId: opened.tab_id,
@@ -112,6 +175,35 @@ async function run() {
     setTimeout(() => controller.abort(), 30)
     await assert.rejects(cancelled, /abort|cancel/iu)
     assert.equal(await tab.contents.executeJavaScript('window.clicked'), 1)
+    browser.setAgentLivePreviewVisible(tab.contents, true)
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    const frameCountBeforeSequence = received.length
+    let finished = false
+    const pendingSequence = browser.executeDesktopBrowserRequest({
+      operation: 'sequence', projectPath, tabId: opened.tab_id,
+      steps: [{ action: 'click', x: 40, y: 30 }, { action: 'wait', ms: 900 }],
+    }, owner.webContents).finally(() => { finished = true })
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    assert.equal(finished, false, 'browser sequence must still be in flight')
+    const intermediateFrames = received.slice(frameCountBeforeSequence).filter((item) =>
+      item.channel === 'browser:agentFrame' && item.value.imageDataUrl.startsWith('data:image/jpeg;base64,'))
+    assert.ok(intermediateFrames.length > 0, 'live page frames must arrive before the browser tool completes')
+    const renderedChange = intermediateFrames.some((item) => {
+      const image = nativeImage.createFromDataURL(item.value.imageDataUrl)
+      const pixels = image.toBitmap()
+      const index = (60 * image.getSize().width + 300) * 4
+      return pixels[index + 1] > 180 && pixels[index + 2] < 90
+    })
+    assert.ok(renderedChange, 'a mid-sequence preview must show the updated green page, not a stale screenshot')
+    await pendingSequence
+    browser.setAgentLivePreviewVisible(tab.contents, false)
+    const framesAfterUnsubscribe = received.filter((item) =>
+      item.channel === 'browser:agentFrame' && item.value.imageDataUrl.startsWith('data:image/jpeg;base64,')).length
+    await tab.contents.executeJavaScript("document.body.style.background='#0000ff'")
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    assert.equal(received.filter((item) =>
+      item.channel === 'browser:agentFrame' && item.value.imageDataUrl.startsWith('data:image/jpeg;base64,')).length,
+    framesAfterUnsubscribe, 'hidden previews must stop publishing frames')
     await new Promise((resolve) => setTimeout(resolve, 500))
     const frame = received.find((item) => item.channel === 'browser:agentFrame')
     assert.ok(frame, 'agent frame should be emitted for preview')
@@ -123,14 +215,15 @@ async function run() {
       view: 'combined', width: 390, height: 844, offset: 0, limit: 80,
       conversationId: null, includeAnnotations: false,
     }, owner.webContents)
+    assert.match(mobile.data.body, /AI cursor: \(40, 30\)/)
     const mobileImage = Buffer.from(mobile.imageBase64, 'base64')
-    assert.equal(mobileImage.readUInt32BE(16), 390)
-    assert.equal(mobileImage.readUInt32BE(20), 844)
-    assert.equal(await tab.contents.executeJavaScript('window.innerWidth'), 390)
-    assert.equal(await tab.contents.executeJavaScript('window.innerHeight'), 844)
+    assert.equal(mobileImage.readUInt32BE(16), 1440)
+    assert.equal(mobileImage.readUInt32BE(20), 900)
+    assert.equal(await tab.contents.executeJavaScript('window.innerWidth'), 1440)
+    assert.equal(await tab.contents.executeJavaScript('window.innerHeight'), 900)
     const lastFrame = received.filter((item) => item.channel === 'browser:agentFrame').at(-1)
-    assert.equal(lastFrame.value.width, 390)
-    assert.equal(lastFrame.value.height, 844)
+    assert.equal(lastFrame.value.width, 1440)
+    assert.equal(lastFrame.value.height, 900)
     await browser.executeDesktopBrowserRequest({
       operation: 'interact', projectPath, tabId: opened.tab_id,
       action: { action: 'hover', x: 100, y: 120, observation_id: mobile.data.observation_id },
@@ -138,12 +231,13 @@ async function run() {
     const pointer = received.filter((item) => item.channel === 'browser:agentCursor').at(-1)
     assert.equal(pointer.value.cursor.x, 100)
     assert.equal(pointer.value.cursor.y, 120)
-    assert.equal(pointer.value.width, 390)
-    assert.equal(pointer.value.height, 844)
+    assert.equal(pointer.value.width, 1440)
+    assert.equal(pointer.value.height, 900)
     const closed = await browser.executeDesktopBrowserRequest({
       operation: 'terminate', projectPath, tabId: opened.tab_id,
     }, owner.webContents)
     assert.equal(closed.data.status, 'closed')
+    assert.ok(!browser.listOpenAgentTabs(projectPath).some((item) => item.tabId === opened.tab_id))
     const { data: custom } = await browser.executeDesktopBrowserRequest({
       operation: 'open', projectPath, url, width: 390, height: 844, newTab: true,
     }, owner.webContents)

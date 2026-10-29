@@ -43,6 +43,24 @@ test('system prompt uses exec-only TideCode tool boundary and keeps workspace co
   )
 })
 
+test('system prompt omits AGENTS.md instruction unless file exists at workspace root', async () => {
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-system-agents-'))
+  try {
+    const absent = buildChatModeSystemPrompt('agent', root)
+    assert.doesNotMatch(absent, /<workspace_instruction_context>/u)
+    assert.equal(buildChatModeSystemPromptBreakdown('agent', root).components.some((part) => part.id === 'workspace_instructions_context'), false)
+    await fs.mkdir(path.join(root, 'AGENTS.md'))
+    assert.doesNotMatch(buildChatModeSystemPrompt('agent', root), /<workspace_instruction_context>/u)
+    await fs.rm(path.join(root, 'AGENTS.md'), { recursive: true })
+    await fs.writeFile(path.join(root, 'AGENTS.md'), '# Rules')
+    assert.match(buildChatModeSystemPrompt('agent', root), /<workspace_instruction_context>/u)
+    await fs.rm(path.join(root, 'AGENTS.md'))
+    assert.doesNotMatch(buildChatModeSystemPrompt('agent', root), /<workspace_instruction_context>/u)
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
+
 test('Agent and Plan use the same stable system instructions and mode-specific contexts', () => {
   const agent = buildChatModeSystemPrompt('agent', 'C:/workspace')
   const plan = buildChatModeSystemPrompt('plan', 'C:/workspace')

@@ -4,13 +4,15 @@ import type { CdpSend } from './agentCdpSession'
 import type { AgentViewport } from './agentViewport'
 import { locateBrowserElement } from './agentPageStructure'
 import { moveAgentCursor } from './agentCursor'
-import { assertAgentObservation, clearAgentObservation } from './agentObservation'
+import { clearAgentObservation } from './agentObservation'
+import { setTimeout as delay } from 'node:timers/promises'
 
 export type AgentBrowserInteraction =
-  | { action: 'click'; element_ref?: string; x?: number; y?: number; observation_id?: string; button?: 'left' | 'right' | 'middle' }
-  | { action: 'hover'; element_ref?: string; x?: number; y?: number; observation_id?: string }
-  | { action: 'double_click'; element_ref?: string; x?: number; y?: number; observation_id?: string }
-  | { action: 'drag'; element_ref?: string; x?: number; y?: number; to_x: number; to_y: number; observation_id: string }
+  | { action: 'click'; element_ref?: string; x?: number; y?: number; button?: 'left' | 'right' | 'middle' }
+  | { action: 'hover'; element_ref?: string; x?: number; y?: number }
+  | { action: 'double_click'; element_ref?: string; x?: number; y?: number }
+  | { action: 'drag'; element_ref?: string; x?: number; y?: number; to_x: number; to_y: number }
+  | { action: 'stroke'; points: Array<{ x: number; y: number }> }
   | { action: 'fill'; element_ref: string; text: string }
   | { action: 'type'; text: string }
   | { action: 'key'; key: string }
@@ -25,6 +27,87 @@ export interface BrowserActionReport {
   to_x?: number
   to_y?: number
   detail?: string
+}
+
+const MAX_POINTER_SPACING = 12
+const MAX_POINTER_MOVES = 800
+const POINTER_INTERVAL_MS = 6
+
+function interpolatePointerPath(points: ReadonlyArray<{ x: number; y: number }>) {
+  const moves: Array<{ x: number; y: number }> = []
+  for (let i = 1; i < points.length; i += 1) {
+    const start = points[i - 1]
+    const end = points[i]
+    const steps = Math.max(1, Math.ceil(Math.hypot(end.x - start.x, end.y - start.y) / MAX_POINTER_SPACING))
+    if (moves.length + steps > MAX_POINTER_MOVES) {
+      throw new Error('The browser stroke is too long. Use fewer points or split the path into shorter strokes.')
+    }
+    for (let j = 1; j <= steps; j += 1) {
+      moves.push({
+        x: start.x + (end.x - start.x) * j / steps,
+        y: start.y + (end.y - start.y) * j / steps,
+      })
+    }
+  }
+  return moves
+}
+
+async function dispatchPointerPath(
+  contents: WebContents,
+  send: CdpSend,
+  points: ReadonlyArray<{ x: number; y: number }>,
+  signal?: AbortSignal,
+  startPositioned = false,
+) {
+  const moves = interpolatePointerPath(points)
+  const start = points[0]
+  let last = start
+  if (!startPositioned) {
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: start.x, y: start.y })
+  }
+  let pressed = false
+  let releaseError: unknown = null
+  try {
+    // A failed response can still mean Chromium received the press.
+    pressed = true
+    await send('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: start.x, y: start.y, button: 'left', clickCount: 1,
+    })
+    moveAgentCursor(contents, start.x, start.y, 'grabbing')
+    for (const point of moves) {
+      if (signal?.aborted) throw new Error('Browser operation cancelled.')
+      await send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved', x: point.x, y: point.y, button: 'left', buttons: 1,
+      })
+      last = point
+      moveAgentCursor(contents, point.x, point.y, 'grabbing', 'drag')
+      await delay(POINTER_INTERVAL_MS, undefined, { signal })
+    }
+  } finally {
+    if (pressed) {
+      const release = {
+        type: 'mouseReleased', x: last.x, y: last.y, button: 'left', clickCount: 1,
+      }
+      try {
+        await send('Input.dispatchMouseEvent', release)
+      } catch (error) {
+        if (!signal?.aborted || contents.isDestroyed?.() || !contents.debugger?.isAttached?.()) {
+          releaseError = error
+        } else {
+          // Cancellation can abort the scoped CDP budget; release without that signal.
+          try {
+            await contents.debugger.sendCommand('Input.dispatchMouseEvent', release)
+          } catch (fallbackError) {
+            releaseError = fallbackError
+          }
+        }
+      } finally {
+        moveAgentCursor(contents, last.x, last.y, 'grab')
+      }
+    }
+  }
+  if (releaseError !== null) throw releaseError
+  return last
 }
 
 const KEY_CODES: Record<string, number> = {
@@ -60,14 +143,17 @@ function assertCoordinate(value: number, max: number, label: string) {
 
 export async function interactWithAgentPage(contents: WebContents, action: AgentBrowserInteraction, signal?: AbortSignal) {
   validateBrowserInteraction(action)
-  const report = await withAgentViewport(contents, (send, viewport) =>
-    interactWithAgentPageInViewport(contents, action, send, viewport, signal), undefined, signal)
+  const result = await withAgentViewport(contents, async (send, viewport) => ({
+    report: await interactWithAgentPageInViewport(contents, action, send, viewport, signal),
+    width: viewport.width,
+    height: viewport.height,
+  }), undefined, signal)
   return {
     action: action.action,
     url: contents.getURL(),
     title: contents.getTitle(),
     loading: contents.isLoading(),
-    report,
+    ...result,
   }
 }
 
@@ -83,6 +169,20 @@ export async function interactWithAgentPageInViewport(
   validateBrowserInteraction(action)
   const pointing = action.action === 'click' || action.action === 'hover'
     || action.action === 'double_click' || action.action === 'drag'
+  if (action.action === 'stroke') {
+    for (const point of action.points) {
+      assertCoordinate(point.x, viewport.width, 'stroke x')
+      assertCoordinate(point.y, viewport.height, 'stroke y')
+    }
+    const start = action.points[0]
+    clearAgentObservation(contents)
+    const last = await dispatchPointerPath(contents, send, action.points, signal)
+    return {
+      action: 'stroke', target: 'Viewport path', method: 'coordinates',
+      x: start.x, y: start.y, to_x: last.x, to_y: last.y,
+      detail: action.points.length + ' connected points',
+    } as BrowserActionReport
+  }
   const resolved = (pointing || action.action === 'fill') && action.element_ref
     ? await locateBrowserElement(contents, action.element_ref, send)
     : null
@@ -96,9 +196,6 @@ export async function interactWithAgentPageInViewport(
     }
     const x = resolved?.x ?? (pointing ? action.x! : 0)
     const y = resolved?.y ?? (pointing ? action.y! : 0)
-    if (pointing && (!resolved || action.action === 'drag')) {
-      assertAgentObservation(contents, action.observation_id, viewport)
-    }
     assertCoordinate(x, viewport.width, 'x')
     assertCoordinate(y, viewport.height, 'y')
     moveAgentCursor(contents, x, y)
@@ -119,22 +216,9 @@ export async function interactWithAgentPageInViewport(
       assertCoordinate(action.to_x, viewport.width, 'to_x')
       assertCoordinate(action.to_y, viewport.height, 'to_y')
       clearAgentObservation(contents)
-      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: 1 })
-      try {
-        for (let step = 1; step <= 10; step += 1) {
-          const nextX = x + (action.to_x - x) * step / 10
-          const nextY = y + (action.to_y - y) * step / 10
-          await send('Input.dispatchMouseEvent', {
-            type: 'mouseMoved', x: nextX, y: nextY, button, buttons: 1,
-          })
-          moveAgentCursor(contents, nextX, nextY, 'grabbing', 'drag')
-        }
-      } finally {
-        await send('Input.dispatchMouseEvent', {
-          type: 'mouseReleased', x: action.to_x, y: action.to_y, button, clickCount: 1,
-        })
-        moveAgentCursor(contents, action.to_x, action.to_y, 'grab')
-      }
+      await dispatchPointerPath(contents, send, [
+        { x, y }, { x: action.to_x, y: action.to_y },
+      ], signal, true)
     } else if (action.action !== 'hover') {
       clearAgentObservation(contents)
       const clicks = action.action === 'double_click' ? 2 : 1
@@ -187,8 +271,15 @@ export async function interactWithAgentPageInViewport(
 
 /** Validate without dispatching input so a bad later step cannot partially execute a chain. */
 export function validateBrowserInteraction(action: AgentBrowserInteraction) {
-  if (!action || !['click', 'hover', 'double_click', 'drag', 'fill', 'type', 'key', 'scroll'].includes(action.action)) {
+  if (!action || !['click', 'hover', 'double_click', 'drag', 'stroke', 'fill', 'type', 'key', 'scroll'].includes(action.action)) {
     throw new Error('Unknown browser interaction.')
+  }
+  if (action.action === 'stroke') {
+    if (!Array.isArray(action.points) || action.points.length < 2 || action.points.length > 256
+      || action.points.some((point) => !point || !Number.isFinite(point.x) || !Number.isFinite(point.y)
+        || point.x < 0 || point.y < 0 || point.x >= 4096 || point.y >= 4096)) {
+      throw new Error('Stroke requires 2 to 256 points with valid viewport x/y coordinates.')
+    }
   }
   if (['click', 'hover', 'double_click', 'drag'].includes(action.action)) {
     const pointer = action as Extract<AgentBrowserInteraction, { action: 'click' }>
@@ -200,15 +291,11 @@ export function validateBrowserInteraction(action: AgentBrowserInteraction) {
     ))) {
       throw new Error('Use either an element_ref or x and y viewport coordinates, not both.')
     }
-    if (hasCoords && (typeof pointer.observation_id !== 'string' || !pointer.observation_id.trim())) {
-      throw new Error('Coordinate actions require the latest observation_id from browser.read.')
-    }
     if (action.action === 'drag' && (
-      typeof action.observation_id !== 'string' || !action.observation_id.trim()
-      || !Number.isFinite(action.to_x) || !Number.isFinite(action.to_y)
+      !Number.isFinite(action.to_x) || !Number.isFinite(action.to_y)
       || action.to_x < 0 || action.to_y < 0 || action.to_x >= 4096 || action.to_y >= 4096
     )) {
-      throw new Error('Drag requires observation_id and valid to_x/to_y viewport coordinates.')
+      throw new Error('Drag requires valid to_x/to_y viewport coordinates.')
     }
   }
 

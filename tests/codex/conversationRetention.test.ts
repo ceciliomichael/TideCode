@@ -26,9 +26,9 @@ test('newest user request and attachments remain atomic while earlier oversized 
     { type: 'image', image: new URL('https://example.test/reference.png') },
   ] }
   const messages: ModelMessage[] = [{ role: 'user', content: 'Older request '.repeat(3_000) }, latest]
-  const retained = retainConversationMessages({ contextMessages: messages, tailMessages: [latest], maximumTokens: 2_000 })
+  const retained = retainConversationMessages({ contextMessages: messages, tailMessages: [latest], maximumTokens: 5_000 })
   assert.deepEqual(retained, [latest])
-  assert.throws(() => retainConversationMessages({ contextMessages: messages, tailMessages: [latest], maximumTokens: 100 }), /cannot fit the latest user request/u)
+  assert.throws(() => retainConversationMessages({ contextMessages: messages, tailMessages: [latest], maximumTokens: 100 }), { reason: 'protected_context_too_large' })
 })
 
 test('hidden-only updates are not user intent and stale injections are removed from retained requests', () => {

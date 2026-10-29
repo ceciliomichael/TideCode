@@ -20,11 +20,53 @@ import { buildChatCompressionSystemPrompt } from '../../electron/chat/shared/pro
 import { buildDurableMemorySystemPrompt } from '../../electron/chat/shared/prompts/durableMemory'
 import { estimateModelMessageContextUsage } from '../../src/lib/contextUsage'
 import { estimateUserPromptLedgerTokens } from '../../electron/chat/shared/compaction/userPromptLedger'
+import { compactConversationForProvider } from '../../electron/chat/shared/compaction/manual'
+import { readCanonicalHistory } from '../../electron/chat/history/eventStore'
+import { electronApp } from '../../electron/electronApp'
+import type { Message } from '../../src/types/chat'
 import {
   buildChatModeHiddenContext,
   buildExecutionModeHiddenContext,
   buildWorkspaceInstructionsHiddenContext,
 } from '../../src/lib/hiddenUserContext'
+
+test('manual compression uses the shared coordinator and persists both worker outputs', async () => {
+  const isolatedHome = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-manual-compaction-'))
+  const originalGetPath = electronApp.getPath
+  electronApp.getPath = () => isolatedHome
+  let workers = 0
+  try {
+    const messages: Message[] = Array.from({ length: 12 }, (_, index) => ({
+      id: `message-${index}`, timestamp: index,
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      content: index % 2 === 0 ? `Request ${index}: keep working.` : 'Supported progress details. '.repeat(2_000),
+    }))
+    const result = await compactConversationForProvider({
+      agentContextRootPath: isolatedHome, conversationId: 'manual-integration',
+      chatMode: 'agent', providerId: 'deepseek', modelId: 'unknown-summarizer', reasoningEffort: 'low',
+      targetProviderId: 'codex', targetModelId: 'unknown-source',
+      terminalExecutionMode: 'sandbox', messages,
+      contextCompaction: { contextWindowTokens: 256_000, retainedContextTokens: 10_000, triggerPercent: 80 },
+      createStream: async (workerInput) => {
+        assert.equal(workerInput.providerId, 'deepseek')
+        workers += 1
+        return { fullStream: (async function* () { yield { type: 'text-delta', text: '## Current state\n- Preserve supported progress and continue the remaining request.' } })() }
+      },
+    })
+    assert.equal(result.compacted, true)
+    assert.equal(workers, 2)
+    const document = await readCanonicalHistory('manual-integration')
+    const commit = document.events.find((event) => event.type === 'compaction_committed')
+    assert.ok(commit && 'durableMemory' in commit && commit.durableMemory)
+    assert.equal(commit.providerId, 'codex')
+    assert.equal(commit.modelId, 'unknown-source')
+    assert.equal(document.events.filter((event) => event.type === 'compaction_attempted').length, 1)
+  } finally {
+    electronApp.getPath = originalGetPath
+    assert.equal(path.dirname(isolatedHome), path.resolve(tmpdir()))
+    await fs.rm(isolatedHome, { recursive: true, force: true })
+  }
+})
 
 function createConversationMessages(): ModelMessage[] {
   return [
@@ -139,7 +181,7 @@ test('an unfit newest request fails before worker calls without mutating the ori
     calls += 1
     return { fullStream: (async function* () { yield { type: 'text-delta', text: '## Current state\n- Never used.' } })() }
   }
-  await assert.rejects(compactModelMessages(createCompactionInput(messages, createStream, 2_000)), /cannot fit the latest user request/u)
+  await assert.rejects(compactModelMessages(createCompactionInput(messages, createStream, 2_000)), { reason: 'protected_context_too_large' })
   assert.equal(calls, 0)
   assert.equal(JSON.stringify(messages), original)
 })
@@ -405,7 +447,7 @@ test('invalid durable memory output stops compaction before the handoff phase', 
 
   await assert.rejects(
     compactModelMessages(createCompactionInput(messages, createStream)),
-    /Durable-memory reconciliation returned invalid Markdown/u,
+    { reason: 'invalid_handoff' },
   )
   assert.equal(calls, 1)
 })
@@ -537,7 +579,7 @@ test('invalid non-Markdown AI output fails instead of creating a deterministic c
       createConversationMessages(),
       createTextStreamFactory(truncatedPacket),
     )),
-    /AI compaction returned invalid continuation Markdown/u,
+    { reason: 'invalid_handoff' },
   )
 })
 
@@ -562,7 +604,7 @@ test('empty AI compaction output fails instead of creating a deterministic compa
 
   await assert.rejects(
     compactModelMessages(createCompactionInput(messages, emptyStream, 7_000)),
-    /AI compaction returned invalid continuation Markdown/u,
+    { reason: 'invalid_handoff' },
   )
 })
 
@@ -572,7 +614,7 @@ test('meta-only AI compaction output fails instead of creating a deterministic c
       createConversationMessages(),
       createTextStreamFactory('Done.'),
     )),
-    /AI compaction returned invalid continuation Markdown/u,
+    { reason: 'invalid_handoff' },
   )
 })
 
@@ -650,7 +692,7 @@ test('valid AI Markdown is accepted and malformed AI output is rejected', async 
       [...messages, { role: 'user', content: 'A distinct retry input.' }],
       createTextStreamFactory('{"not":"a packet"}'),
     )),
-    /AI compaction returned invalid continuation Markdown/u,
+    { reason: 'invalid_handoff' },
   )
 })
 

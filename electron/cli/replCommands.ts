@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { ChatMode } from '../../src/types/chat'
-import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompactionSettings'
+import { normalizeContextCompactionSettings } from '../../src/lib/contextCompactionSettings'
+import { getStoredSettings } from '../settings/store'
+import { errorCatalog } from '../../src/lib/errors/errorCatalog'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import { startRemoteRelayDaemon } from './remoteDaemon'
 import { getLatestUndoEditSelection } from './undoEditNavigation'
@@ -131,7 +133,7 @@ export function createReplCommandHelpers(
       const input = {
         agentContextRootPath: state.workspaceRootPath,
         chatMode: state.chatMode,
-        contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+        contextCompaction: normalizeContextCompactionSettings((await getStoredSettings()).contextCompaction),
         conversationId: state.conversationId,
         messages: state.messages,
         modelId: state.modelId,
@@ -141,7 +143,11 @@ export function createReplCommandHelpers(
       }
       try {
         const runService = await ensureRunServiceClient()
-        void runService.compactConversation(input).catch((error) => {
+        void runService.compactConversation(input).then((result) => {
+          if (!result.compacted) {
+            screen.addNotice('warning', errorCatalog[`compaction.${result.reason ?? 'no_compactable_source'}`].message)
+          }
+        }).catch((error) => {
           screen.addNotice('error', `Compaction failed: ${error instanceof Error ? error.message : String(error)}`)
         })
       } catch (error) {

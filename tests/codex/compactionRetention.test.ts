@@ -125,7 +125,7 @@ test('retained context fills the token target with a partial older turn', () => 
     ...previousTurn,
     ...latestTurn,
   ] as ModelMessage[]
-  const targetTokens = 10_000
+  const targetTokens = 14_000
   const latestTokens = estimateRetainedContextTokens(latestTurn)
   const combinedTokens = estimateRetainedContextTokens([...previousTurn, ...latestTurn])
 

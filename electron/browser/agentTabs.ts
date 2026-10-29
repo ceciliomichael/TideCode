@@ -80,6 +80,7 @@ export function listAgentBrowserTabs(projectPath: string, page: number) {
       tabs.delete(tab.id)
       return false
     }
+
     if (tab.projectPath !== project) return false
     try {
       requireBrowserUrl(tab.contents.getURL())
@@ -102,6 +103,18 @@ export function listAgentBrowserTabs(projectPath: string, page: number) {
       loading: tab.contents.isLoading(),
     })),
   }
+}
+
+export function listOpenAgentTabs(projectPath: string) {
+  const project = path.resolve(projectPath)
+  return [...tabs.values()]
+    .filter((tab) => tab.kind === 'agent' && tab.projectPath === project && !tab.contents.isDestroyed())
+    .map((tab) => ({
+      tabId: tab.id,
+      projectPath: tab.projectPath,
+      url: tab.contents.getURL(),
+      title: tab.contents.getTitle() || 'Untitled',
+    }))
 }
 
 export function resolveAgentBrowserTab(projectPath: string, id: string, allowUnsupportedUrl = false) {

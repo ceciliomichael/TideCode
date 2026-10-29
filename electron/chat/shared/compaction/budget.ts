@@ -8,6 +8,7 @@ import {
   capRetainedContextTokens,
   DEFAULT_CONTEXT_COMPACTION_SETTINGS,
 } from '../../../../src/lib/contextCompactionSettings'
+import { CompactionError } from './gate'
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = DEFAULT_CONTEXT_COMPACTION_SETTINGS.contextWindowTokens
 export const DEFAULT_COMPACTION_TRIGGER_RATIO = DEFAULT_CONTEXT_COMPACTION_SETTINGS.triggerPercent / 100
@@ -37,10 +38,15 @@ export interface ContextBudgetInput {
   messageTokens: number
   outputReserveTokens?: number
   triggerRatio?: number
+  correctionTokens?: number
 }
 
 export interface ContextBudget {
   availableHistoryTokens: number
+  admissionTokens: number
+  uncertaintyTokens: number
+  correctionTokens: number
+  minimumSavingTokens: number
   contextWindowTokens: number
   messageTokens: number
   outputReserveTokens: number
@@ -57,6 +63,7 @@ export interface ModelMessagesBudgetInput {
   systemPromptTokens: number
   toolSchemaTokens: number
   triggerRatio?: number
+  correctionTokens?: number
 }
 
 export interface ModelMessagesContextState {
@@ -65,26 +72,38 @@ export interface ModelMessagesContextState {
 }
 
 export function calculateContextBudget(input: ContextBudgetInput): ContextBudget {
-  const contextWindowTokens = Math.max(
-    16_000,
-    Math.floor(input.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS),
-  )
+  const contextWindowTokens = Math.floor(input.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS)
+  const values = [contextWindowTokens, input.systemPromptTokens, input.toolSchemaTokens, input.messageTokens,
+    input.outputReserveTokens ?? 0, input.correctionTokens ?? 0]
+  if (values.some((value) => !Number.isFinite(value) || value < 0) || contextWindowTokens < 1) {
+    throw new CompactionError('invalid_context_budget')
+  }
   const outputReserveTokens = Math.min(
     Math.max(0, Math.floor(input.outputReserveTokens ?? DEFAULT_CONTEXT_OUTPUT_RESERVE_TOKENS)),
     Math.floor(contextWindowTokens * 0.25),
   )
-  const usableContextWindowTokens = Math.max(8_000, contextWindowTokens - outputReserveTokens)
+  const uncertaintyTokens = Math.max(1_024, Math.ceil(contextWindowTokens * 0.05))
+  const admissionTokens = contextWindowTokens - outputReserveTokens - uncertaintyTokens
+  if (admissionTokens <= 0) {
+    throw new CompactionError('invalid_context_budget')
+  }
+  const correctionTokens = Math.max(0, Math.floor(input.correctionTokens ?? 0))
+  const usableContextWindowTokens = admissionTokens
   const triggerRatio = Math.min(0.95, Math.max(0.5, input.triggerRatio ?? DEFAULT_COMPACTION_TRIGGER_RATIO))
   const staticTokens = Math.max(0, Math.floor(input.systemPromptTokens + input.toolSchemaTokens))
   const totalTokens = staticTokens + Math.max(0, input.messageTokens)
-  const availableHistoryTokens = Math.max(1_000, usableContextWindowTokens - staticTokens)
-  const targetHistoryTokens = Math.max(
-    2_000,
-    Math.min(availableHistoryTokens, Math.floor(usableContextWindowTokens * COMPACTION_RETENTION_RATIO - staticTokens)),
+  const availableHistoryTokens = Math.max(0, admissionTokens - staticTokens - correctionTokens)
+  const targetHistoryTokens = Math.min(
+    availableHistoryTokens,
+    Math.max(0, Math.floor(usableContextWindowTokens * COMPACTION_RETENTION_RATIO - staticTokens)),
   )
 
   return {
     availableHistoryTokens,
+    admissionTokens,
+    uncertaintyTokens,
+    correctionTokens,
+    minimumSavingTokens: Math.max(1_024, Math.ceil(contextWindowTokens * 0.02)),
     contextWindowTokens,
     messageTokens: Math.max(0, input.messageTokens),
     outputReserveTokens,
@@ -107,10 +126,16 @@ export function calculateModelMessagesContextState(input: ModelMessagesBudgetInp
     systemPromptTokens: input.systemPromptTokens,
     toolSchemaTokens: input.toolSchemaTokens,
     triggerRatio: input.triggerRatio,
+    correctionTokens: input.correctionTokens,
   })
   return {
     budget,
     usage: {
+      imageTokens: messageUsage.imageTokens,
+      outputReserveTokens: budget.outputReserveTokens,
+      uncertaintyTokens: budget.uncertaintyTokens + budget.correctionTokens,
+      admissionTokens: budget.admissionTokens,
+      triggerTokens: budget.triggerTokens,
       historyTokens: messageUsage.historyTokens,
       injectionTokens: messageUsage.injectionTokens,
       maxTokens: budget.contextWindowTokens,
@@ -142,5 +167,9 @@ export function shouldCompactContext(budget: ContextBudget) {
   // This is intentionally the same full-window comparison shown by the
   // context indicator. Whether there is enough complete history to reduce is
   // decided by the turn-aware compaction window, not by a second token target.
-  return budget.totalTokens >= budget.triggerTokens && budget.messageTokens > 0
+  return budget.totalTokens + budget.correctionTokens >= Math.min(budget.triggerTokens, budget.admissionTokens + 1) && budget.messageTokens > 0
+}
+
+export function requiresContextCompaction(budget: ContextBudget) {
+  return budget.totalTokens + budget.correctionTokens > budget.admissionTokens
 }

@@ -5,6 +5,7 @@ export const BrowserWindow = undefined
 export const app = undefined
 export const clipboard = undefined
 export const net = undefined
+export const nativeImage = undefined
 export const shell = undefined
 export const webContents = undefined
 export default undefined

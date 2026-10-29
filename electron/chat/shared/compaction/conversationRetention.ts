@@ -2,6 +2,7 @@ import type { ModelMessage } from 'ai'
 import { estimateModelMessageContextUsage } from '../../../../src/lib/contextUsage'
 import { extractHiddenUserContexts, stripHiddenUserContext } from '../../../../src/lib/hiddenUserContext'
 import { truncatePreservingEdges } from './codeModeProjection'
+import { CompactionError } from './gate'
 import { removeRawToolHistory } from './toolFreeContext'
 
 const MAX_EARLIER_USER_TOKENS = 2_500
@@ -84,7 +85,7 @@ export function retainConversationMessages(input: {
   if (latestUser) {
     const tokens = retainedMessageTokens([latestUser.message])
     if (tokens > remaining) {
-      throw new Error('Compaction cannot fit the latest user request and required context in the retention budget. The existing history has been preserved.')
+      throw new CompactionError('protected_context_too_large')
     }
     selected.set(latestUser.index, latestUser.message)
     remaining -= tokens

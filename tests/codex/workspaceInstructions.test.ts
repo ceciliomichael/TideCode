@@ -16,16 +16,25 @@ function modelText(messages: readonly ModelMessage[]) {
     : message.content.map((part) => 'text' in part ? part.text : '').join('\n')).join('\n')
 }
 
-test('stable workspace instruction contract keeps the conditional bootstrap guidance', () => {
-  const block = buildWorkspaceInstructionsRuntimeBlock()
+test('workspace instruction contract only exists when root AGENTS.md is a file', async () => {
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-prompt-'))
+  try {
+    assert.equal(buildWorkspaceInstructionsRuntimeBlock(root), null)
+    await fs.mkdir(path.join(root, 'AGENTS.md'))
+    assert.equal(buildWorkspaceInstructionsRuntimeBlock(root), null)
+    await fs.rm(path.join(root, 'AGENTS.md'), { recursive: true })
+    await fs.writeFile(path.join(root, 'AGENTS.md'), '# Rules')
+    const block = buildWorkspaceInstructionsRuntimeBlock(root)!
 
   assert.match(block, /revision-aware hidden bootstrap context/u)
   assert.match(block, /bootstrap does not contain the file contents/u)
-  assert.match(block, /Read the current `AGENTS\.md` only when that exact revision has not already been read/u)
-  assert.match(block, /reuse it and do not read it again/u)
+  assert.match(block, /Read the current `AGENTS\.md` before responding to every user turn/u)
   assert.doesNotMatch(block, /authoritative workspace instructions|optional reference data|before each action|Do not skip applicable requirements/u)
   assert.match(block, /bootstrap revision changes/u)
   assert.match(block, /continue without attempting that bootstrap read/u)
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
 })
 
 test('workspace bootstrap replaces stale context without embedding file contents and is removed when unavailable', async () => {
@@ -41,8 +50,8 @@ test('workspace bootstrap replaces stale context without embedding file contents
     const injectedText = modelText(injected)
 
     assert.match(injectedText, /Implement this\./u)
-    assert.match(injectedText, /AGENTS\.md changed\. Read it again in full and treat it as authoritative workspace instructions/u)
-    assert.match(injectedText, /Follow every applicable requirement and exception; do not treat it as optional reference data/u)
+    assert.match(injectedText, /AGENTS\.md changed\. Before responding, read it again in full and treat it as authoritative workspace instructions/u)
+    assert.match(injectedText, /Follow every applicable requirement and exception; this read is mandatory/u)
     assert.doesNotMatch(injectedText, /# Current rules|Use tests\./u)
     assert.doesNotMatch(injectedText, /old rules/u)
     assert.equal(injectedText.match(/kind="workspace_instructions"/gu)?.length, 1)
@@ -50,7 +59,7 @@ test('workspace bootstrap replaces stale context without embedding file contents
 
     const unchanged = modelText(applyWorkspaceInstructionsContext(injected, workspaceRootPath))
     assert.doesNotMatch(unchanged, /AGENTS\.md changed/u)
-    assert.match(unchanged, /Read AGENTS\.md in full and treat it as authoritative workspace instructions throughout this task/u)
+    assert.match(unchanged, /read AGENTS\.md in full through the file tool/u)
 
     const fileStats = await fs.stat(path.join(workspaceRootPath, 'AGENTS.md'))
     const currentRevision = `${fileStats.mtimeMs}:${fileStats.size}`
@@ -68,7 +77,7 @@ test('workspace bootstrap replaces stale context without embedding file contents
       },
     ]
     const transitioned = modelText(applyWorkspaceInstructionsContext(transitionedMessages, workspaceRootPath))
-    assert.match(transitioned, /AGENTS\.md changed\. Read it again in full and treat it as authoritative workspace instructions/u)
+    assert.match(transitioned, /AGENTS\.md changed\. Before responding, read it again in full and treat it as authoritative workspace instructions/u)
     assert.doesNotMatch(transitionedMessages[1]?.content ?? '', /AGENTS\.md changed/u)
 
     await fs.rm(path.join(workspaceRootPath, 'AGENTS.md'))

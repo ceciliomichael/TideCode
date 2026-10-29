@@ -33,6 +33,8 @@ import {
 } from '../shared/compaction/markdown'
 import { withFileLock } from './fileLock'
 import { shouldPreserveNewerCompactionReplay } from './replayWritePolicy'
+import type { CompactionAttemptDiagnostic } from '../shared/compaction/contracts'
+import { CompactionError } from '../shared/compaction/gate'
 
 const CANONICAL_DIRECTORY_NAME = 'canonical-history'
 const updateQueues = new Map<string, Promise<void>>()
@@ -393,7 +395,25 @@ export async function recordRunStarted(input: {
   })
 }
 
+export function captureCompactionSource(document: CanonicalHistoryDocument) {
+  const relevant = getBranchHistoryEvents(document).filter((event) => (
+    event.type !== 'observation_recorded' && event.type !== 'observation_invalidated'
+    && event.type !== 'compaction_attempted'
+  ))
+  return { branchId: document.activeBranchId, sourceRevision: relevant.at(-1)?.revision ?? 0 }
+}
+
+export async function recordCompactionAttempt(conversationId: string, runId: string | null, diagnostic: CompactionAttemptDiagnostic) {
+  return updateDocument(conversationId, (document) => {
+    appendEvent(document, { type: 'compaction_attempted', runId, diagnostic })
+  })
+}
+
 export async function recordCompactionCommitted(input: {
+  expectedSource?: ReturnType<typeof captureCompactionSource>
+  signal?: AbortSignal
+  runId?: string | null
+  diagnostic?: CompactionAttemptDiagnostic
   anchorUserMessageId: string | null
   compactionId: string
   conversationId: string
@@ -412,6 +432,18 @@ export async function recordCompactionCommitted(input: {
   usedFallback?: boolean
 }) {
   return updateDocument(input.conversationId, (document) => {
+    if (input.signal?.aborted) {
+      throw new CompactionError('aborted')
+    }
+    if (input.expectedSource) {
+      const current = captureCompactionSource(document)
+      if (current.branchId !== input.expectedSource.branchId || current.sourceRevision !== input.expectedSource.sourceRevision) {
+        throw new CompactionError('stale_source')
+      }
+    }
+    if (input.diagnostic) {
+      appendEvent(document, { type: 'compaction_attempted', runId: input.runId ?? null, diagnostic: input.diagnostic })
+    }
     const compactionSequence = document.events.filter((event) => (
       event.branchId === document.activeBranchId && event.type === 'compaction_committed' && 'compactionId' in event
     )).length + 1
@@ -429,7 +461,7 @@ export async function recordCompactionCommitted(input: {
       projectedMessages: encodeModelMessages(sanitizeCompactedModelMessages(input.projectedMessages)),
       providerId: input.providerId,
       ...(input.reasoningRetention ? { reasoningRetention: input.reasoningRetention } : {}),
-      runId: null,
+      runId: input.runId ?? null,
       sourceDigest: input.sourceDigest,
       sourceMessageIds: input.sourceMessageIds,
       type: 'compaction_committed',
@@ -449,9 +481,14 @@ export async function recordStepCompleted(conversationId: string, runId: string,
       durationMs: step.durationMs,
       type: 'step_completed',
       usage: step.usage,
+      ...(step.contextUsage ? { contextUsage: step.contextUsage } : {}),
     })
     document.usage = {
-      cacheHitSteps: document.usage.cacheHitSteps + (step.usage.cacheReadTokens > 0 ? 1 : 0),
+      cacheHitSteps: document.usage.cacheHitSteps + (step.usage.reporting?.cacheRead === 'reported' && step.usage.cacheReadTokens > 0 ? 1 : 0),
+      reportedCacheSteps: (document.usage.reportedCacheSteps ?? 0) + (step.usage.reporting?.cacheRead === 'reported' ? 1 : 0),
+      reportedCacheHitSteps: (document.usage.reportedCacheHitSteps ?? 0) + (step.usage.reporting?.cacheRead === 'reported' && step.usage.cacheReadTokens > 0 ? 1 : 0),
+      reportedCacheInputTokens: (document.usage.reportedCacheInputTokens ?? 0) + (step.usage.reporting?.cacheRead === 'reported' ? step.usage.inputTokens : 0),
+      reportedCacheReadTokens: (document.usage.reportedCacheReadTokens ?? 0) + (step.usage.reporting?.cacheRead === 'reported' ? step.usage.cacheReadTokens : 0),
       cacheReadTokens: document.usage.cacheReadTokens + step.usage.cacheReadTokens,
       cacheWriteTokens: document.usage.cacheWriteTokens + step.usage.cacheWriteTokens,
       inputTokens: document.usage.inputTokens + step.usage.inputTokens,

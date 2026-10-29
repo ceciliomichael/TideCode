@@ -45,7 +45,7 @@ export function ContextSettingsSections({ isLoading, onUpdateSettings, settings 
       <SettingsSection title="Context budget">
         <SettingsRow
           title="Maximum context"
-          description="The context budget used by the indicator and automatic compaction. Keep this at or below the selected model's supported limit."
+          description="The configured context capacity, separate from maximum output. Keep it within the selected model's supported limit, including for custom providers."
         >
           <div className="w-full md:w-[240px]">
             <label htmlFor="context-window-size" className="sr-only">
@@ -65,8 +65,8 @@ export function ContextSettingsSections({ isLoading, onUpdateSettings, settings 
 
         <div className="border-t border-border">
           <SettingsRow
-            title="Automatic compaction trigger"
-            description="Start compacting when the estimated context reaches this percentage of the maximum."
+            title="Preferred automatic compaction"
+            description="Try compression at this percentage. TideCode may compress earlier to reserve room for the response and estimation uncertainty."
           >
             <div className="w-full md:w-[240px]">
               <div className="flex items-center gap-3">

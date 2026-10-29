@@ -438,6 +438,8 @@ const browserPageActionsApi: TideCodeBrowserPageActionsApi = {
     return () => ipcRenderer.off('browser:agentCursor', wrapped)
   },
   closeAgentTab: (input) => ipcRenderer.invoke('browser:closeAgentTab', input),
+  listOpenAgentTabs: (input) => ipcRenderer.invoke('browser:listOpenAgentTabs', input),
+  setAgentPreviewVisible: (input) => ipcRenderer.invoke('browser:setAgentPreviewVisible', input),
   getAgentFrame: (tabId) => agentFrames.get(tabId) ?? null,
   onAgentFrame: (listener) => {
     const wrapped = (_event: unknown, input: Parameters<typeof listener>[0]) => listener(input)

@@ -1,4 +1,5 @@
 import type { ChatProviderId, ChatStreamCancellation } from '../../../src/types/chat'
+import type { CompactionAttemptDiagnostic } from '../shared/compaction/contracts'
 
 export const CANONICAL_HISTORY_SCHEMA = 'tidecode.canonical_history/v1' as const
 export const REPLAY_CODEC_SCHEMA = 'tidecode.replay_value/v1' as const
@@ -11,6 +12,12 @@ export type EncodedReplayValue =
   | { [key: string]: EncodedReplayValue }
 
 export interface NormalizedUsageRecord {
+  reporting?: {
+    input: 'reported' | 'unknown'
+    cacheRead: 'reported' | 'unknown'
+    cacheWrite: 'reported' | 'unknown'
+    noCache: 'reported' | 'derived' | 'unknown'
+  }
   cacheReadTokens: number
   cacheWriteTokens: number
   inputTokens: number
@@ -21,6 +28,10 @@ export interface NormalizedUsageRecord {
 }
 
 export interface CanonicalUsageSummary extends NormalizedUsageRecord {
+  reportedCacheSteps?: number
+  reportedCacheHitSteps?: number
+  reportedCacheInputTokens?: number
+  reportedCacheReadTokens?: number
   cacheHitSteps: number
   stepCount: number
   totalDurationMs: number
@@ -50,6 +61,10 @@ interface CanonicalHistoryEventBase {
 }
 
 export type CanonicalHistoryEvent =
+  | (CanonicalHistoryEventBase & {
+      type: 'compaction_attempted'
+      diagnostic: CompactionAttemptDiagnostic
+    })
   | (CanonicalHistoryEventBase & {
       messageIds: string[]
       type: 'messages_synchronized'
@@ -84,6 +99,7 @@ export type CanonicalHistoryEvent =
       durationMs: number
       type: 'step_completed'
       usage: NormalizedUsageRecord
+      contextUsage?: import('../../../src/types/chat').ContextUsageEstimate
     })
   | (CanonicalHistoryEventBase & {
       type: 'run_completed'
@@ -160,6 +176,7 @@ export interface CanonicalHistoryDocument {
 }
 
 export interface ProviderStepRecord {
+  contextUsage?: import('../../../src/types/chat').ContextUsageEstimate
   finishReason: string
   providerMetadata: unknown
   responseMessages: unknown[]

@@ -87,3 +87,11 @@ test('compaction lifecycle ignores events from another conversation', () => {
     conversationId: 'conversation-2',
   }, 'conversation-1'), null)
 })
+
+test('a stale commit cannot terminate a newer in-flight compaction attempt', () => {
+  const current = reduceChatCompactionStatus(null, startedEvent, 'conversation-1')
+  assert.deepEqual(reduceChatCompactionStatus(current, {
+    type: 'compaction_committed', conversationId: 'conversation-1', streamId: 'stream-1',
+    compactionId: 'old-packet', attemptId: 'old-attempt',
+  }, 'conversation-1'), current)
+})

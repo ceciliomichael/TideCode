@@ -19,6 +19,7 @@ import { resolveProviderReasoningCapability, resolveReasoningRetention } from '.
 import { validateContinuationMarkdown } from './markdown'
 import { COMPACTION_MAX_OUTPUT_TOKENS } from './contracts'
 import { reconcileDurableMemory } from './durableMemory'
+import { CompactionError } from './gate'
 import {
   extractUserPromptLedgerEntries,
   mergeUserPromptLedger,
@@ -34,6 +35,7 @@ import type {
 } from './contracts'
 
 const COMPACTION_TIMEOUT_MS = 90_000
+const cancellationScopes = new WeakMap<AbortSignal, string>()
 const inFlightCompactions = new Map<string, Promise<CompactionResult | null>>()
 
 function appendActiveTurnGuard(summary: string, turnState: CompactionTurnState) {
@@ -45,6 +47,22 @@ function appendActiveTurnGuard(summary: string, turnState: CompactionTurnState) 
     '- Host runtime status: the assistant turn is still active. Compaction is an intermediate boundary, not a final response or proof that the overall request is complete.',
     '- Resume from the supported state. Retain completed substeps, address remaining obligations, and provide the response still owed to the user. Do not repeat work merely because this turn is active.',
   ].join('\n').trim()
+}
+
+export function minimumCompactionRetentionTokens(
+  messages: readonly import('ai').ModelMessage[],
+  previousPacket: CompactionPacket | null,
+  turnState: CompactionTurnState,
+) {
+  const latestUser = resolveLatestConversationUser(messages)
+  const userTokens = latestUser ? retainedMessageTokens([latestUser.message]) : 0
+  const runtimeTokens = retainedMessageTokens(buildCompactionRuntimeMessages(messages, true))
+  const receipts = appendActiveTurnGuard(appendCodeModeReceiptsToSummary(
+    '', messages, previousPacket?.continuationMarkdown,
+  ), turnState)
+  const receiptTokens = retainedMessageTokens([{ role: 'assistant', content: receipts }])
+  // Same 40% worker-output allocation and minimum useful output as the worker pipeline.
+  return userTokens + runtimeTokens + Math.ceil((receiptTokens + 64 + 128) / 0.4)
 }
 
 async function collectCompactionText(input: CompactModelMessagesInput, prompt: string, maxOutputTokens: number) {
@@ -71,22 +89,40 @@ async function collectCompactionText(input: CompactModelMessagesInput, prompt: s
       reasoningEffort: input.reasoningEffort,
       signal: abortController.signal,
       system: buildCompactionSystemPrompt(),
+      operation: 'handoff',
+      onStepEnd: (step) => input.onWorkerUsage?.('handoff', step.usage),
     })
     let text = ''
     for await (const part of stream.fullStream) {
       if (part.type === 'text-delta' && typeof part.text === 'string') text += part.text
     }
+    if (abortController.signal.aborted && !input.signal?.aborted) {
+      throw new CompactionError('worker_timeout')
+    }
     return text.trim()
   } catch (error) {
     if (input.signal?.aborted) return null
-    throw new Error(
-      `AI compaction failed: ${error instanceof Error ? error.message : 'the model stream failed'}`,
-      { cause: error },
-    )
+    if (error instanceof CompactionError) {
+      throw error
+    }
+    const reason = abortController.signal.aborted ? 'worker_timeout' : 'worker_error'
+    throw new CompactionError(reason, { cause: error })
   } finally {
     clearTimeout(timeoutId)
     input.signal?.removeEventListener('abort', handleParentAbort)
   }
+}
+
+function cancellationScope(signal: AbortSignal | undefined) {
+  if (!signal) {
+    return null
+  }
+  let scope = cancellationScopes.get(signal)
+  if (!scope) {
+    scope = randomUUID()
+    cancellationScopes.set(signal, scope)
+  }
+  return scope
 }
 
 function buildCompactionKey(
@@ -98,6 +134,7 @@ function buildCompactionKey(
 ) {
   return JSON.stringify([
     input.conversationId ?? null,
+    cancellationScope(input.signal),
     input.model,
     input.providerId ?? 'unknown',
     input.reasoningEffort,
@@ -111,28 +148,16 @@ function buildCompactionKey(
   ])
 }
 
-async function compactModelMessagesInternal(input: CompactModelMessagesInput): Promise<CompactionResult | null> {
-  const budget = calculateModelMessagesBudget({
-    contextWindowTokens: input.contextWindowTokens,
-    messages: input.messages,
-    systemPromptTokens: input.systemPromptTokens,
-    toolSchemaTokens: input.toolSchemaTokens,
-    triggerRatio: input.triggerRatio,
-  })
-  const retainedContextTokens = resolveRetainedContextTokens(input.retainedContextTokens, budget)
-  if (!input.force && !shouldCompactContext(budget)) return null
-
+async function compactModelMessagesInternal(
+  input: CompactModelMessagesInput,
+  window: import('./contracts').CompactionWindow,
+  retainedContextTokens: number,
+): Promise<CompactionResult | null> {
   const previousPacket = input.previousPacket ?? null
   const turnState = input.turnState ?? 'settled'
   const latestUser = resolveLatestConversationUser(input.messages)
   const latestUserSourceMessageId = latestUser ? `model:${latestUser.index}` : null
   const latestUserMessage = latestUser?.message
-  const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
-    force: input.force,
-    previousPacket,
-    retainedContextTokens,
-  })
-  if (!window) return null
   if (input.signal?.aborted) return null
 
   // The rebuild may shorten the recent tail as well as replace older turns.
@@ -152,7 +177,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     (retainedContextTokens - runtimeTokens - latestUserTokens) * 0.4,
   ) - receiptAndGuardTokens - 64)
   if (summaryOutputTokens < 128) {
-    throw new Error('Compaction cannot fit the latest user request, runtime instructions, and a useful handoff in the retention budget. The existing history has been preserved.')
+    throw new CompactionError('protected_context_too_large')
   }
 
   input.onStarted?.()
@@ -175,6 +200,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     sourceDigest,
     sourceStartIndex: window.sourceStartIndex,
     turnState,
+    onWorkerUsage: input.onWorkerUsage,
   })
   if (!durableMemory) {
     throw new Error('Durable-memory reconciliation did not produce a workspace memory snapshot.')
@@ -204,7 +230,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   if (input.signal?.aborted || rawSummary === null) return null
   const summary = validateContinuationMarkdown(rawSummary)
   if (!summary.valid) {
-    throw new Error(`AI compaction returned invalid continuation Markdown (${summary.reason}).`)
+    throw new CompactionError('invalid_handoff')
   }
   const summaryMarkdown = removeUserPromptLedgerFromSummary(summary.normalized)
   const summaryWithReceipts = appendCodeModeReceiptsToSummary(
@@ -287,11 +313,13 @@ export async function compactModelMessages(input: CompactModelMessagesInput) {
     toolSchemaTokens: input.toolSchemaTokens,
     triggerRatio: input.triggerRatio,
   })
-  const retainedContextTokens = resolveRetainedContextTokens(input.retainedContextTokens, budget)
-  if (!input.force && !shouldCompactContext(budget)) return null
+  const retainedContextTokens = input.selectedWindow
+    ? Math.min(input.retainedContextTokens ?? budget.targetHistoryTokens, budget.availableHistoryTokens)
+    : resolveRetainedContextTokens(input.retainedContextTokens, budget)
+  if (!input.selectedWindow && !input.force && !shouldCompactContext(budget)) return null
 
   const previousPacket = input.previousPacket ?? null
-  const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
+  const window = input.selectedWindow ?? selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
     force: input.force,
     previousPacket,
     retainedContextTokens,
@@ -306,7 +334,7 @@ export async function compactModelMessages(input: CompactModelMessagesInput) {
   const existing = inFlightCompactions.get(key)
   if (existing) return existing
 
-  const work = compactModelMessagesInternal(input).finally(() => {
+  const work = compactModelMessagesInternal(input, window, retainedContextTokens).finally(() => {
     if (inFlightCompactions.get(key) === work) inFlightCompactions.delete(key)
   })
   inFlightCompactions.set(key, work)

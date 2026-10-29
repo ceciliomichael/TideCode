@@ -48,6 +48,18 @@ test('sequence dispatches input and observations in order, retaining labeled ima
   assert.ok(result.elapsed_ms >= result.captures[1].completed_ms)
 })
 
+test('sequence wait accepts ms alias from browser tool calls', async () => {
+  validateBrowserSequence([{ action: 'wait', ms: 3 }])
+  assert.throws(() => validateBrowserSequence([
+    { action: 'wait', ms: 3, duration_ms: 3 },
+  ]), /not both/)
+  const result = await executeAgentBrowserSequenceInViewport(contents, [
+    { action: 'wait', ms: 3 },
+  ], async () => ({}), FIXTURE_VIEWPORT)
+  assert.equal(result.completed_steps, 1)
+  assert.equal(result.error, undefined)
+})
+
 test('an invalid later action or out-of-viewport scroll is rejected before earlier input executes', async () => {
   let dispatched = false
   const send: CdpSend = async () => { dispatched = true }
@@ -57,6 +69,7 @@ test('an invalid later action or out-of-viewport scroll is rejected before earli
     { action: 'navigate', url: 'file:///secret' },
     { action: 'wait', duration_ms: -1 },
     { action: 'scroll', x: 1300 },
+    { action: 'stroke', points: [{ x: 10, y: 10 }, { x: 10, y: 750 }] },
     { action: 'read', view: 'annotations' },
   ]) {
     await assert.rejects(executeAgentBrowserSequenceInViewport(contents, [

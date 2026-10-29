@@ -86,6 +86,21 @@ function isEvent(value: unknown): value is CanonicalHistoryEvent {
     return typeof value.stepNumber === 'number' && typeof value.durationMs === 'number' && isUsage(value.usage)
   }
 
+  if (value.type === 'compaction_attempted') {
+    const diagnostic = value.diagnostic
+    return isRecord(diagnostic)
+      && typeof diagnostic.attemptId === 'string'
+      && ['preferred', 'required', 'manual'].includes(String(diagnostic.mode))
+      && ['compacted', 'deferred', 'blocked', 'aborted'].includes(String(diagnostic.outcome))
+      && ['beforeTokens', 'admissionTokens', 'outputReserveTokens', 'uncertaintyTokens', 'durationMs']
+        .every((key) => typeof diagnostic[key] === 'number' && Number.isFinite(diagnostic[key]) && diagnostic[key] >= 0)
+      && (diagnostic.afterTokens === null || (typeof diagnostic.afterTokens === 'number' && Number.isFinite(diagnostic.afterTokens) && diagnostic.afterTokens >= 0))
+      && (diagnostic.reason === null || typeof diagnostic.reason === 'string')
+      && Array.isArray(diagnostic.workerUsage)
+      && diagnostic.workerUsage.length <= 2
+      && diagnostic.workerUsage.every((worker) => isRecord(worker) && typeof worker.operation === 'string' && isUsage(worker.usage))
+  }
+
   if (value.type === 'branch_created') {
     return typeof value.fromBranchId === 'string' &&
       ['edited', 'reverted', 'history_replaced', 'replay_anchor_missing'].includes(String(value.reason)) &&

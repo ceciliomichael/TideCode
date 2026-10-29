@@ -37,7 +37,7 @@ import type {
 } from '../../src/types/chat'
 import type { BrowserHostRequest, BrowserHostResponse } from './browserService'
 
-export const RUN_SERVICE_PROTOCOL_VERSION = 16
+export const RUN_SERVICE_PROTOCOL_VERSION = 17
 
 export interface RunServiceHello {
   buildId: string

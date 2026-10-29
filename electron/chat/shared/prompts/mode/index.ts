@@ -139,16 +139,16 @@ export function buildChatModeSystemPromptBreakdown(
     section: 'workspace_context' as const,
     source: 'electron/chat/shared/prompts/mode/index.ts',
   }
-  const workspaceInstructionsContext = buildWorkspaceInstructionsRuntimeBlock()
+  const workspaceInstructionsContext = buildWorkspaceInstructionsRuntimeBlock(workspaceRootPath)
   const workspaceComponents = [
     workspaceRootComponent,
     workspacePathContractComponent,
-    {
+    ...(workspaceInstructionsContext ? [{
       content: workspaceInstructionsContext,
       id: 'workspace_instructions_context',
       section: 'workspace_context' as const,
       source: 'electron/chat/shared/prompts/workspaceInstructions.ts',
-    },
+    }] : []),
   ].filter((component): component is ChatSystemPromptComponent => component !== null)
 
   const systemRules = systemRuleComponents.map((component) => component.content).join('\n\n')

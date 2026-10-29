@@ -4,6 +4,19 @@
  * An operation describes what the user was doing; a cause describes why it failed.
  */
 export const errorCatalog = {
+  'compaction.invalid_context_budget': { title: 'Context budget is too small', message: 'The configured context leaves too little room for a response. Increase the context budget within the model’s supported limit.' },
+  'compaction.invalid_tool_pairs': { title: 'Chat context is incomplete', message: 'A saved tool call and its result do not match. Revert to a complete exchange or continue in a new chat.' },
+  'compaction.no_compactable_source': { title: 'Could not compress this chat', message: 'There is no safe completed context to compress. Shorten the request or choose a model with a larger supported context.' },
+  'compaction.insufficient_reduction': { title: 'Compression did not free enough space', message: 'Compression could not reduce this chat enough. Shorten the request or choose a model with a larger supported context.' },
+  'compaction.protected_context_too_large': { title: 'Request is too large', message: 'This request and its attachments leave too little room for a response. Shorten the request or choose a model with a larger supported context.' },
+  'compaction.summarizer_context_too_large': { title: 'Summarization model context is too small', message: 'The summarization model cannot fit the required chat evidence. Select a summarization model with a larger supported context.' },
+  'compaction.worker_timeout': { title: 'Compression timed out', message: 'The summarization model took too long to respond. Retry compression or check the selected summarization model.' },
+  'compaction.worker_error': { title: 'Compression failed', message: 'The summarization model could not complete compression. Check its provider connection and retry compression.' },
+  'compaction.invalid_handoff': { title: 'Compression result was incomplete', message: 'The summarization model returned an unusable handoff. Retry compression or choose another summarization model.' },
+  'compaction.projection_too_large': { title: 'Compressed chat is still too large', message: 'The compressed chat still leaves too little room for a response. Shorten the request or choose a model with a larger supported context.' },
+  'compaction.stale_source': { title: 'Chat changed during compression', message: 'The chat changed before compression could be saved. Retry from the current chat.' },
+  'compaction.commit_failed': { title: 'Could not save compressed chat', message: 'The compressed chat could not be saved. Check available disk space and folder access, then retry compression.' },
+  'compaction.aborted': { title: 'Compression stopped', message: 'Compression was stopped. The previous chat context remains available.' },
   'app.unexpected': { title: 'Action could not be completed', message: 'Something went wrong. Try again.' },
   'project.add': { title: 'Could not add folder', message: 'This project folder could not be added. Try again.' },
   'project.alreadyAdded': { title: 'Folder already added', message: 'This project folder is already in TideCode. Select it from the sidebar instead of adding it again.' },

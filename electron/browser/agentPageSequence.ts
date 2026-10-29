@@ -7,9 +7,11 @@ import { getAgentViewport, type AgentViewport } from './agentViewport'
 import { interactWithAgentPageInViewport, validateBrowserInteraction, type AgentBrowserInteraction, type BrowserActionReport } from './agentPageInput'
 import { formatBrowserElements, readBrowserStructureInViewport } from './agentPageStructure'
 import { requireBrowserUrl } from './agentTabs'
+import { addAgentCursorToScreenshot } from './agentScreenshotCursor'
+import { getAgentCursor } from './agentCursor'
 
 export type AgentBrowserStep = (AgentBrowserInteraction
-  | { action: 'wait'; duration_ms: number }
+  | { action: 'wait'; duration_ms?: number; ms?: number }
   | { action: 'wait_for'; selector?: string; url_contains?: string; timeout_ms?: number }
   | { action: 'read'; view?: 'visual' | 'structure' | 'combined'; offset?: number; limit?: number }
 ) & { label?: string }
@@ -24,6 +26,8 @@ export interface BrowserSequenceCapture {
 }
 
 export interface BrowserSequenceResult {
+  width: number
+  height: number
   completed_steps: number
   failed_step?: number
   error?: string
@@ -48,10 +52,12 @@ export function validateBrowserSequence(input: unknown): asserts input is AgentB
       throw new Error('Browser step labels must be at most 120 characters.')
     }
     if (step.action === 'wait') {
-      if (!Number.isInteger(step.duration_ms) || step.duration_ms < 0 || step.duration_ms > 5000) {
-        throw new Error('Browser waits must be integers from 0 to 5000 milliseconds.')
+      const duration = step.duration_ms ?? step.ms
+      if ((step.duration_ms !== undefined && step.ms !== undefined)
+        || !Number.isInteger(duration) || duration! < 0 || duration! > 5000) {
+        throw new Error('Browser waits require duration_ms or ms (not both), from 0 to 5000.')
       }
-      waitMs += step.duration_ms
+      waitMs += duration!
     } else if (step.action === 'wait_for') {
       const hasSelector = typeof step.selector === 'string' && step.selector.trim().length > 0
       const hasUrl = typeof step.url_contains === 'string' && step.url_contains.trim().length > 0
@@ -102,6 +108,10 @@ export async function executeAgentBrowserSequenceInViewport(
   validateBrowserSequence(steps)
   // Validate viewport-dependent scroll anchors before any earlier input is sent.
   for (const step of steps) {
+    if (step.action === 'stroke' && step.points.some((point) =>
+      point.x >= viewport.width || point.y >= viewport.height)) {
+      throw new Error('Stroke path is outside the current browser viewport.')
+    }
     if (step.action === 'scroll' && ((step.x !== undefined && step.x >= viewport.width)
       || (step.y !== undefined && step.y >= viewport.height))) {
       throw new Error('Scroll anchor is outside the current browser viewport.')
@@ -109,7 +119,10 @@ export async function executeAgentBrowserSequenceInViewport(
   }
   const startedAt = performance.now()
   const elapsed = () => Math.round(performance.now() - startedAt)
-  const result: BrowserSequenceResult = { completed_steps: 0, elapsed_ms: 0, captures: [], actions: [] }
+  const result: BrowserSequenceResult = {
+    width: viewport.width, height: viewport.height,
+    completed_steps: 0, elapsed_ms: 0, captures: [], actions: [],
+  }
   let imageBytes = 0
   for (const [index, step] of steps.entries()) {
     try {
@@ -123,8 +136,9 @@ export async function executeAgentBrowserSequenceInViewport(
       requireBrowserUrl(contents.getURL())
       if (step.action === 'wait') {
         const remainingMs = 20_000 - elapsed()
-        await delay(Math.min(step.duration_ms, remainingMs), undefined, { signal })
-        if (step.duration_ms > remainingMs) {
+        const duration = (step.duration_ms ?? step.ms)!
+        await delay(Math.min(duration, remainingMs), undefined, { signal })
+        if (duration > remainingMs) {
           throw new Error('Browser sequence exhausted its 20-second time budget during a wait.')
         }
       } else if (step.action === 'wait_for') {
@@ -163,7 +177,8 @@ export async function executeAgentBrowserSequenceInViewport(
       } else if (step.action === 'read') {
         const startedMs = elapsed()
         const view = step.view ?? 'combined'
-        const png = view !== 'structure' ? await captureAgentPageInViewport(send, viewport) : null
+        const raw = view !== 'structure' ? await captureAgentPageInViewport(send, viewport) : null
+        const png = raw ? await addAgentCursorToScreenshot(raw, viewport, getAgentCursor(contents)) : null
         const screenshotCompletedMs = elapsed()
         if (png) {
           imageBytes += png.length

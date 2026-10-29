@@ -7,6 +7,8 @@ import type { CompactionStreamFactory } from './contracts'
 import { buildCompactionTurnContext, type CompactionTurnContext } from './turnContext'
 import { removeUserPromptLedgerFromSummary } from './userPromptLedger'
 import { compactToolResultMessage } from './toolEvidence'
+import { CompactionError } from './gate'
+import type { NormalizedUsageRecord } from '../../history/contracts'
 
 export const DURABLE_MEMORY_SCHEMA = 'tidecode.conversation_memory/v1' as const
 export const DURABLE_MEMORY_MAX_CHARS = 32_000
@@ -160,6 +162,7 @@ export function buildDurableMemoryRequestPrompt(input: CompactionTurnContext & {
 }
 
 export async function reconcileDurableMemory(input: CompactionTurnContext & {
+  onWorkerUsage?: (operation: string, usage: NormalizedUsageRecord) => void
   createStream?: CompactionStreamFactory
   messages: readonly ModelMessage[]
   model: string
@@ -188,6 +191,9 @@ export async function reconcileDurableMemory(input: CompactionTurnContext & {
 
   try {
     const stream = await input.createStream({
+      operation: 'memory',
+      maxOutputTokens: 8_192,
+      onStepEnd: (step) => input.onWorkerUsage?.('memory', step.usage),
       messages: [{
         role: 'user',
         content: buildDurableMemoryRequestPrompt({
@@ -215,9 +221,12 @@ export async function reconcileDurableMemory(input: CompactionTurnContext & {
       }
     }
 
+    if (abortController.signal.aborted) {
+      throw new CompactionError(input.signal?.aborted ? 'aborted' : 'worker_timeout')
+    }
     const validation = validateDurableMemoryMarkdown(text)
     if (!validation.valid) {
-      throw new Error(`Durable-memory reconciliation returned invalid Markdown (${validation.reason}).`)
+      throw new CompactionError('invalid_handoff')
     }
 
     return {
@@ -225,6 +234,11 @@ export async function reconcileDurableMemory(input: CompactionTurnContext & {
       markdown: validation.normalized,
       sourceDigest: input.sourceDigest,
     }
+  } catch (error) {
+    if (error instanceof CompactionError || input.signal?.aborted) {
+      throw error
+    }
+    throw new CompactionError(abortController.signal.aborted ? 'worker_timeout' : 'worker_error', { cause: error })
   } finally {
     clearTimeout(timeoutId)
     input.signal?.removeEventListener('abort', handleParentAbort)

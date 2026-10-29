@@ -2,6 +2,28 @@ import type { ModelMessage } from 'ai'
 import type { ChatProviderId } from '../../../../src/types/chat'
 import { z } from 'zod'
 import type { ConversationMemory } from './durableMemory'
+import type { NormalizedUsageRecord, ProviderStepRecord } from '../../history/contracts'
+
+export type { CompactionReason } from '../../../../src/types/chat'
+import type { CompactionReason } from '../../../../src/types/chat'
+
+export interface CompactionAttemptDiagnostic {
+  attemptId: string
+  logicalStep?: number
+  sourceDigest?: string
+  workerProviderId?: string
+  workerModelId?: string
+  mode: 'preferred' | 'required' | 'manual'
+  reason: CompactionReason | null
+  outcome: 'compacted' | 'deferred' | 'blocked' | 'aborted'
+  beforeTokens: number
+  afterTokens: number | null
+  admissionTokens: number
+  outputReserveTokens: number
+  uncertaintyTokens: number
+  durationMs: number
+  workerUsage: Array<{ operation: string; usage: NormalizedUsageRecord }>
+}
 
 export const LOCAL_COMPACTION_PACKET_V2_SCHEMA = 'tidecode.compaction_packet/v2' as const
 export const COMPACTION_PROJECTION_VERSION = 'tidecode.compaction_projection/v2' as const
@@ -120,6 +142,8 @@ export interface CompactionResult {
 }
 
 export interface CompactionStreamInput {
+  operation?: 'memory' | 'handoff'
+  onStepEnd?: (step: ProviderStepRecord) => void
   cacheKey?: string
   messages: ModelMessage[]
   maxOutputTokens?: number
@@ -137,6 +161,8 @@ export type CompactionStreamFactory = (
 }>
 
 export interface CompactModelMessagesInput {
+  onWorkerUsage?: (operation: string, usage: NormalizedUsageRecord) => void
+  selectedWindow?: CompactionWindow
   conversationId?: string | null
   createStream?: CompactionStreamFactory
   force?: boolean

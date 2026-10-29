@@ -1,5 +1,7 @@
 # Durable project knowledge
 
+- On 2026-10-27 the user required provider-agnostic context accounting and compaction, including custom providers, requested a detailed plan file, and then approved implementing it. Keep shared scheduling/retention independent of provider counting and cache capabilities. The implementation contract and verification record are in `docs/plans/provider-agnostic-context-compaction.md`.
+
 - On 2026-10-27 the user explicitly approved separating navigation into `browser.navigate` and removing it from `browser.interact` including sequences. Keep browser tool result display structured plain text at the producer, with no fallback conversion and screenshots outside the text-scrolling area.
 
 - Latest browser policy, approved 2026-10-26: AI-owned tabs have full control and AI-selected viewport resolution (default 1440×900); user-owned tabs are strictly read-only at their actual screen resolution, with no focus, scroll or resize side effects. Keep identical tab styling with ownership labels, scale preview to fit without cropping or stretching, animate a context-aware virtual pointer in correct viewport coordinates before tool completion, and show Markdown per-action reports with actual target coordinates. Never move the Windows pointer or automatically retry uncertain browser input.

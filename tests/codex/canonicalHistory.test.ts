@@ -29,6 +29,39 @@ import {
 import { estimateModelMessageContextUsage } from '../../src/lib/contextUsage'
 import { formatStructuredToolResultContent, getToolResultModelContent } from '../../src/lib/toolResultContent'
 import type { Message } from '../../src/types/chat'
+import { promises as fs } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { electronApp } from '../../electron/electronApp'
+import { captureCompactionSource, readCanonicalHistory, recordCompactionCommitted, recordContextEpoch } from '../../electron/chat/history/eventStore'
+
+test('compaction commit rejects a stale source under the history lock and saves a valid snapshot atomically', async () => {
+  const isolatedHome = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-compaction-commit-'))
+  const originalGetPath = electronApp.getPath
+  electronApp.getPath = () => isolatedHome
+  try {
+    const conversationId = 'guarded-compaction-test'
+    const expectedSource = captureCompactionSource(await readCanonicalHistory(conversationId))
+    await recordContextEpoch(conversationId, { fingerprint: 'new-context', modelHash: 'model', systemHash: 'system', toolsHash: 'tools', toolSchemaTokens: 0 })
+    const packet = createCompactionPacketFixture({ sourceDigest: 'source', sourceMessageIds: ['model:0'] })
+    const commit = {
+      anchorUserMessageId: null, compactionId: packet.packetId, conversationId,
+      modelId: 'unknown', providerId: 'openai' as const, packet,
+      projectedMessages: [{ role: 'user', content: 'Continue the active task.' }] as ModelMessage[],
+      sourceDigest: 'source', sourceMessageIds: ['model:0'], expectedSource,
+    }
+    await assert.rejects(recordCompactionCommitted(commit), { reason: 'stale_source' })
+    let document = await readCanonicalHistory(conversationId)
+    assert.equal(document.events.some((event) => event.type === 'compaction_committed'), false)
+    await recordCompactionCommitted({ ...commit, expectedSource: captureCompactionSource(document) })
+    document = await readCanonicalHistory(conversationId)
+    assert.equal(document.events.filter((event) => event.type === 'compaction_committed').length, 1)
+  } finally {
+    electronApp.getPath = originalGetPath
+    assert.equal(path.dirname(isolatedHome), path.resolve(tmpdir()))
+    await fs.rm(isolatedHome, { recursive: true, force: true })
+  }
+})
 
 test('stored branch cutoffs cannot point to future canonical revisions', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
@@ -920,6 +953,7 @@ test('usage normalization records cache reads, writes, uncached input, and reaso
     outputTokens: 75,
     totalTokens: 1_075,
   }), {
+    reporting: { input: 'reported', cacheRead: 'reported', cacheWrite: 'reported', noCache: 'reported' },
     cacheReadTokens: 800,
     cacheWriteTokens: 100,
     inputTokens: 1_000,

@@ -8,7 +8,8 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron'
 import { readFile } from 'node:fs/promises'
-import { registerVisibleBrowserTab, isNormalAgentBrowserSession, terminateAgentBrowserTab } from './agentTabs'
+import { registerVisibleBrowserTab, isNormalAgentBrowserSession, terminateAgentBrowserTab, listOpenAgentTabs } from './agentTabs'
+import { setAgentLivePreviewVisible } from './agentLivePreview'
 import { resolveAgentBrowserTab } from './agentTabs'
 import { listBrowserAnnotations, saveBrowserAnnotation, removeBrowserAnnotation } from '../history/browserAnnotations'
 import { resolveBrowserScreenshot, saveBrowserScreenshot } from './screenshots'
@@ -70,6 +71,7 @@ export function registerBrowserPageActions(
       contents: guest,
       ownerId: event.sender.id,
     })
+  })
   ipcMain.handle('browser:closeAgentTab', async (event, input) => {
     requireOwner(event)
     if (typeof input?.tabId !== 'string' || typeof input?.projectPath !== 'string') {
@@ -81,6 +83,24 @@ export function registerBrowserPageActions(
     }
     await terminateAgentBrowserTab(input.projectPath, input.tabId)
   })
+  ipcMain.handle('browser:listOpenAgentTabs', (event, input) => {
+    requireOwner(event)
+    if (typeof input?.projectPath !== 'string' || !input.projectPath.trim()) {
+      throw new Error('A browser project is required.')
+    }
+    return listOpenAgentTabs(input.projectPath)
+  })
+  ipcMain.handle('browser:setAgentPreviewVisible', (event, input) => {
+    requireOwner(event)
+    if (typeof input?.projectPath !== 'string' || typeof input?.tabId !== 'string'
+      || typeof input?.visible !== 'boolean') {
+      throw new Error('Invalid AI browser preview request.')
+    }
+    const tab = resolveAgentBrowserTab(input.projectPath, input.tabId, true)
+    if (tab.kind !== 'agent' || tab.ownerId !== event.sender.id) {
+      throw new Error('Only AI-owned browser tabs support live preview.')
+    }
+    setAgentLivePreviewVisible(tab.contents, input.visible)
   })
   ipcMain.handle('browser:listAnnotations', (event, input) => {
     requireOwner(event)

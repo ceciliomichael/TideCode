@@ -7,7 +7,6 @@ import type {
 import type { ChatStreamEventTarget } from './runtimeStreamEvents'
 import {
   approximateTokenCount,
-  estimateModelMessageContextUsage,
 } from '../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings } from '../../../src/lib/contextCompactionSettings'
 import { describeTools, stableStringify } from '../cache/canonicalization'
@@ -21,6 +20,11 @@ import { applyWorkspaceInstructionsContext } from './prompts/workspaceInstructio
 import { resolveModelImageInputSupport } from './modelImageSupport'
 import { createAgentToolSchemaSet } from './tools'
 import { sortToolSet } from './runtimeToolSet'
+import { prepareContextRequest } from './contextRequest'
+import { resolveContextCapabilities, resolveStoredOutputMaximum } from './contextCapabilities'
+import { applyConversationMemoryContext, applyWorkspaceMemoryContext } from './memory/runtimeContext'
+import { readLatestConversationMemory } from '../history/eventStore'
+import { getStoredSettings } from '../../settings/store'
 import { assertWorkspaceDirectory, normalizeWorkspacePath } from '../../workspace/paths'
 
 const toolSchemaTokenCounts = new Map<string, number>()
@@ -46,7 +50,7 @@ async function resolveAvailableWorkspaceRootPath(workspaceRootPath: string | nul
   }
 }
 
-function estimateToolSchemaTokens(providerId: StartChatStreamInput['providerId']) {
+export function estimateToolSchemaTokens(providerId: StartChatStreamInput['providerId']) {
   const cachedTokenCount = toolSchemaTokenCounts.get(providerId)
   if (cachedTokenCount !== undefined) {
     return cachedTokenCount
@@ -117,19 +121,31 @@ export async function estimateToolEnabledContextUsage(input: {
     modelMessages = applyWorkspaceInstructionsContext(modelMessages, normalizedWorkspaceRootPath)
   }
   const systemPrompt = prompt.system
-  const messageUsage = estimateModelMessageContextUsage(modelMessages)
   const toolSchemaTokens = normalizedWorkspaceRootPath
     ? estimateToolSchemaTokens(input.providerId)
     : 0
   const systemPromptTokens = approximateTokenCount(systemPrompt)
+  const maximumOutputTokens = await resolveStoredOutputMaximum(input.providerId, input.modelId ?? '')
 
-  return {
-    historyTokens: messageUsage.historyTokens,
-    injectionTokens: messageUsage.injectionTokens,
-    maxTokens: contextCompaction.contextWindowTokens,
+  if (normalizedWorkspaceRootPath && modelMessages.some((message) => message.role === 'user')) {
+    const settings = await getStoredSettings().catch(() => null)
+    modelMessages = await applyWorkspaceMemoryContext(
+      modelMessages, normalizedWorkspaceRootPath, settings?.workspaceMemoryEnabled ?? true,
+    )
+  }
+  const memory = conversationId ? await readLatestConversationMemory(conversationId) : null
+  modelMessages = applyConversationMemoryContext(modelMessages, memory)
+  return prepareContextRequest({
+    messages: modelMessages,
+    capabilities: resolveContextCapabilities({
+      providerId: input.providerId,
+      modelId: input.modelId ?? '',
+      contextWindowTokens: contextCompaction.contextWindowTokens,
+      maximumOutputTokens,
+    }),
     systemPromptTokens,
     toolSchemaTokens,
-    toolResultsTokens: messageUsage.toolResultsTokens,
-    totalTokens: messageUsage.totalTokens + systemPromptTokens + toolSchemaTokens,
-  }
+    triggerRatio: contextCompaction.triggerPercent / 100,
+    scope: 'reconstructed_preview',
+  }).state.usage
 }

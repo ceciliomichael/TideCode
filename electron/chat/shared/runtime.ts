@@ -26,6 +26,8 @@ import {
   readCanonicalHistory,
   readLatestConversationMemory,
   recordCompactionCommitted,
+  recordCompactionAttempt,
+  captureCompactionSource,
   recordContextEpoch,
   recordRunCompleted,
   recordRunStarted,
@@ -41,12 +43,11 @@ import {
   resolveAutomaticCompactionMessages,
   resolveAutomaticCompactionTrigger,
 } from './compaction/automatic'
-import { assertCompactionGate } from './compaction/gate'
-import {
-  calculateModelMessagesContextState,
-  resolveRetainedContextTokens,
-  shouldCompactContext,
-} from './compaction/budget'
+import { CompactionError } from './compaction/gate'
+import { coordinateCompaction, createCompactionSession } from './compaction/coordinator'
+import { sanitizeModelMessages } from './modelMessageIntegrity'
+import { prepareContextRequest, ContextUsageCorrection, type PreparedContextRequest } from './contextRequest'
+import { resolveContextCapabilities, resolveStoredOutputMaximum } from './contextCapabilities'
 import type { CompactionPacket } from './compaction/contracts'
 import type { ConversationMemory } from './compaction/durableMemory'
 import {
@@ -87,7 +88,6 @@ import { runProviderToolContinuationLoop } from './runtimeToolContinuation'
 import {
   createEphemeralToolVisualMessages,
   externalizeVisualToolResultMessages,
-  isEphemeralToolVisualMessage,
   stripEphemeralToolVisualMessages,
   stripVisualToolResultFiles,
 } from './toolVisualResultMessages'
@@ -215,9 +215,17 @@ export async function runToolEnabledChatStream(input: {
     })()
     return terminalCleanup
   }
+  let historyWriteError: unknown = null
   let queuedHistoryWrites = Promise.resolve()
   const queueHistoryWrite = (action: () => Promise<unknown>) => {
-    queuedHistoryWrites = queuedHistoryWrites.then(() => safelyPersistHistory(action))
+    queuedHistoryWrites = queuedHistoryWrites.then(async () => {
+      try {
+        await action()
+      } catch (error) {
+        historyWriteError = error
+        console.error('Canonical chat history persistence failed.', error)
+      }
+    })
   }
 
   try {
@@ -342,6 +350,18 @@ export async function runToolEnabledChatStream(input: {
     let nextRecordedStepNumber = 0
     let restartingAfterToolBoundary = false
     const systemPromptTokens = approximateTokenCount(prompt.system)
+    const compactionSession = createCompactionSession()
+    const usageCorrection = new ContextUsageCorrection()
+    let preparedRequest: PreparedContextRequest | null = null
+    let latestContextWindowTokens = contextCompaction.contextWindowTokens
+    let lastReportedInputTokens: number | undefined
+    const maximumOutputTokens = await resolveStoredOutputMaximum(input.startInput.providerId, input.startInput.modelId)
+    const initialCapabilities = resolveContextCapabilities({
+      providerId: input.startInput.providerId,
+      modelId: input.startInput.modelId,
+      contextWindowTokens: contextCompaction.contextWindowTokens,
+      maximumOutputTokens,
+    })
     const emitContextUsage = (usage: ContextUsageEstimate) => {
       if (!conversationId) return
       emitChatStreamEvent(input.webContents, {
@@ -396,6 +416,7 @@ export async function runToolEnabledChatStream(input: {
 
     const initialStreamInput: ProviderStreamFactoryInput = {
       cacheKey,
+      maxOutputTokens: initialCapabilities.maxOutputTokens,
       messages: modelMessages,
       model: input.startInput.modelId,
       reasoningEffort: input.startInput.reasoningEffort,
@@ -404,12 +425,19 @@ export async function runToolEnabledChatStream(input: {
       system: prompt.system,
       tools,
       onStepEnd: (step) => {
+        if (preparedRequest) {
+          usageCorrection.observe(preparedRequest.state.budget.totalTokens, step.usage.reporting?.input === 'reported' ? step.usage.inputTokens : undefined)
+          if (step.usage.reporting?.input === 'reported') {
+            lastReportedInputTokens = step.usage.inputTokens
+          }
+        }
         const providerResponseMessages = externalizeVisualToolResultMessages(
           step.responseMessages as ModelMessage[],
         ).messages
         const durableResponseMessages = stripEphemeralToolVisualMessages(providerResponseMessages)
         const recordedStep = {
           ...step,
+          contextUsage: preparedRequest?.state.usage,
           responseMessages: durableResponseMessages,
           stepNumber: nextRecordedStepNumber,
         }
@@ -457,10 +485,10 @@ export async function runToolEnabledChatStream(input: {
         const durableResponseMessages = stripEphemeralToolVisualMessages(
           externalizeVisualToolResultMessages(stepInput.responseMessages as ModelMessage[]).messages,
         )
-        const compactionMessages = resolveAutomaticCompactionMessages({
+        const compactionMessages = sanitizeModelMessages(resolveAutomaticCompactionMessages({
           messages: durableCurrentStepMessages,
           responseMessages: durableResponseMessages,
-        })
+        }))
 
         if (consumedSteerMessages.length > 0) {
           replayAnchorUserMessageId = consumedSteerMessages.at(-1)?.id ?? replayAnchorUserMessageId
@@ -496,153 +524,126 @@ export async function runToolEnabledChatStream(input: {
           ? normalizeContextCompactionSettings(liveStoredSettings.contextCompaction)
           : contextCompaction
 
-        const compactionBudgetInput = {
+        const capabilities = resolveContextCapabilities({
+          providerId: input.startInput.providerId,
+          modelId: input.startInput.modelId,
           contextWindowTokens: liveContextCompaction.contextWindowTokens,
-          messages: compactionMessages,
+          maximumOutputTokens,
+        })
+        latestContextWindowTokens = capabilities.contextWindowTokens
+        const requestMessages = sanitizeModelMessages(shouldStripImageAttachments
+          ? stripImageAttachmentsFromModelMessages(currentStepMessages)
+          : currentStepMessages)
+        const makeRequest = (messages: ModelMessage[], correctionTokens = 0) => prepareContextRequest({
+          messages,
+          capabilities,
           systemPromptTokens,
           toolSchemaTokens: promptContext.toolSchemaTokens,
           triggerRatio: liveContextCompaction.triggerPercent / 100,
-        }
-        const compactionContextState = calculateModelMessagesContextState(compactionBudgetInput)
-        const compactionBudget = compactionContextState.budget
-        emitContextUsage(compactionContextState.usage)
-        const retainedContextTokens = resolveRetainedContextTokens(
-          liveContextCompaction.retainedContextTokens,
-          compactionBudget,
-        )
-        // Crossing the configured threshold is itself the requirement. Window
-        // selection decides how to compact, including an oversized current
-        // turn, but it must never downgrade an over-threshold context to
-        // optional and let the next provider step continue uncompressed.
-        const compactionRequired = shouldCompactContext(compactionBudget)
-
-        const compactionAttemptId = randomUUID()
-        let compactionStarted = false
-        const emitCompactionFailed = (reason: 'aborted' | 'error' | 'unavailable') => {
-          if (!conversationId || !compactionStarted) return
-          emitChatStreamEvent(input.webContents, {
-            attemptId: compactionAttemptId,
-            conversationId,
-            reason,
-            streamId: input.streamId,
-            type: 'compaction_failed',
-          })
-        }
-
-        let compacted: Awaited<ReturnType<typeof compactModelMessages>>
-        try {
-          const compactionModel = await resolveCompactionModelSelection({
-            modelId: input.startInput.modelId,
-            providerId: input.startInput.providerId,
-            reasoningEffort: input.startInput.reasoningEffort,
-          })
-          const compactionStream = await createCompactionStreamFactory(
-            compactionModel.providerId,
-            `${cacheKey}:compaction`,
-          )
-          compacted = await compactModelMessages({
-            conversationId,
-            createStream: compactionStream,
-            messages: compactionMessages,
-            model: compactionModel.modelId,
-            providerId: compactionModel.providerId,
-            onStarted: () => {
-              compactionStarted = true
-              if (!conversationId) return
-              emitChatStreamEvent(input.webContents, {
-                attemptId: compactionAttemptId,
-                conversationId,
-                streamId: input.streamId,
-                type: 'compaction_started',
-              })
-            },
-            reasoningEffort: compactionModel.reasoningEffort,
-            sourceModel: input.startInput.modelId,
-            sourceProviderId: input.startInput.providerId,
-            systemPromptTokens,
-            toolSchemaTokens: promptContext.toolSchemaTokens,
-            previousPacket: latestCompactionPacket,
-            previousMemory: latestConversationMemory,
-            workspaceRootPath,
-            contextWindowTokens: liveContextCompaction.contextWindowTokens,
-            retainedContextTokens,
-            triggerRatio: liveContextCompaction.triggerPercent / 100,
-            signal: input.abortController.signal,
-            turnState: 'active',
-          })
-        } catch (error) {
-          emitCompactionFailed('error')
-          throw error
-        }
-        if (input.abortController.signal.aborted) {
-          emitCompactionFailed('aborted')
-          return hasPreparedMessageChanges
-            ? { messages: currentStepMessages }
-            : undefined
-        }
-        if (!compacted) {
-          emitCompactionFailed('unavailable')
-          assertCompactionGate({
-            aborted: false,
-            compactionResult: null,
-            projectedBudget: null,
-            required: compactionRequired,
-          })
-          return hasPreparedMessageChanges
-            ? { messages: currentStepMessages }
-            : undefined
-        }
-
-        const refreshedProjectedMessages = await applyWorkspaceMemoryContext(
-          compacted.projectedMessages,
-          workspaceRootPath,
-          liveStoredSettings?.workspaceMemoryEnabled ?? true,
-        )
-        compacted.projectedMessages = refreshedProjectedMessages
-        const projectedContextState = calculateModelMessagesContextState({
-          ...compactionBudgetInput,
-          messages: compacted.projectedMessages,
+          correctionTokens,
         })
-        const projectedBudget = projectedContextState.budget
-        assertCompactionGate({
-          aborted: false,
-          compactionResult: compacted,
-          projectedBudget,
-          required: compactionRequired,
+        preparedRequest = makeRequest(requestMessages, usageCorrection.prepare(requestMessages))
+        preparedRequest.state.usage.lastReportedInputTokens = lastReportedInputTokens
+        emitContextUsage(preparedRequest.state.usage)
+        let expectedSource: ReturnType<typeof captureCompactionSource> | undefined
+        const outcome = await coordinateCompaction({
+          request: preparedRequest,
+          session: compactionSession,
+          previousPacket: latestCompactionPacket,
+          retainedContextTokens: liveContextCompaction.retainedContextTokens,
+          signal: input.abortController.signal,
+          onStarted: (attemptId) => {
+            if (!conversationId) return
+            emitChatStreamEvent(input.webContents, {
+              attemptId, conversationId, streamId: input.streamId, type: 'compaction_started',
+            })
+          },
+          onFinished: (diagnostic) => {
+            if (!conversationId || diagnostic.outcome === 'compacted') return
+            emitChatStreamEvent(input.webContents, {
+              attemptId: diagnostic.attemptId, conversationId, streamId: input.streamId,
+              type: 'compaction_failed', reason: diagnostic.reason ?? 'worker_error',
+            })
+          },
+          report: async (diagnostic) => {
+            if (conversationId) {
+              await recordCompactionAttempt(conversationId, runId, diagnostic)
+            }
+          },
+          run: async (window, targetTokens, diagnostic) => {
+            diagnostic.logicalStep = logicalStepNumber
+            await queuedHistoryWrites
+            if (historyWriteError) {
+              throw new CompactionError('commit_failed')
+            }
+            if (conversationId) {
+              expectedSource = captureCompactionSource(await readCanonicalHistory(conversationId))
+            }
+            const compactionModel = await resolveCompactionModelSelection({
+              modelId: input.startInput.modelId,
+              providerId: input.startInput.providerId,
+              reasoningEffort: input.startInput.reasoningEffort,
+            })
+            const createStream = await createCompactionStreamFactory(
+              compactionModel.providerId, `${cacheKey}:compaction`, capabilities.contextWindowTokens,
+            )
+            diagnostic.workerProviderId = compactionModel.providerId
+            diagnostic.workerModelId = compactionModel.modelId
+            return compactModelMessages({
+              conversationId, createStream, selectedWindow: window,
+              messages: preparedRequest!.durableMessages,
+              model: compactionModel.modelId, providerId: compactionModel.providerId,
+              reasoningEffort: compactionModel.reasoningEffort,
+              sourceModel: input.startInput.modelId, sourceProviderId: input.startInput.providerId,
+              systemPromptTokens, toolSchemaTokens: promptContext.toolSchemaTokens,
+              previousPacket: latestCompactionPacket, previousMemory: latestConversationMemory,
+              workspaceRootPath, contextWindowTokens: capabilities.contextWindowTokens,
+              retainedContextTokens: targetTokens,
+              triggerRatio: liveContextCompaction.triggerPercent / 100,
+              signal: input.abortController.signal, turnState: 'active',
+              onWorkerUsage: (operation, usage) => diagnostic.workerUsage.push({ operation, usage }),
+            })
+          },
+          rebuild: async (compacted) => {
+            compacted.projectedMessages = await applyWorkspaceMemoryContext(
+              compacted.projectedMessages, workspaceRootPath, liveStoredSettings?.workspaceMemoryEnabled ?? true,
+            )
+            return makeRequest([...compacted.projectedMessages, ...preparedRequest!.visualMessages])
+          },
+          commit: async (compacted, diagnostic) => {
+            if (!conversationId) return
+            await recordCompactionCommitted({
+              expectedSource, signal: input.abortController.signal, runId, diagnostic,
+              anchorUserMessageId: replayAnchorUserMessageId,
+              compactionId: compacted.packet.packetId, conversationId, contextFingerprint,
+              durableMemory: compacted.durableMemory, modelId: input.startInput.modelId,
+              packet: compacted.packet, projectedMessages: compacted.projectedMessages,
+              providerId: input.startInput.providerId, projectionVersion: compacted.projectionVersion,
+              reasoningRetention: compacted.reasoningRetention, parentPacketId: compacted.packet.parentPacketId,
+              sourceDigest: compacted.sourceDigest, sourceMessageIds: compacted.packet.sourceMessageIds,
+            })
+          },
         })
+        if (outcome.status === 'aborted') {
+          throw new CompactionError('aborted')
+        }
+        if (outcome.status === 'compacted') {
+          replayMessages = outcome.request.requestMessages
+          latestCompactionPacket = outcome.result.packet
+          latestConversationMemory = outcome.result.durableMemory
+          usageCorrection.reset()
+          preparedRequest = outcome.request
+          if (conversationId) {
+            emitChatStreamEvent(input.webContents, {
+              attemptId: outcome.diagnostic.attemptId, compactionId: outcome.result.packet.packetId, conversationId,
+              streamId: input.streamId, type: 'compaction_committed',
+            })
+          }
+          emitContextUsage(preparedRequest.state.usage)
+          return { messages: preparedRequest.requestMessages, maxOutputTokens: capabilities.maxOutputTokens }
+        }
+        return { messages: requestMessages, maxOutputTokens: capabilities.maxOutputTokens }
 
-        const ephemeralVisualMessages = currentStepMessages.filter(isEphemeralToolVisualMessage)
-        replayMessages = [...compacted.projectedMessages, ...ephemeralVisualMessages]
-        latestCompactionPacket = compacted.packet
-        latestConversationMemory = compacted.durableMemory
-        if (conversationId) {
-          await safelyPersistHistory(() => recordCompactionCommitted({
-            anchorUserMessageId: replayAnchorUserMessageId,
-            compactionId: compacted.packet.packetId,
-            conversationId,
-            contextFingerprint,
-            durableMemory: compacted.durableMemory,
-            modelId: input.startInput.modelId,
-            packet: compacted.packet,
-            projectedMessages: compacted.projectedMessages,
-            providerId: input.startInput.providerId,
-            projectionVersion: compacted.projectionVersion,
-            reasoningRetention: compacted.reasoningRetention,
-            parentPacketId: compacted.packet.parentPacketId,
-            sourceDigest: compacted.sourceDigest,
-            sourceMessageIds: compacted.packet.sourceMessageIds,
-          }))
-          emitChatStreamEvent(input.webContents, {
-            compactionId: compacted.packet.packetId,
-            conversationId,
-            streamId: input.streamId,
-            type: 'compaction_committed',
-          })
-        }
-        emitContextUsage(projectedContextState.usage)
-        return {
-          messages: [...compacted.projectedMessages, ...ephemeralVisualMessages],
-        }
       },
     }
     let hasEmittedStarted = false
@@ -730,137 +731,20 @@ export async function runToolEnabledChatStream(input: {
 
     await stopTurnTerminals(true)
 
-    // A run can end immediately after a completed tool call. In that case the
-    // provider never asks for another model step, so prepareStep has no chance
-    // to install the compacted projection. Do one final AI-only compaction pass
-    // before committing the completed replay so a finished turn cannot leave
-    // the active canonical context over the configured threshold.
-    if (conversationId) {
-      const finalStoredSettings = await getStoredSettings().catch(() => null)
-      const finalContextCompaction = finalStoredSettings
-        ? normalizeContextCompactionSettings(finalStoredSettings.contextCompaction)
-        : contextCompaction
-      // Use the same provider-facing replay that ContextIndicator estimates.
-      // The compaction prompt applies its own bounded tool-output formatting;
-      // truncating here would make the threshold disagree with the indicator.
-      const finalCompactionMessages = stripEphemeralToolVisualMessages(replayMessages)
-      const finalCompactionBudgetInput = {
-        contextWindowTokens: finalContextCompaction.contextWindowTokens,
-        messages: finalCompactionMessages,
-        systemPromptTokens,
-        toolSchemaTokens: promptContext.toolSchemaTokens,
-        triggerRatio: finalContextCompaction.triggerPercent / 100,
-      }
-      const finalContextState = calculateModelMessagesContextState(finalCompactionBudgetInput)
-      const finalCompactionBudget = finalContextState.budget
-      emitContextUsage(finalContextState.usage)
-      const finalRetainedContextTokens = resolveRetainedContextTokens(
-        finalContextCompaction.retainedContextTokens,
-        finalCompactionBudget,
-      )
-      const finalCompactionRequired = shouldCompactContext(finalCompactionBudget)
-
-      if (finalCompactionRequired) {
-        const compactionAttemptId = randomUUID()
-        let compactionStarted = false
-        const emitFinalCompactionFailed = (reason: 'aborted' | 'error' | 'unavailable') => {
-          if (!compactionStarted) return
-          emitChatStreamEvent(input.webContents, {
-            attemptId: compactionAttemptId,
-            conversationId,
-            reason,
-            streamId: input.streamId,
-            type: 'compaction_failed',
-          })
-        }
-
-        try {
-          const compactionModel = await resolveCompactionModelSelection({
-            modelId: input.startInput.modelId,
-            providerId: input.startInput.providerId,
-            reasoningEffort: input.startInput.reasoningEffort,
-          })
-          const compactionStream = await createCompactionStreamFactory(
-            compactionModel.providerId,
-            `${cacheKey}:compaction:final`,
-          )
-          const compacted = await compactModelMessages({
-            conversationId,
-            createStream: compactionStream,
-            messages: finalCompactionMessages,
-            model: compactionModel.modelId,
-            providerId: compactionModel.providerId,
-            onStarted: () => {
-              compactionStarted = true
-              emitChatStreamEvent(input.webContents, {
-                attemptId: compactionAttemptId,
-                conversationId,
-                streamId: input.streamId,
-                type: 'compaction_started',
-              })
-            },
-            reasoningEffort: compactionModel.reasoningEffort,
-            sourceModel: input.startInput.modelId,
-            sourceProviderId: input.startInput.providerId,
-            systemPromptTokens,
-            toolSchemaTokens: promptContext.toolSchemaTokens,
-            previousPacket: latestCompactionPacket,
-            previousMemory: latestConversationMemory,
-            workspaceRootPath,
-            contextWindowTokens: finalContextCompaction.contextWindowTokens,
-            retainedContextTokens: finalRetainedContextTokens,
-            triggerRatio: finalContextCompaction.triggerPercent / 100,
-            signal: input.abortController.signal,
-            turnState: 'settled',
-          })
-
-          if (input.abortController.signal.aborted) {
-            emitFinalCompactionFailed('aborted')
-          } else if (!compacted) {
-            emitFinalCompactionFailed('unavailable')
-          } else {
-            compacted.projectedMessages = await applyWorkspaceMemoryContext(
-              compacted.projectedMessages,
-              workspaceRootPath,
-              finalStoredSettings?.workspaceMemoryEnabled ?? true,
-            )
-            const projectedFinalContextState = calculateModelMessagesContextState({
-              ...finalCompactionBudgetInput,
-              messages: compacted.projectedMessages,
-            })
-            replayMessages = [...compacted.projectedMessages]
-            latestCompactionPacket = compacted.packet
-            latestConversationMemory = compacted.durableMemory
-            await safelyPersistHistory(() => recordCompactionCommitted({
-              anchorUserMessageId: replayAnchorUserMessageId,
-              compactionId: compacted.packet.packetId,
-              conversationId,
-              contextFingerprint,
-              durableMemory: compacted.durableMemory,
-              modelId: input.startInput.modelId,
-              packet: compacted.packet,
-              projectedMessages: compacted.projectedMessages,
-              providerId: input.startInput.providerId,
-              projectionVersion: compacted.projectionVersion,
-              reasoningRetention: compacted.reasoningRetention,
-              parentPacketId: compacted.packet.parentPacketId,
-              sourceDigest: compacted.sourceDigest,
-              sourceMessageIds: compacted.packet.sourceMessageIds,
-            }))
-            emitChatStreamEvent(input.webContents, {
-              compactionId: compacted.packet.packetId,
-              conversationId,
-              streamId: input.streamId,
-              type: 'compaction_committed',
-            })
-            emitContextUsage(projectedFinalContextState.usage)
-          }
-        } catch (error) {
-          emitFinalCompactionFailed(input.abortController.signal.aborted ? 'aborted' : 'error')
-          console.error('Final AI compaction failed; preserving the completed run.', error)
-        }
-      }
-    }
+    // No further request is pending. Save completion without an extra maintenance worker call.
+    const completedRequest = prepareContextRequest({
+      messages: stripEphemeralToolVisualMessages(replayMessages),
+      capabilities: resolveContextCapabilities({
+        providerId: input.startInput.providerId, modelId: input.startInput.modelId,
+        contextWindowTokens: latestContextWindowTokens,
+        maximumOutputTokens,
+      }),
+      systemPromptTokens, toolSchemaTokens: promptContext.toolSchemaTokens,
+      triggerRatio: contextCompaction.triggerPercent / 100,
+      scope: 'reconstructed_preview',
+    })
+    completedRequest.state.usage.lastReportedInputTokens = lastReportedInputTokens
+    emitContextUsage(completedRequest.state.usage)
 
     if (conversationId) {
       await queuedHistoryWrites
@@ -906,13 +790,14 @@ export async function runToolEnabledChatStream(input: {
       type: 'completed',
     })
   } catch (error) {
+    let failure = error
     let cleanupFailed = false
     try {
       await stopTurnTerminals(false)
     } catch (cleanupError) {
       cleanupFailed = true
       console.error('Failed to stop AI commands at the end of the chat turn:', cleanupError)
-      error = cleanupError
+      failure = cleanupError
     }
     await queuedHistoryWrites
     if (conversationId && runWasRecorded) {
@@ -923,7 +808,7 @@ export async function runToolEnabledChatStream(input: {
         conversationId,
         runId,
         input.abortController.signal.aborted && !cleanupFailed ? 'run_aborted' : 'run_failed',
-        error instanceof Error ? error.message : String(error),
+        failure instanceof Error ? failure.message : String(failure),
         cancellation,
       ))
     }
@@ -935,7 +820,7 @@ export async function runToolEnabledChatStream(input: {
       })
     } else {
       emitChatStreamEvent(input.webContents, {
-        errorMessage: error instanceof Error && error.message.trim().length > 0 ? error.message : 'Chat request failed.',
+        errorMessage: failure instanceof Error && failure.message.trim().length > 0 ? failure.message : 'Chat request failed.',
         conversationId,
         streamId: input.streamId,
         type: 'error',

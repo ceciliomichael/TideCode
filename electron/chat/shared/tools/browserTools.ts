@@ -7,22 +7,28 @@ import { validateBrowserNavigation, type BrowserNavigationInput } from '../../..
 import type { JSONSchema7 } from '@ai-sdk/provider'
 import { storeChatImageAttachment } from '../../../history/chatAttachments'
 import { requestTideCodeBrowser } from '../../../runService/browserService'
-import { resolveAgentViewport } from '../../../browser/agentViewport'
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 const STRING = { type: 'string' } as const
 const TAB_ID = { type: 'string', minLength: 1 } as const
-const ACTIONS = ['click', 'hover', 'double_click', 'drag', 'fill', 'type', 'key', 'scroll'] as const
+const ACTIONS = ['click', 'hover', 'double_click', 'drag', 'stroke', 'fill', 'type', 'key', 'scroll'] as const
 
 const INTERACTION_PROPERTIES: Record<string, JSONSchema7> = {
   action: { type: 'string', enum: [...ACTIONS] },
   element_ref: { ...STRING, description: 'Target from browser.read; required for fill, optional for pointer actions when coordinates are supplied.' },
-  observation_id: { ...STRING, description: 'Required with coordinate pointer actions. Use the latest observation_id from browser.read.' },
   x: { type: 'number', description: 'Viewport CSS pixel X for pointer actions or scrolling.' },
   y: { type: 'number', description: 'Viewport CSS pixel Y for pointer actions or scrolling.' },
   to_x: { type: 'number', description: 'Destination X in viewport CSS pixels for drag.' },
   to_y: { type: 'number', description: 'Destination Y in viewport CSS pixels for drag.' },
+  points: {
+    type: 'array', minItems: 2, maxItems: 256,
+    description: 'Continuous connected stroke: press once, move through these viewport points, release once.',
+    items: {
+      type: 'object', additionalProperties: false, required: ['x', 'y'],
+      properties: { x: { type: 'number' }, y: { type: 'number' } },
+    },
+  },
   button: { type: 'string', enum: ['left', 'right', 'middle'] },
   text: STRING,
   key: STRING,
@@ -37,13 +43,13 @@ interface BrowserToolInput {
   tab_id: string
   action: string
   element_ref?: string
-  observation_id?: string
   text?: string
   key?: string
   x?: number
   y?: number
   to_x?: number
   to_y?: number
+  points?: Array<{ x: number; y: number }>
   button?: 'left' | 'right' | 'middle'
   delta_x?: number
   delta_y?: number
@@ -235,6 +241,7 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
             action: { type: 'string', enum: [...ACTIONS, 'wait', 'wait_for', 'read'] },
             label: { type: 'string', maxLength: 120 },
             duration_ms: { type: 'integer', minimum: 0, maximum: 5000 },
+            ms: { type: 'integer', minimum: 0, maximum: 5000, description: 'Alias of duration_ms for wait steps; use one or the other.' },
             selector: { type: 'string', maxLength: 512 },
             url_contains: { type: 'string', maxLength: 512 },
             timeout_ms: { type: 'integer', minimum: 0, maximum: 5000 },
@@ -256,6 +263,7 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
         const body = [
           'Browser sequence',
           'Tab: ' + tab_id,
+          'Viewport: ' + data.width + ' × ' + data.height,
           'Completed: ' + data.completed_steps + '/' + steps.length,
           'Elapsed: ' + data.elapsed_ms + 'ms',
           '',
@@ -283,6 +291,7 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
         body: [
           'Browser ' + data.action,
           'Tab: ' + diagnosticCell(tab_id),
+          'Viewport: ' + data.width + ' × ' + data.height,
           'URL: ' + diagnosticCell(data.url),
           ...((data.report && typeof data.report === 'object') ? [
             'Target: ' + diagnosticCell((data.report as { target?: string }).target ?? 'Page'),
@@ -293,27 +302,23 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
           ] : []),
           data.loading ? 'Page is still loading.' : 'Input dispatched. Page outcome is not yet verified.',
         ].join('\n'),
+        semantics: { tab_id, width: data.width, height: data.height },
       }
     }, { oneOf: [
       { required: ['action'], not: { required: ['steps'] } },
       { required: ['steps'], not: { required: ['action'] } },
-    ] }, 'Act in a browser tab. Prefer element_ref from browser.read. Coordinate actions require x, y and latest observation_id; sequences support wait_for, screenshots, and multiple steps. Never blindly retry submissions.'),
+    ] }, 'Act in an AI-owned tab. Use click for controls, drag for a straight segment, stroke with connected points for drawing, or ordered steps for multiple actions. No observation ID is required. Verify page outcomes rather than blindly retrying.'),
     'browser.read': makeTool({
       tab_id: TAB_ID,
-      width: { type: 'integer', minimum: 1, maximum: 4096, description: 'Optional AI-owned viewport width. Omit to preserve the current width.' },
-      height: { type: 'integer', minimum: 1, maximum: 4096, description: 'Optional AI-owned viewport height. Omit to preserve the current height.' },
       view: { type: 'string', enum: ['combined', 'visual', 'structure', 'annotations'] },
       include_annotations: { type: 'boolean' },
       offset: { type: 'integer', minimum: 0 },
       limit: { type: 'integer', minimum: 1, maximum: 200 },
     }, ['tab_id'], async ({
-      tab_id, width, height, view = 'combined', include_annotations = false, offset = 0, limit = 80,
+      tab_id, view = 'combined', include_annotations = false, offset = 0, limit = 80,
     }, signal) => {
-      if (width !== undefined || height !== undefined) resolveAgentViewport({ width, height })
       const { data, imageBase64 } = await requestTideCodeBrowser({
         operation: 'read',
-        ...(width !== undefined ? { width } : {}),
-        ...(height !== undefined ? { height } : {}),
         projectPath: workspace,
         tabId: tab_id,
         view,
@@ -359,7 +364,7 @@ export function createBrowserToolSet(context: AgentToolContext): Record<string, 
           ...(typeof data.observation_id === 'string' ? { observation_id: data.observation_id } : {}),
         },
       }
-    }, {}, 'Read a browser tab. Use structure for element references, combined for screenshot plus elements, or visual for images. Returns observation_id for viewport-bound coordinate actions. Does not resize the user browser.'),
+    }, {}, 'Read the browser at its existing viewport without resizing. Use structure for element references, combined for screenshot plus elements, or visual for images. Reading is optional before coordinate input.'),
     'browser.devtools': makeTool({
       tab_id: TAB_ID,
       action: { type: 'string', enum: ['console', 'network', 'performance', 'evaluate', 'cdp'] },

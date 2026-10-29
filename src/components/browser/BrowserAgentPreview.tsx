@@ -13,10 +13,18 @@ interface AgentFrame {
   imageDataUrl: string
 }
 
-export function BrowserAgentPreview({ tabId, projectPath }: { tabId: string; projectPath: string }) {
+export function BrowserAgentPreview({ tabId, projectPath, active }: { tabId: string; projectPath: string; active: boolean }) {
   const [frame, setFrame] = useState<AgentFrame | null>(null)
   const [previousCursor, setPreviousCursor] = useState<AgentBrowserCursor | null>(null)
   const currentCursor = useRef<AgentBrowserCursor | null>(null)
+  useEffect(() => {
+    if (!active) return
+    const input = { tabId, projectPath }
+    void window.tidecodeBrowserPageActions.setAgentPreviewVisible({ ...input, visible: true }).catch(console.error)
+    return () => {
+      void window.tidecodeBrowserPageActions.setAgentPreviewVisible({ ...input, visible: false }).catch(() => undefined)
+    }
+  }, [active, tabId, projectPath])
   useEffect(() => {
     const api = window.tidecodeBrowserPageActions
     if (!api?.onAgentFrame) return

@@ -3,6 +3,7 @@ import type { ChatMode, Message } from "../../types/chat";
 import type { ChatRuntimeSelection } from "../../hooks/chatMessageRuntime";
 import { MIN_COMPACTION_MESSAGE_COUNT } from "../../lib/chatCompactionGate";
 import { toUserFacingErrorMessage } from "../../lib/userFacingError";
+import { errorCatalog } from "../../lib/errors/errorCatalog";
 
 interface CompressionSelection {
   hasConfiguredProvider: boolean;
@@ -97,7 +98,7 @@ export function useChatCompression(input: UseChatCompressionInput) {
         terminalExecutionMode: runtimeSelection.terminalExecutionMode,
       });
       if (!result.compacted) {
-        setError("There is not yet a safe completed turn to compact.");
+        setError(errorCatalog[`compaction.${result.reason ?? 'no_compactable_source'}`].message);
       } else {
         onCompactionComplete();
       }

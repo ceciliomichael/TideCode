@@ -599,27 +599,97 @@ function BrowserTabSession({
 export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMainPanel, onTogglePlacement, onClose, projectKey, conversationId, agentTab, urlRequests, onUrlRequestsConsumed }: BrowserPanelProps) {
   const initialTabRef = useRef<BrowserTab | null>(null)
   if (!initialTabRef.current) {
-    initialTabRef.current = createBrowserTab()
+    const initialAgent = agentTab?.projectPath.toLowerCase() === projectKey.toLowerCase() ? agentTab : null
+    const frame = initialAgent ? window.tidecodeBrowserPageActions.getAgentFrame(initialAgent.tabId) : null
+    initialTabRef.current = initialAgent && frame ? {
+      ...createBrowserTab(),
+      id: initialAgent.tabId,
+      title: frame?.title || new URL(initialAgent.url).hostname,
+      initialUrl: frame?.url || initialAgent.url,
+      faviconUrl: frame?.faviconUrl ?? '',
+      aiOwned: true,
+    } : createBrowserTab()
   }
 
   const [tabs, setTabs] = useState<BrowserTab[]>([initialTabRef.current])
   const [activeTabId, setActiveTabId] = useState(initialTabRef.current.id)
+  const closedAgentTabIdsRef = useRef(new Set<string>())
+  useEffect(() => {
+    let cancelled = false
+    const reconcile = async () => {
+      const open = await window.tidecodeBrowserPageActions.listOpenAgentTabs({ projectPath: projectKey })
+      if (cancelled) return
+      for (const tab of open) closedAgentTabIdsRef.current.delete(tab.tabId)
+      setTabs((current) => {
+        const nonAgentTabs = current.filter((tab) => !tab.aiOwned)
+        const agentTabs = open.map((tab): BrowserTab => {
+          const previous = current.find((item) => item.id === tab.tabId)
+          const frame = window.tidecodeBrowserPageActions.getAgentFrame(tab.tabId)
+          return {
+            ...createBrowserTab(),
+            ...previous,
+            id: tab.tabId,
+            aiOwned: true,
+            title: frame?.title || tab.title,
+            initialUrl: tab.url,
+            faviconUrl: frame?.faviconUrl || previous?.faviconUrl || '',
+          }
+        })
+        const blank = nonAgentTabs.length === 1 && nonAgentTabs[0]?.id === initialTabRef.current?.id
+          && !nonAgentTabs[0].initialUrl && nonAgentTabs[0].title === 'New Tab'
+        const next = [...(blank && agentTabs.length ? [] : nonAgentTabs), ...agentTabs]
+        if (!next.length) next.push(createBrowserTab())
+        setActiveTabId((selected) => next.some((tab) => tab.id === selected)
+          ? selected : agentTabs[0]?.id ?? next[0].id)
+        return next
+      })
+    }
+    void reconcile().catch(console.error)
+    return () => { cancelled = true }
+  }, [active, projectKey])
   useEffect(() => {
     if (!agentTab || agentTab.projectPath.toLowerCase() !== projectKey.toLowerCase()) return
+    if (closedAgentTabIdsRef.current.has(agentTab.tabId)) return
     const existingFrame = window.tidecodeBrowserPageActions.getAgentFrame(agentTab.tabId)
     setTabs((current) => {
       if (current.some((tab) => tab.id === agentTab.tabId)) return current
-      return [...current, {
+      const nextTab: BrowserTab = {
         ...createBrowserTab(),
         id: agentTab.tabId,
         title: existingFrame?.title || new URL(agentTab.url).hostname,
         initialUrl: agentTab.url,
         faviconUrl: existingFrame?.faviconUrl ?? '',
         aiOwned: true,
-      }]
+      }
+      if (current.length === 1 && current[0]?.id === initialTabRef.current?.id
+        && !current[0].aiOwned && !current[0].initialUrl && current[0].title === 'New Tab') {
+        setActiveTabId(nextTab.id)
+        return [nextTab]
+      }
+      return [...current, nextTab]
     })
     // An agent opening a page must never steal the user's active browser tab.
   }, [agentTab, projectKey])
+  useEffect(() => window.tidecodeBrowserPageActions.onAgentTabOpen((input) => {
+    if (input.projectPath.toLowerCase() !== projectKey.toLowerCase()) return
+    closedAgentTabIdsRef.current.delete(input.tabId)
+    setTabs((current) => {
+      if (current.some((tab) => tab.id === input.tabId)) return current
+      const nextTab: BrowserTab = {
+        ...createBrowserTab(),
+        id: input.tabId,
+        title: new URL(input.url).hostname,
+        initialUrl: input.url,
+        aiOwned: true,
+      }
+      if (current.length === 1 && current[0]?.id === initialTabRef.current?.id
+        && !current[0].aiOwned && !current[0].initialUrl && current[0].title === 'New Tab') {
+        setActiveTabId(input.tabId)
+        return [nextTab]
+      }
+      return [...current, nextTab]
+    })
+  }), [projectKey])
   const pageControlsRef = useRef<BrowserPageControls | null>(null)
   const privateTabIdsRef = useRef(new Set<string>())
   const mountedRef = useRef(true)
@@ -679,15 +749,28 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMai
   useEffect(() => {
     return window.tidecodeBrowserPageActions.onAgentFrame((frame) => {
       if (frame.projectPath.toLowerCase() !== projectKey.toLowerCase()) return
-      setTabs((current) => current.map((tab) => {
-        if (tab.id !== frame.tabId || !tab.aiOwned) return tab
-        return {
-          ...tab,
+      if (closedAgentTabIdsRef.current.has(frame.tabId)) return
+      setTabs((current) => {
+        const nextTab: BrowserTab = {
+          ...createBrowserTab(),
+          id: frame.tabId,
           title: frame.title || new URL(frame.url).hostname,
           initialUrl: frame.url,
           faviconUrl: frame.faviconUrl || '',
+          aiOwned: true,
         }
-      }))
+        if (!current.some((tab) => tab.id === frame.tabId)) {
+          if (current.length === 1 && current[0]?.id === initialTabRef.current?.id
+            && !current[0].aiOwned && !current[0].initialUrl && current[0].title === 'New Tab') {
+            setActiveTabId(frame.tabId)
+            return [nextTab]
+          }
+          return [...current, nextTab]
+        }
+        return current.map((tab) => tab.id === frame.tabId && tab.aiOwned
+          ? { ...tab, title: nextTab.title, initialUrl: frame.url, faviconUrl: nextTab.faviconUrl }
+          : tab)
+      })
     })
   }, [projectKey])
 
@@ -712,6 +795,7 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMai
     const target = tabs.find((tab) => tab.id === tabId)
     if (target?.aiOwned && !fromHost) {
       void window.tidecodeBrowserPageActions.closeAgentTab({ tabId, projectPath: projectKey }).catch(console.error)
+      return
     }
     if (privateTabIdsRef.current.delete(tabId)) {
       void window.tidecodeBrowserPageActions.releaseIncognitoTab({ tabId }).catch(console.error)
@@ -734,7 +818,8 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMai
   useEffect(() => {
     if (!window.tidecodeBrowserPageActions?.onAgentTabTermination) return
     return window.tidecodeBrowserPageActions.onAgentTabTermination(({ tabId, projectPath }) => {
-      if (projectPath !== projectKey) return
+      if (projectPath.toLowerCase() !== projectKey.toLowerCase()) return
+      closedAgentTabIdsRef.current.add(tabId)
       if (!tabs.some((tab) => tab.id === tabId)) return
       if (tabs.length === 1) {
         const replacement = createBrowserTab()
@@ -785,7 +870,7 @@ export function BrowserPanel({ active, isFullScreen, onToggleFullScreen, isInMai
           <div key={tab.id} className={active && tab.id === activeTabId
             ? 'flex min-h-0 flex-1 flex-col'
             : 'pointer-events-none absolute inset-0 flex min-h-0 flex-col opacity-0'}>
-            <BrowserAgentPreview tabId={tab.id} projectPath={projectKey} />
+            <BrowserAgentPreview tabId={tab.id} projectPath={projectKey} active={active && tab.id === activeTabId} />
           </div>
         ) : (
           <BrowserTabSession

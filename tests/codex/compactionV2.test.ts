@@ -663,7 +663,7 @@ test('oversized handoff fails rather than returning an oversized rebuilt history
   assert.throws(() => buildCompactionProjection({
     anchorMessages: [], tailMessages: [{ role: 'user', content: 'Continue.' }],
     durableMemory: durableMemoryFixture, packet, retainedContextTokens: 1_000,
-  }), /exceed the retention budget/u)
+  }), { reason: 'projection_too_large' })
 })
 
 test('projection carries the latest runtime context only after the compaction handoff', () => {
@@ -733,7 +733,7 @@ test('token projection retains real image content in the recent context tail', (
   for (let turn = 1; turn <= 5; turn += 1) {
     tailMessages.push({
       role: 'user',
-      content: turn === 3 ? [{ text: `Turn ${turn}`, type: 'text' }, imagePart] : `Turn ${turn}`,
+      content: turn === 5 ? [{ text: `Turn ${turn}`, type: 'text' }, imagePart] : `Turn ${turn}`,
     })
     tailMessages.push({ role: 'assistant', content: `Response ${turn}` })
   }
@@ -751,8 +751,8 @@ test('token projection retains real image content in the recent context tail', (
   assert.deepEqual(retainedUsers.map((message) => message.content), [
     'Turn 1',
     'Turn 2',
-    [{ text: 'Turn 3', type: 'text' }, imagePart],
+    'Turn 3',
     'Turn 4',
-    'Turn 5',
+    [{ text: 'Turn 5', type: 'text' }, imagePart],
   ])
 })

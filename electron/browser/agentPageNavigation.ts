@@ -84,7 +84,11 @@ export async function navigateAgentPage(contents: WebContents, input: BrowserNav
     else contents.on('did-finish-load', onMilestone)
     contents.on('did-fail-load', onFailure)
     signal?.addEventListener('abort', onAbort, { once: true })
-    timer = setTimeout(() => finish(new Error('Navigation did not reach ' + waitUntil + ' within ' + timeoutMs + ' milliseconds.')), timeoutMs)
+    timer = setTimeout(() => finish(new Error(
+      'Navigation did not reach ' + waitUntil + ' within ' + timeoutMs + ' milliseconds. '
+      + 'Current URL: ' + contents.getURL() + '. Page loading: ' + (contents.isLoading() ? 'yes' : 'no')
+      + '. The page may have navigated despite this timeout. Inspect browser.read before retrying.',
+    )), timeoutMs)
   })
   started = true
   try {

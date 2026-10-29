@@ -67,6 +67,7 @@ export interface CompactConversationInput {
 
 export interface CompactConversationResult {
   compacted: boolean
+  reason?: CompactionReason
   packetId: string | null
 }
 
@@ -107,6 +108,17 @@ export interface EstimateContextUsageInput {
 }
 
 export interface ContextUsageEstimate {
+  providerId?: ChatProviderId
+  modelId?: string
+  imageTokens?: number
+  outputReserveTokens?: number
+  uncertaintyTokens?: number
+  admissionTokens?: number
+  triggerTokens?: number
+  countingMethod?: 'heuristic'
+  scope?: 'next_request' | 'reconstructed_preview'
+  requestFingerprint?: string
+  lastReportedInputTokens?: number
   historyTokens: number
   injectionTokens: number
   maxTokens: number
@@ -163,13 +175,14 @@ export type ChatStreamEvent =
       afterMessageId?: string | null
       compactionId: string
       conversationId: string
+      attemptId?: string
       streamId: string
       type: 'compaction_committed'
     }
   | {
       attemptId: string
       conversationId: string
-      reason: 'aborted' | 'error' | 'unavailable'
+      reason: 'aborted' | 'error' | 'unavailable' | CompactionReason
       streamId: string
       type: 'compaction_failed'
     }
@@ -232,3 +245,9 @@ export type ChatStreamEvent =
   | { conversationId?: string | null; streamId: string; type: 'completed' }
   | { conversationId?: string | null; streamId: string; type: 'aborted' }
   | { conversationId?: string | null; errorMessage: string; streamId: string; type: 'error' }
+
+export type CompactionReason =
+  | 'invalid_context_budget' | 'invalid_tool_pairs' | 'no_compactable_source'
+  | 'insufficient_reduction' | 'protected_context_too_large' | 'summarizer_context_too_large'
+  | 'worker_timeout' | 'worker_error' | 'invalid_handoff' | 'projection_too_large'
+  | 'stale_source' | 'commit_failed' | 'aborted'

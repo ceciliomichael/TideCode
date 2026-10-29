@@ -37,6 +37,6 @@ test('durable memory releases its abort listener when a provider fails', async (
     createStream: async () => { throw new Error('provider failed') },
     messages: [], model: 'test-model', reasoningEffort: 'low', signal: parent.signal,
     sourceDigest: 'test-digest', sourceStartIndex: 0,
-  }), /provider failed/)
+  }), { reason: 'worker_error' })
   assert.equal(getEventListeners(parent.signal, 'abort').length, 0)
 })

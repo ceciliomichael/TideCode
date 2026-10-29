@@ -40,7 +40,7 @@ test('browser viewport defaults, dimension validation and per-tab ownership are 
   assert.deepEqual(getAgentViewport(desktop), DEFAULT_AGENT_VIEWPORT)
 })
 
-test('browser.read forwards actual viewport dimensions and rejects invalid sizes before contacting the host', async () => {
+test('browser.read never sends dimensions and always uses the existing viewport', async () => {
   const requests: Array<{ operation: string; width?: number; height?: number }> = []
   setRunServiceBrowserHandler(async (request) => {
     requests.push(request)
@@ -50,18 +50,18 @@ test('browser.read forwards actual viewport dimensions and rejects invalid sizes
   try {
     const read = createBrowserToolSet({ workspaceRootPath: 'C:/viewport-test' })['browser.read']
     await read.execute!({ tab_id: 'same-tab', view: 'structure' }, {} as never)
-    const mobile = await read.execute!({ tab_id: 'same-tab', width: 390, height: 844 }, {} as never)
+    const mobile = await read.execute!({ tab_id: 'same-tab', view: 'visual' }, {} as never)
     assert.equal(requests[0].width, undefined)
     assert.equal(requests[0].height, undefined)
-    assert.equal(requests[1].width, 390)
-    assert.equal(requests[1].height, 844)
-    assert.deepEqual(mobile.semantics, { tab_id: 'same-tab', width: 390, height: 844 })
-    const invalid = await read.execute!({ tab_id: 'same-tab', width: 4097 }, {} as never)
-    assert.equal(invalid.status, 'error')
+    assert.equal(requests[1].width, undefined)
+    assert.equal(requests[1].height, undefined)
+    assert.deepEqual(mobile.semantics, { tab_id: 'same-tab', width: 1440, height: 900 })
     assert.equal(requests.length, 2)
     const instructions = getApiInstructions('browser.read')
-    assert.match(instructions, /width and height/)
-    assert.match(instructions, /latest successful read/)
+    assert.match(instructions, /never resizes the tab/)
+    const schema = (read.inputSchema as { jsonSchema?: { properties?: Record<string, unknown> } }).jsonSchema
+    assert.equal(schema?.properties?.width, undefined)
+    assert.equal(schema?.properties?.height, undefined)
   } finally {
     setRunServiceBrowserHandler(null)
   }
@@ -200,7 +200,11 @@ test('read observes the existing tab without URL input and non-navigation intera
     assert.deepEqual(readSchema.required, ['tab_id'])
     assert.ok(!('url' in readSchema.properties))
     await tools['browser.read'].execute!({ tab_id: 'existing-tab', view: 'structure' }, {} as never)
-    await tools['browser.interact'].execute!({ tab_id: 'existing-tab', action: 'click', element_ref: 'el-current' }, {} as never)
+    const interaction = await tools['browser.interact'].execute!(
+      { tab_id: 'existing-tab', action: 'click', element_ref: 'el-current' }, {} as never,
+    )
+    assert.match(interaction.body ?? '', /Viewport: 1280 × 720/)
+    assert.deepEqual(interaction.semantics, { tab_id: 'existing-tab', width: 1280, height: 720 })
     assert.deepEqual(requests.map((request) => request.operation), ['read', 'interact'])
     assert.equal(requests[0].tabId, 'existing-tab')
     assert.ok(!('url' in requests[0]))
@@ -313,7 +317,7 @@ test('Code Mode discovers and validates the sequence contract and executes it th
     assert.equal(request.operation, 'sequence')
     assert.equal(request.projectPath, workspaceRootPath)
     return {
-      data: { completed_steps: 2, elapsed_ms: 30 },
+      data: { completed_steps: 2, elapsed_ms: 30, width: 1440, height: 900 },
       captures: [{ step: 2, label: 'Jump', started_ms: 2, completed_ms: 30,
         body: 'Character is airborne', imageBase64: Buffer.from('jump-png').toString('base64') }],
     }
@@ -333,6 +337,7 @@ test('Code Mode discovers and validates the sequence contract and executes it th
       assert.equal(outcome.status, 'success', outcome.error)
       assert.equal(outcome.toolCalls.at(-1)?.name, 'browser.interact')
       assert.match(outcome.toolCalls.at(-1)?.body ?? '', /Character is airborne/)
+      assert.match(outcome.toolCalls.at(-1)?.body ?? '', /Viewport: 1440 × 900/)
       assert.equal(requests, 1)
       assert.equal(outputs.length, 1)
       for (const input of [

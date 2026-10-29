@@ -1,27 +1,18 @@
-import type { CompactionResult } from './contracts'
 import type { ContextBudget } from './budget'
+import type { CompactionReason } from './contracts'
+import { errorCatalog } from '../../../../src/lib/errors/errorCatalog'
 
-export class ContextCompactionRequiredError extends Error {
-  readonly code = 'context_compaction_required' as const
-
-  constructor(message = 'Context compaction was required before continuing, but no safe compacted projection was available.') {
-    super(message)
-    this.name = 'ContextCompactionRequiredError'
+export class CompactionError extends Error {
+  readonly code: string
+  constructor(readonly reason: CompactionReason, options?: ErrorOptions) {
+    super(errorCatalog[`compaction.${reason}`].message, options)
+    this.name = 'CompactionError'
+    this.code = `compaction.${reason}`
   }
 }
 
-export function assertCompactionGate(input: {
-  aborted: boolean
-  compactionResult: CompactionResult | null
-  projectedBudget: ContextBudget | null
-  required: boolean
-}) {
-  if (input.aborted || !input.required) return
-  if (
-    !input.compactionResult ||
-    !input.projectedBudget ||
-    input.projectedBudget.totalTokens >= input.projectedBudget.contextWindowTokens
-  ) {
-    throw new ContextCompactionRequiredError()
+export function assertContextAdmission(budget: ContextBudget) {
+  if (budget.totalTokens + budget.correctionTokens > budget.admissionTokens) {
+    throw new CompactionError('projection_too_large')
   }
 }

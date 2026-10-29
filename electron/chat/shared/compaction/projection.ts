@@ -7,9 +7,9 @@ import {
   sanitizeCompactedModelMessages,
 } from '../modelMessageIntegrity'
 import {
-  capRetainedContextTokens,
   DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
 } from '../../../../src/lib/contextCompactionSettings'
+import { CompactionError } from './gate'
 import { retainConversationMessages, retainedMessageTokens } from './conversationRetention'
 import { extractHiddenUserContexts } from '../../../../src/lib/hiddenUserContext'
 import type { HiddenUserContext } from '../../../../src/types/chat'
@@ -83,11 +83,11 @@ export function buildCompactionProjection(input: CompactionProjectionInput) {
   const handoffMessage = buildContinuationMessage(input.packet.continuationMarkdown)
   const fixedMessages = [...(durableMemoryMessage ? [durableMemoryMessage] : []), handoffMessage, ...runtimeMessages]
   const fixedTokens = estimateModelMessageContextUsage(fixedMessages).totalTokens
-  const retainedContextTokens = capRetainedContextTokens(
+  const retainedContextTokens = Math.max(1, Math.floor(
     input.retainedContextTokens ?? DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
-  )
+  ))
   if (fixedTokens > retainedContextTokens) {
-    throw new Error('Compaction handoff and runtime instructions exceed the retention budget. The existing history has been preserved.')
+    throw new CompactionError('projection_too_large')
   }
   const clean = (messages: readonly ModelMessage[]) => messages
     .map(sanitizeProjectedMessage)
@@ -99,7 +99,7 @@ export function buildCompactionProjection(input: CompactionProjectionInput) {
   })
   const projected = sanitizeCompactedModelMessages([...fixedMessages, ...tail])
   if (retainedMessageTokens(projected) > retainedContextTokens) {
-    throw new Error('Compaction rebuilt history exceeds the retention budget. The existing history has been preserved.')
+    throw new CompactionError('projection_too_large')
   }
   return projected
 }

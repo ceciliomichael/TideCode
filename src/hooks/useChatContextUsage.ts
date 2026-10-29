@@ -10,6 +10,9 @@ import type { ContextCompactionSettings } from '../lib/contextCompactionSettings
 import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
 
 const EMPTY_CONTEXT_USAGE: ContextUsageEstimate = {
+  imageTokens: 0,
+  scope: 'reconstructed_preview',
+  countingMethod: 'heuristic',
   historyTokens: 0,
   injectionTokens: 0,
   maxTokens: 200_000,
@@ -159,6 +162,10 @@ export function useChatContextUsage({
     fetchUsageRef.current = fetchUsage
     const unsubscribeChat = window.tidecodeChat.onStreamEvent((event) => {
       if (event.type === 'context_usage_updated' && event.conversationId === conversationId) {
+        if ((event.usage.providerId && event.usage.providerId !== providerId)
+          || (event.usage.modelId && event.usage.modelId !== modelId)) {
+          return
+        }
         liveStreamId = event.streamId
         refreshQueue.cancelPending()
         requestSequenceRef.current += 1
@@ -189,6 +196,10 @@ export function useChatContextUsage({
         if (isCancelled || liveStreamId || !conversationId) return
         const activeRun = runs.find((run) => run.conversationId === conversationId)
         if (activeRun?.streamId && activeRun.contextUsage) {
+          if ((activeRun.contextUsage.providerId && activeRun.contextUsage.providerId !== providerId)
+            || (activeRun.contextUsage.modelId && activeRun.contextUsage.modelId !== modelId)) {
+            return
+          }
           liveStreamId = activeRun.streamId
           refreshQueue.cancelPending()
           requestSequenceRef.current += 1
